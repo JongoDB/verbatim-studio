@@ -1,0 +1,17 @@
+{
+  "name": "verbatim-studio",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Privacy-first transcription for professionals",
+  "scripts": {
+    "dev": "pnpm --filter frontend dev",
+    "dev:electron": "pnpm --filter electron dev",
+    "build": "pnpm --filter frontend build && pnpm --filter electron build",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  }
+}

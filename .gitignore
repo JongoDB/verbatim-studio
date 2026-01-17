@@ -1,0 +1,43 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+build/
+*.app
+*.dmg
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+*.egg-info/
+.eggs/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Environment
+.env
+.env.local
+*.log
+
+# Electron
+out/
+
+# Test
+coverage/
+.pytest_cache/
+
+# Models (downloaded at runtime)
+models/
+*.bin
+*.gguf
+*.pt
