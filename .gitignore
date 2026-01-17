@@ -7,6 +7,9 @@ dist/
 build/
 *.app
 *.dmg
+*.tsbuildinfo
+*.d.ts
+vite.config.js
 
 # Python
 __pycache__/
