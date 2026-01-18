@@ -4,14 +4,23 @@
   "private": true,
   "description": "Privacy-first transcription for professionals",
   "scripts": {
-    "dev": "pnpm --filter frontend dev",
-    "dev:electron": "pnpm --filter electron dev",
-    "build": "pnpm --filter frontend build && pnpm --filter electron build",
+    "dev": "./scripts/dev.sh",
+    "dev:frontend": "pnpm --filter @verbatim/frontend dev",
+    "dev:backend": "cd packages/backend && source .venv/bin/activate && uvicorn api.main:app --reload",
+    "dev:electron": "pnpm --filter @verbatim/electron dev",
+    "build": "pnpm build:frontend && pnpm build:electron",
+    "build:frontend": "pnpm --filter @verbatim/frontend build",
+    "build:electron": "pnpm --filter @verbatim/electron build",
+    "start:electron": "cd apps/electron && pnpm start",
     "lint": "pnpm -r lint",
-    "test": "pnpm -r test"
+    "test": "pnpm -r test",
+    "clean": "rm -rf dist build node_modules/.cache"
   },
   "engines": {
     "node": ">=20.0.0",
     "pnpm": ">=9.0.0"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
   }
 }
