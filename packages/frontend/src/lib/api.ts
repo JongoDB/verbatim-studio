@@ -101,6 +101,23 @@ export interface MessageResponse {
   id: string | null;
 }
 
+export interface Speaker {
+  id: string;
+  transcript_id: string;
+  speaker_label: string;
+  speaker_name: string | null;
+  color: string | null;
+}
+
+export interface SpeakerListResponse {
+  items: Speaker[];
+}
+
+export interface SpeakerUpdateRequest {
+  speaker_name?: string | null;
+  color?: string | null;
+}
+
 class ApiClient {
   private baseUrl: string;
 
@@ -207,6 +224,18 @@ class ApiClient {
       this.request<TranscriptWithSegments>(
         `/api/transcripts/by-recording/${recordingId}`
       ),
+  };
+
+  // Speakers
+  speakers = {
+    byTranscript: (transcriptId: string) =>
+      this.request<SpeakerListResponse>(`/api/speakers/by-transcript/${transcriptId}`),
+
+    update: (speakerId: string, data: SpeakerUpdateRequest) =>
+      this.request<Speaker>(`/api/speakers/${speakerId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      }),
   };
 }
 
