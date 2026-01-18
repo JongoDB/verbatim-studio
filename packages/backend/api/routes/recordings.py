@@ -129,23 +129,46 @@ async def list_recordings(
     page: Annotated[int, Query(ge=1, description="Page number")] = 1,
     page_size: Annotated[int, Query(ge=1, le=100, description="Items per page")] = 20,
     project_id: Annotated[str | None, Query(description="Filter by project ID")] = None,
+    status: Annotated[str | None, Query(description="Filter by status (pending, processing, completed, failed)")] = None,
+    search: Annotated[str | None, Query(description="Search by title or filename")] = None,
+    sort_by: Annotated[str, Query(description="Sort field (created_at, title, duration)")] = "created_at",
+    sort_order: Annotated[str, Query(description="Sort order (asc, desc)")] = "desc",
 ) -> RecordingListResponse:
-    """List all recordings with pagination.
+    """List all recordings with pagination and filtering.
 
     Args:
         db: Database session.
         page: Page number (1-indexed).
         page_size: Number of items per page.
         project_id: Optional project ID filter.
+        status: Optional status filter (pending, processing, completed, failed).
+        search: Optional search string for title or filename.
+        sort_by: Field to sort by (created_at, title, duration).
+        sort_order: Sort direction (asc, desc).
 
     Returns:
         Paginated list of recordings.
     """
+    from sqlalchemy import or_
+
     # Build base query
     query = select(Recording)
 
+    # Apply filters
     if project_id is not None:
         query = query.where(Recording.project_id == project_id)
+
+    if status is not None:
+        query = query.where(Recording.status == status)
+
+    if search is not None and search.strip():
+        search_term = f"%{search.strip()}%"
+        query = query.where(
+            or_(
+                Recording.title.ilike(search_term),
+                Recording.file_name.ilike(search_term),
+            )
+        )
 
     # Get total count
     count_query = select(func.count()).select_from(query.subquery())
@@ -156,8 +179,20 @@ async def list_recordings(
     total_pages = (total + page_size - 1) // page_size if total > 0 else 1
     offset = (page - 1) * page_size
 
-    # Get paginated results
-    query = query.order_by(Recording.created_at.desc()).offset(offset).limit(page_size)
+    # Apply sorting
+    sort_column = {
+        "created_at": Recording.created_at,
+        "title": Recording.title,
+        "duration": Recording.duration_seconds,
+    }.get(sort_by, Recording.created_at)
+
+    if sort_order == "asc":
+        query = query.order_by(sort_column.asc())
+    else:
+        query = query.order_by(sort_column.desc())
+
+    # Apply pagination
+    query = query.offset(offset).limit(page_size)
     result = await db.execute(query)
     recordings = result.scalars().all()
 

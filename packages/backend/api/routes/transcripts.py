@@ -2,16 +2,19 @@
 
 import logging
 from datetime import datetime
+from enum import Enum
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from persistence import get_db
-from persistence.models import Segment, Transcript
+from persistence.models import Recording, Segment, Speaker, Transcript
+from services.export import ExportData, ExportSegment, export_service
 
 logger = logging.getLogger(__name__)
 
@@ -342,3 +345,162 @@ async def get_transcript_by_recording(
             for s in sorted_segments
         ],
     )
+
+
+class ExportFormat(str, Enum):
+    """Supported export formats."""
+
+    TXT = "txt"
+    SRT = "srt"
+    VTT = "vtt"
+    DOCX = "docx"
+    PDF = "pdf"
+
+
+# MIME types for export formats
+EXPORT_MIME_TYPES = {
+    ExportFormat.TXT: "text/plain",
+    ExportFormat.SRT: "application/x-subrip",
+    ExportFormat.VTT: "text/vtt",
+    ExportFormat.DOCX: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ExportFormat.PDF: "application/pdf",
+}
+
+
+@router.get("/{transcript_id}/export")
+async def export_transcript(
+    transcript_id: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    format: Annotated[ExportFormat, Query(description="Export format")] = ExportFormat.TXT,
+    include_timestamps: Annotated[bool, Query(description="Include timestamps (TXT only)")] = True,
+) -> Response:
+    """Export a transcript to various formats.
+
+    Supported formats:
+    - txt: Plain text with timestamps
+    - srt: SubRip subtitle format
+    - vtt: WebVTT subtitle format
+    - docx: Microsoft Word document
+    - pdf: PDF document
+
+    Args:
+        transcript_id: The transcript's unique ID.
+        db: Database session.
+        format: Export format (txt, srt, vtt, docx, pdf).
+        include_timestamps: Include timestamps in TXT export.
+
+    Returns:
+        File download response in the requested format.
+
+    Raises:
+        HTTPException: If transcript not found.
+    """
+    # Get transcript with segments and recording
+    result = await db.execute(
+        select(Transcript)
+        .options(selectinload(Transcript.segments))
+        .options(selectinload(Transcript.recording))
+        .options(selectinload(Transcript.speakers))
+        .where(Transcript.id == transcript_id)
+    )
+    transcript = result.scalar_one_or_none()
+
+    if transcript is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Transcript not found: {transcript_id}",
+        )
+
+    # Build speaker mapping
+    speaker_map = {}
+    for speaker in transcript.speakers:
+        speaker_map[speaker.speaker_label] = speaker.speaker_name or speaker.speaker_label
+
+    # Sort segments by index
+    sorted_segments = sorted(transcript.segments, key=lambda s: s.segment_index)
+
+    # Build export data
+    export_data = ExportData(
+        title=transcript.recording.title if transcript.recording else "Transcript",
+        language=transcript.language,
+        model_used=transcript.model_used,
+        word_count=transcript.word_count,
+        duration_seconds=transcript.recording.duration_seconds if transcript.recording else None,
+        segments=[
+            ExportSegment(
+                index=s.segment_index,
+                start_time=s.start_time,
+                end_time=s.end_time,
+                text=s.text,
+                speaker=s.speaker,
+                speaker_name=speaker_map.get(s.speaker) if s.speaker else None,
+            )
+            for s in sorted_segments
+        ],
+        speakers=speaker_map,
+    )
+
+    # Generate filename
+    base_name = transcript.recording.title if transcript.recording else "transcript"
+    # Sanitize filename
+    safe_name = "".join(c if c.isalnum() or c in " -_" else "_" for c in base_name)
+    filename = f"{safe_name}.{format.value}"
+
+    # Export based on format
+    try:
+        if format == ExportFormat.TXT:
+            content = export_service.export_txt(export_data, include_timestamps)
+            media_type = EXPORT_MIME_TYPES[format]
+            return Response(
+                content=content.encode("utf-8"),
+                media_type=media_type,
+                headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+            )
+
+        elif format == ExportFormat.SRT:
+            content = export_service.export_srt(export_data)
+            media_type = EXPORT_MIME_TYPES[format]
+            return Response(
+                content=content.encode("utf-8"),
+                media_type=media_type,
+                headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+            )
+
+        elif format == ExportFormat.VTT:
+            content = export_service.export_vtt(export_data)
+            media_type = EXPORT_MIME_TYPES[format]
+            return Response(
+                content=content.encode("utf-8"),
+                media_type=media_type,
+                headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+            )
+
+        elif format == ExportFormat.DOCX:
+            content = export_service.export_docx(export_data)
+            media_type = EXPORT_MIME_TYPES[format]
+            return Response(
+                content=content,
+                media_type=media_type,
+                headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+            )
+
+        elif format == ExportFormat.PDF:
+            content = export_service.export_pdf(export_data)
+            media_type = EXPORT_MIME_TYPES[format]
+            return Response(
+                content=content,
+                media_type=media_type,
+                headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+            )
+
+    except ImportError as e:
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail=str(e),
+        )
+    except Exception as e:
+        logger.error("Export failed: %s", e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Export failed: {str(e)}",
+        )

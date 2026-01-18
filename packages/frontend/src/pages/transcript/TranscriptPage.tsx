@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, type TranscriptWithSegments, type Segment, type Speaker, type Recording } from '@/lib/api';
 import { AudioPlayer, type AudioPlayerRef } from '@/components/audio/AudioPlayer';
 import { EditableSegment } from '@/components/transcript/EditableSegment';
+import { ExportButton } from '@/components/transcript/ExportButton';
 
 interface TranscriptPageProps {
   recordingId: string;
@@ -205,9 +206,12 @@ export function TranscriptPage({ recordingId, onBack }: TranscriptPageProps) {
 
       {/* Transcript info header */}
       <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
-        <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">
-          {recording.title}
-        </h2>
+        <div className="flex items-start justify-between mb-3">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+            {recording.title}
+          </h2>
+          <ExportButton transcriptId={transcript.id} title={recording.title} />
+        </div>
         <div className="flex flex-wrap gap-4 text-sm">
           {transcript.language && (
             <div className="flex items-center gap-2">

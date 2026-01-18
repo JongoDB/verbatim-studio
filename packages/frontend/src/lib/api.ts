@@ -118,6 +118,53 @@ export interface SpeakerUpdateRequest {
   color?: string | null;
 }
 
+export type ExportFormat = 'txt' | 'srt' | 'vtt' | 'docx' | 'pdf';
+
+export interface SearchResultSegment {
+  id: string;
+  segment_index: number;
+  speaker: string | null;
+  start_time: number;
+  end_time: number;
+  text: string;
+  confidence: number | null;
+  transcript_id: string;
+  recording_id: string;
+  recording_title: string;
+}
+
+export interface SearchResponse {
+  query: string;
+  results: SearchResultSegment[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+}
+
+export interface GlobalSearchResult {
+  type: 'recording' | 'segment';
+  id: string;
+  title: string | null;
+  text: string | null;
+  recording_id: string;
+  recording_title: string;
+  start_time: number | null;
+  end_time: number | null;
+  created_at: string;
+}
+
+export interface GlobalSearchResponse {
+  query: string;
+  results: GlobalSearchResult[];
+  total: number;
+}
+
+export interface ExportOptions {
+  format: ExportFormat;
+  includeTimestamps?: boolean;
+}
+
 class ApiClient {
   private baseUrl: string;
 
@@ -151,10 +198,25 @@ class ApiClient {
 
   // Recordings
   recordings = {
-    list: (page = 1, pageSize = 20) =>
-      this.request<RecordingListResponse>(
-        `/api/recordings?page=${page}&page_size=${pageSize}`
-      ),
+    list: (options?: {
+      page?: number;
+      pageSize?: number;
+      projectId?: string;
+      status?: string;
+      search?: string;
+      sortBy?: 'created_at' | 'title' | 'duration';
+      sortOrder?: 'asc' | 'desc';
+    }) => {
+      const params = new URLSearchParams();
+      params.set('page', String(options?.page ?? 1));
+      params.set('page_size', String(options?.pageSize ?? 20));
+      if (options?.projectId) params.set('project_id', options.projectId);
+      if (options?.status) params.set('status', options.status);
+      if (options?.search) params.set('search', options.search);
+      if (options?.sortBy) params.set('sort_by', options.sortBy);
+      if (options?.sortOrder) params.set('sort_order', options.sortOrder);
+      return this.request<RecordingListResponse>(`/api/recordings?${params.toString()}`);
+    },
 
     get: (id: string) => this.request<Recording>(`/api/recordings/${id}`),
 
@@ -232,6 +294,31 @@ class ApiClient {
         method: 'PATCH',
         body: JSON.stringify(data),
       }),
+
+    export: async (transcriptId: string, options: ExportOptions): Promise<Blob> => {
+      const queryParams = new URLSearchParams();
+      queryParams.set('format', options.format);
+      if (options.includeTimestamps !== undefined) {
+        queryParams.set('include_timestamps', String(options.includeTimestamps));
+      }
+
+      const response = await fetch(
+        `${this.baseUrl}/api/transcripts/${transcriptId}/export?${queryParams.toString()}`
+      );
+
+      if (!response.ok) {
+        throw new Error(`Export failed: ${response.status} ${response.statusText}`);
+      }
+
+      return response.blob();
+    },
+
+    getExportUrl: (transcriptId: string, format: ExportFormat, includeTimestamps = true) => {
+      const queryParams = new URLSearchParams();
+      queryParams.set('format', format);
+      queryParams.set('include_timestamps', String(includeTimestamps));
+      return `${this.baseUrl}/api/transcripts/${transcriptId}/export?${queryParams.toString()}`;
+    },
   };
 
   // Speakers
@@ -244,6 +331,28 @@ class ApiClient {
         method: 'PATCH',
         body: JSON.stringify(data),
       }),
+  };
+
+  // Search
+  search = {
+    segments: (query: string, options?: {
+      transcriptId?: string;
+      recordingId?: string;
+      page?: number;
+      pageSize?: number;
+    }) => {
+      const params = new URLSearchParams({ q: query });
+      if (options?.transcriptId) params.set('transcript_id', options.transcriptId);
+      if (options?.recordingId) params.set('recording_id', options.recordingId);
+      if (options?.page) params.set('page', String(options.page));
+      if (options?.pageSize) params.set('page_size', String(options.pageSize));
+      return this.request<SearchResponse>(`/api/search/segments?${params.toString()}`);
+    },
+
+    global: (query: string, limit = 20) => {
+      const params = new URLSearchParams({ q: query, limit: String(limit) });
+      return this.request<GlobalSearchResponse>(`/api/search/global?${params.toString()}`);
+    },
   };
 }
 

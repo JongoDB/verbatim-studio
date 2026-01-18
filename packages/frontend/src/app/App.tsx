@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
-import { api, type ApiInfo, type HealthStatus } from '@/lib/api';
+import { api, type ApiInfo, type HealthStatus, type GlobalSearchResult } from '@/lib/api';
 import { RecordingsPage } from '@/pages/recordings/RecordingsPage';
 import { TranscriptPage } from '@/pages/transcript/TranscriptPage';
+import { SearchBox } from '@/components/search/SearchBox';
 
 type NavigationState =
   | { type: 'recordings' }
@@ -20,6 +21,11 @@ export function App() {
 
   const handleBackToRecordings = useCallback(() => {
     setNavigation({ type: 'recordings' });
+  }, []);
+
+  const handleSearchResult = useCallback((result: GlobalSearchResult) => {
+    // Navigate to the recording's transcript
+    setNavigation({ type: 'transcript', recordingId: result.recording_id });
   }, []);
 
   useEffect(() => {
@@ -110,14 +116,17 @@ export function App() {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="border-b bg-card">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div>
+        <div className="container mx-auto px-4 py-4 flex items-center justify-between gap-4">
+          <div className="flex-shrink-0">
             <h1 className="text-xl font-bold text-foreground">Verbatim Studio</h1>
             <p className="text-sm text-muted-foreground">
               Privacy-first transcription for professionals
             </p>
           </div>
-          <div className="flex items-center gap-4 text-sm">
+          <div className="flex-1 max-w-md">
+            <SearchBox onResultClick={handleSearchResult} />
+          </div>
+          <div className="flex items-center gap-4 text-sm flex-shrink-0">
             {apiInfo && (
               <span className="text-muted-foreground font-mono">
                 v{apiInfo.version}

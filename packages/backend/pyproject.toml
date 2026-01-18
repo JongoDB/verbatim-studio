@@ -26,6 +26,10 @@ ml = [
     "whisperx>=3.1.0",
     "torch>=2.0.0",
 ]
+export = [
+    "python-docx>=1.0.0",
+    "reportlab>=4.0.0",
+]
 
 [tool.ruff]
 line-length = 100
