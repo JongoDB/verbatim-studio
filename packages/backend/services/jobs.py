@@ -10,7 +10,7 @@ from typing import Any
 from sqlalchemy import select, update
 
 from persistence.database import async_session
-from persistence.models import Job
+from persistence.models import Job, Recording, Segment, Transcript
 
 logger = logging.getLogger(__name__)
 
@@ -261,3 +261,116 @@ class JobQueue:
 
 # Default job queue instance
 job_queue = JobQueue()
+
+
+async def handle_transcription(
+    payload: dict[str, Any], progress_callback: ProgressCallback
+) -> dict[str, Any]:
+    """Handle transcription job.
+
+    Args:
+        payload: Job payload with 'recording_id' and optional 'language'.
+        progress_callback: Callback to report progress.
+
+    Returns:
+        Result dictionary with transcript_id and segment count.
+
+    Raises:
+        ValueError: If recording not found or invalid.
+    """
+    from services.transcription import transcription_service
+
+    recording_id = payload.get("recording_id")
+    language = payload.get("language")
+
+    if not recording_id:
+        raise ValueError("Missing recording_id in payload")
+
+    # Get recording and update status
+    async with async_session() as session:
+        result = await session.execute(select(Recording).where(Recording.id == recording_id))
+        recording = result.scalar_one_or_none()
+
+        if recording is None:
+            raise ValueError(f"Recording not found: {recording_id}")
+
+        # Update recording status to processing
+        await session.execute(
+            update(Recording).where(Recording.id == recording_id).values(status="processing")
+        )
+        await session.commit()
+        audio_path = recording.file_path
+
+    try:
+        # Run transcription
+        transcription_result = await transcription_service.transcribe(
+            audio_path=audio_path,
+            language=language,
+            progress_callback=progress_callback,
+        )
+
+        detected_language = transcription_result["language"]
+        segments_data = transcription_result["segments"]
+
+        # Calculate word count
+        word_count = sum(len(seg["text"].split()) for seg in segments_data)
+
+        # Create transcript and segments in database
+        async with async_session() as session:
+            # Create transcript
+            transcript = Transcript(
+                recording_id=recording_id,
+                language=detected_language,
+                model_used="whisperx-base",
+                word_count=word_count,
+            )
+            session.add(transcript)
+            await session.flush()
+
+            # Create segments
+            for idx, seg in enumerate(segments_data):
+                segment = Segment(
+                    transcript_id=transcript.id,
+                    segment_index=idx,
+                    start_time=seg["start"],
+                    end_time=seg["end"],
+                    text=seg["text"],
+                    confidence=seg.get("confidence"),
+                )
+                session.add(segment)
+
+            # Update recording status to completed
+            await session.execute(
+                update(Recording).where(Recording.id == recording_id).values(status="completed")
+            )
+            await session.commit()
+
+            transcript_id = transcript.id
+
+        logger.info(
+            "Transcription complete for recording %s: %d segments, %d words",
+            recording_id,
+            len(segments_data),
+            word_count,
+        )
+
+        return {
+            "transcript_id": transcript_id,
+            "segment_count": len(segments_data),
+            "word_count": word_count,
+            "language": detected_language,
+        }
+
+    except Exception as e:
+        # Update recording status to failed
+        async with async_session() as session:
+            await session.execute(
+                update(Recording).where(Recording.id == recording_id).values(status="failed")
+            )
+            await session.commit()
+        logger.exception("Transcription failed for recording %s", recording_id)
+        raise e
+
+
+# Register the transcription handler
+job_queue.register_handler("transcribe", handle_transcription)

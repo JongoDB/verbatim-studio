@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from persistence import get_db
 from persistence.models import Recording
+from services.jobs import job_queue
 from services.storage import storage_service
 
 logger = logging.getLogger(__name__)
@@ -94,6 +95,13 @@ class MessageResponse(BaseModel):
 
     message: str
     id: str | None = None
+
+
+class TranscribeResponse(BaseModel):
+    """Response model for transcribe request."""
+
+    job_id: str
+    status: str
 
 
 def _recording_to_response(recording: Recording) -> RecordingResponse:
@@ -323,4 +331,55 @@ async def delete_recording(
     return MessageResponse(
         message="Recording deleted successfully",
         id=recording_id,
+    )
+
+
+@router.post("/{recording_id}/transcribe", response_model=TranscribeResponse)
+async def transcribe_recording(
+    recording_id: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    language: Annotated[str | None, Query(description="Language code (e.g., 'en', 'es')")] = None,
+) -> TranscribeResponse:
+    """Start transcription for a recording.
+
+    Enqueues a transcription job for the specified recording.
+
+    Args:
+        recording_id: The recording's unique ID.
+        db: Database session.
+        language: Optional language code for transcription.
+
+    Returns:
+        Job ID and status.
+
+    Raises:
+        HTTPException: If recording not found or already processing.
+    """
+    result = await db.execute(select(Recording).where(Recording.id == recording_id))
+    recording = result.scalar_one_or_none()
+
+    if recording is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Recording not found: {recording_id}",
+        )
+
+    if recording.status == "processing":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Recording is already being processed",
+        )
+
+    # Enqueue transcription job
+    payload = {"recording_id": recording_id}
+    if language:
+        payload["language"] = language
+
+    job_id = await job_queue.enqueue("transcribe", payload)
+
+    logger.info("Enqueued transcription job %s for recording %s", job_id, recording_id)
+
+    return TranscribeResponse(
+        job_id=job_id,
+        status="queued",
     )
