@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { api, type ArchiveInfo } from '@/lib/api';
 
 interface SettingsPageProps {
   theme: 'light' | 'dark' | 'system';
@@ -74,9 +75,65 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
   const [settings, setSettings] = useState(() => getStoredSettings());
   const [saved, setSaved] = useState(false);
 
+  // Backup/restore state
+  const [archiveInfo, setArchiveInfo] = useState<ArchiveInfo | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const [importResult, setImportResult] = useState<{ success: boolean; message: string } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const defaultLanguage = settings.defaultLanguage || '';
   const defaultPlaybackSpeed = settings.defaultPlaybackSpeed || 1;
   const autoTranscribe = settings.autoTranscribe ?? false;
+
+  // Load archive info
+  useEffect(() => {
+    api.archive.info().then(setArchiveInfo).catch(console.error);
+  }, []);
+
+  const handleExport = useCallback(async () => {
+    setIsExporting(true);
+    try {
+      const url = api.archive.exportUrl(true);
+      window.location.href = url;
+    } finally {
+      setTimeout(() => setIsExporting(false), 1000);
+    }
+  }, []);
+
+  const handleImportClick = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
+
+  const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsImporting(true);
+    setImportResult(null);
+
+    try {
+      const result = await api.archive.import(file, true);
+      setImportResult({
+        success: result.errors.length === 0,
+        message: `Imported ${result.recordings_imported} recordings, ${result.transcripts_imported} transcripts, ${result.projects_imported} projects` +
+          (result.errors.length > 0 ? `. ${result.errors.length} errors.` : '.'),
+      });
+      // Refresh archive info
+      const info = await api.archive.info();
+      setArchiveInfo(info);
+    } catch (err) {
+      setImportResult({
+        success: false,
+        message: err instanceof Error ? err.message : 'Import failed',
+      });
+    } finally {
+      setIsImporting(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  }, []);
 
   useEffect(() => {
     if (saved) {
@@ -245,6 +302,96 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
               </div>
             ))}
           </div>
+        </div>
+      </div>
+
+      {/* Backup & Restore Section */}
+      <div className="mt-6 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+        <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-700">
+          <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Backup & Restore</h2>
+        </div>
+        <div className="px-5 py-4">
+          {/* Archive Info */}
+          {archiveInfo && (
+            <div className="mb-4 p-3 rounded-lg bg-gray-50 dark:bg-gray-900 text-sm">
+              <div className="grid grid-cols-2 gap-2 text-gray-600 dark:text-gray-400">
+                <div>Recordings: <span className="font-medium text-gray-900 dark:text-gray-100">{archiveInfo.recordings_count}</span></div>
+                <div>Transcripts: <span className="font-medium text-gray-900 dark:text-gray-100">{archiveInfo.transcripts_count}</span></div>
+                <div>Projects: <span className="font-medium text-gray-900 dark:text-gray-100">{archiveInfo.projects_count}</span></div>
+                <div>Media Size: <span className="font-medium text-gray-900 dark:text-gray-100">{(archiveInfo.media_size_bytes / 1024 / 1024).toFixed(1)} MB</span></div>
+              </div>
+            </div>
+          )}
+
+          {/* Import Result */}
+          {importResult && (
+            <div className={`mb-4 p-3 rounded-lg text-sm ${
+              importResult.success
+                ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400'
+                : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400'
+            }`}>
+              {importResult.message}
+            </div>
+          )}
+
+          {/* Buttons */}
+          <div className="flex gap-3">
+            <button
+              onClick={handleExport}
+              disabled={isExporting}
+              className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
+            >
+              {isExporting ? (
+                <>
+                  <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  Exporting...
+                </>
+              ) : (
+                <>
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                  </svg>
+                  Export Backup
+                </>
+              )}
+            </button>
+
+            <button
+              onClick={handleImportClick}
+              disabled={isImporting}
+              className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
+            >
+              {isImporting ? (
+                <>
+                  <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  Importing...
+                </>
+              ) : (
+                <>
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                  Restore Backup
+                </>
+              )}
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".vbz,.zip"
+              onChange={handleFileChange}
+              className="hidden"
+            />
+          </div>
+          <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
+            Export creates a .vbz archive with all your recordings, transcripts, and projects.
+          </p>
         </div>
       </div>
 

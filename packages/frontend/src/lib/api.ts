@@ -238,6 +238,24 @@ export interface AnalysisResponse {
 
 export type AnalysisType = 'sentiment' | 'topics' | 'entities' | 'questions' | 'action_items';
 
+// Archive Types
+export interface ArchiveInfo {
+  version: string;
+  created_at: string;
+  recordings_count: number;
+  transcripts_count: number;
+  projects_count: number;
+  media_size_bytes: number;
+}
+
+export interface ImportResponse {
+  message: string;
+  recordings_imported: number;
+  transcripts_imported: number;
+  projects_imported: number;
+  errors: string[];
+}
+
 export interface ExportOptions {
   format: ExportFormat;
   includeTimestamps?: boolean;
@@ -436,6 +454,34 @@ class ApiClient {
   // Stats
   stats = {
     dashboard: () => this.request<DashboardStats>('/api/stats'),
+  };
+
+  // Archive
+  archive = {
+    info: () => this.request<ArchiveInfo>('/api/archive/info'),
+
+    exportUrl: (includeMedia = true) =>
+      `${this.baseUrl}/api/archive/export?include_media=${includeMedia}`,
+
+    import: async (file: File, merge = true): Promise<ImportResponse> => {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const params = new URLSearchParams({ merge: String(merge) });
+      const response = await fetch(
+        `${this.baseUrl}/api/archive/import?${params.toString()}`,
+        {
+          method: 'POST',
+          body: formData,
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`Import failed: ${response.status} ${response.statusText}`);
+      }
+
+      return response.json();
+    },
   };
 
   // AI
