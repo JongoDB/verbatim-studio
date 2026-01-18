@@ -4,7 +4,7 @@ import asyncio
 import logging
 from collections.abc import Awaitable, Callable
 from concurrent.futures import Future, ThreadPoolExecutor
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import select, update
@@ -32,7 +32,6 @@ class JobQueue:
         self._executor = ThreadPoolExecutor(max_workers=max_workers)
         self._handlers: dict[str, JobHandler] = {}
         self._futures: dict[str, Future] = {}
-        self._loop: asyncio.AbstractEventLoop | None = None
         logger.info("JobQueue initialized with max_workers=%d", max_workers)
 
     def register_handler(self, job_type: str, handler: JobHandler) -> None:
@@ -60,9 +59,6 @@ class JobQueue:
         """
         if job_type not in self._handlers:
             raise ValueError(f"No handler registered for job type: {job_type}")
-
-        # Store the event loop for later use in the worker thread
-        self._loop = asyncio.get_running_loop()
 
         # Create job record in database
         async with async_session() as session:
@@ -113,7 +109,7 @@ class JobQueue:
             await session.execute(
                 update(Job)
                 .where(Job.id == job_id)
-                .values(status="running", started_at=datetime.utcnow())
+                .values(status="running", started_at=datetime.now(UTC))
             )
             await session.commit()
 
@@ -160,7 +156,7 @@ class JobQueue:
                         status="completed",
                         result=result,
                         progress=100,
-                        completed_at=datetime.utcnow(),
+                        completed_at=datetime.now(UTC),
                     )
                 )
                 await session.commit()
@@ -176,7 +172,7 @@ class JobQueue:
                     .values(
                         status="failed",
                         error=str(e),
-                        completed_at=datetime.utcnow(),
+                        completed_at=datetime.now(UTC),
                     )
                 )
                 await session.commit()
@@ -223,7 +219,7 @@ class JobQueue:
             await session.execute(
                 update(Job)
                 .where(Job.id == job_id)
-                .values(status="cancelled", completed_at=datetime.utcnow())
+                .values(status="cancelled", completed_at=datetime.now(UTC))
             )
             await session.commit()
 
@@ -235,9 +231,7 @@ class JobQueue:
             logger.info("Job %s cancelled", job_id)
             return True
 
-    async def list_jobs(
-        self, status: str | None = None, limit: int = 100
-    ) -> list[Job]:
+    async def list_jobs(self, status: str | None = None, limit: int = 100) -> list[Job]:
         """List jobs with optional status filter.
 
         Args:
