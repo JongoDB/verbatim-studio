@@ -1,16 +1,19 @@
 """Transcript API endpoints."""
 
+import logging
 from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from persistence import get_db
 from persistence.models import Segment, Transcript
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/transcripts", tags=["transcripts"])
 
@@ -163,10 +166,11 @@ async def get_transcript_segments(
             detail=f"Transcript not found: {transcript_id}",
         )
 
-    # Get total count
-    count_result = await db.execute(select(Segment).where(Segment.transcript_id == transcript_id))
-    all_segments = count_result.scalars().all()
-    total = len(all_segments)
+    # Get total count efficiently
+    count_result = await db.execute(
+        select(func.count(Segment.id)).where(Segment.transcript_id == transcript_id)
+    )
+    total = count_result.scalar() or 0
 
     # Get paginated segments
     result = await db.execute(
@@ -246,13 +250,22 @@ async def update_segment(
             detail=f"Segment not found: {segment_id}",
         )
 
+    # Validate that at least one field is provided
+    if update_data.text is None and update_data.speaker is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="At least one field (text or speaker) must be provided",
+        )
+
     # Update fields
     if update_data.text is not None:
         segment.text = update_data.text
         segment.edited = True
+        logger.info("Segment %s text updated", segment_id)
 
     if update_data.speaker is not None:
         segment.speaker = update_data.speaker
+        logger.info("Segment %s speaker updated to '%s'", segment_id, update_data.speaker)
 
     await db.commit()
     await db.refresh(segment)
