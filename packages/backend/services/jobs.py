@@ -10,7 +10,7 @@ from typing import Any
 from sqlalchemy import select, update
 
 from persistence.database import async_session
-from persistence.models import Job, Recording, Segment, Transcript
+from persistence.models import Job, Recording, Segment, Speaker, Transcript
 
 logger = logging.getLogger(__name__)
 
@@ -266,22 +266,27 @@ job_queue = JobQueue()
 async def handle_transcription(
     payload: dict[str, Any], progress_callback: ProgressCallback
 ) -> dict[str, Any]:
-    """Handle transcription job.
+    """Handle transcription job with optional diarization.
 
     Args:
-        payload: Job payload with 'recording_id' and optional 'language'.
+        payload: Job payload with:
+            - recording_id: Required recording ID
+            - language: Optional language code
+            - diarize: Optional bool to enable diarization (default True)
         progress_callback: Callback to report progress.
 
     Returns:
-        Result dictionary with transcript_id and segment count.
+        Result dictionary with transcript_id, segment count, speaker count.
 
     Raises:
         ValueError: If recording not found or invalid.
     """
+    from services.diarization import diarization_service
     from services.transcription import transcription_service
 
     recording_id = payload.get("recording_id")
     language = payload.get("language")
+    diarize = payload.get("diarize", True)  # Default to enabled
 
     if not recording_id:
         raise ValueError("Missing recording_id in payload")
@@ -302,20 +307,46 @@ async def handle_transcription(
         audio_path = recording.file_path
 
     try:
+        # Wrap progress for transcription phase (0-60%)
+        async def transcription_progress(p: float) -> None:
+            await progress_callback(p * 0.6)
+
         # Run transcription
         transcription_result = await transcription_service.transcribe(
             audio_path=audio_path,
             language=language,
-            progress_callback=progress_callback,
+            progress_callback=transcription_progress,
         )
 
         detected_language = transcription_result["language"]
         segments_data = transcription_result["segments"]
+        speakers_found: list[str] = []
+
+        # Run diarization if enabled
+        if diarize and segments_data:
+            # Wrap progress for diarization phase (60-95%)
+            async def diarization_progress(p: float) -> None:
+                await progress_callback(60 + p * 0.35)
+
+            try:
+                diarization_result = await diarization_service.diarize(
+                    audio_path=audio_path,
+                    segments=segments_data,
+                    progress_callback=diarization_progress,
+                )
+                segments_data = diarization_result["segments"]
+                speakers_found = diarization_result["speakers"]
+                logger.info("Diarization found %d speakers", len(speakers_found))
+            except Exception as e:
+                # Log but don't fail - diarization is optional
+                logger.warning("Diarization failed, continuing without speakers: %s", e)
+
+        await progress_callback(95)
 
         # Calculate word count
-        word_count = sum(len(seg["text"].split()) for seg in segments_data)
+        word_count = sum(len(seg.get("text", "").split()) for seg in segments_data)
 
-        # Create transcript and segments in database
+        # Create transcript, segments, and speakers in database
         async with async_session() as session:
             # Create transcript
             transcript = Transcript(
@@ -327,17 +358,26 @@ async def handle_transcription(
             session.add(transcript)
             await session.flush()
 
-            # Create segments
+            # Create segments with speaker labels
             for idx, seg in enumerate(segments_data):
                 segment = Segment(
                     transcript_id=transcript.id,
                     segment_index=idx,
-                    start_time=seg["start"],
-                    end_time=seg["end"],
-                    text=seg["text"],
-                    confidence=seg.get("confidence"),
+                    speaker=seg.get("speaker"),  # Now includes speaker from diarization
+                    start_time=seg.get("start", 0.0),
+                    end_time=seg.get("end", 0.0),
+                    text=seg.get("text", ""),
+                    confidence=seg.get("confidence") or seg.get("score"),
                 )
                 session.add(segment)
+
+            # Create speaker entries for renaming
+            for speaker_label in speakers_found:
+                speaker = Speaker(
+                    transcript_id=transcript.id,
+                    speaker_label=speaker_label,
+                )
+                session.add(speaker)
 
             # Update recording status to completed
             await session.execute(
@@ -347,11 +387,14 @@ async def handle_transcription(
 
             transcript_id = transcript.id
 
+        await progress_callback(100)
+
         logger.info(
-            "Transcription complete for recording %s: %d segments, %d words",
+            "Transcription complete for recording %s: %d segments, %d words, %d speakers",
             recording_id,
             len(segments_data),
             word_count,
+            len(speakers_found),
         )
 
         return {
@@ -359,6 +402,7 @@ async def handle_transcription(
             "segment_count": len(segments_data),
             "word_count": word_count,
             "language": detected_language,
+            "speaker_count": len(speakers_found),
         }
 
     except Exception:
