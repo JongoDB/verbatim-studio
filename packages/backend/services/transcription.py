@@ -5,6 +5,35 @@ from collections.abc import Callable, Coroutine
 from pathlib import Path
 from typing import Any
 
+# Fix PyTorch 2.6+ compatibility BEFORE any imports
+# pyannote models require weights_only=False due to omegaconf serialization
+import torch
+
+_original_torch_load = torch.load
+
+
+def _patched_torch_load(*args, weights_only=False, **kwargs):
+    """Patched torch.load that defaults weights_only=False for pyannote compatibility."""
+    return _original_torch_load(*args, weights_only=weights_only, **kwargs)
+
+
+torch.load = _patched_torch_load
+
+# Also patch lightning_fabric's _load function which wraps torch.load
+try:
+    from lightning_fabric.utilities import cloud_io
+
+    _original_pl_load = cloud_io._load
+
+    def _patched_pl_load(path_or_url, map_location=None, **kwargs):
+        # Force weights_only=False for pyannote compatibility
+        kwargs["weights_only"] = False
+        return _original_torch_load(path_or_url, map_location=map_location, **kwargs)
+
+    cloud_io._load = _patched_pl_load
+except ImportError:
+    pass
+
 logger = logging.getLogger(__name__)
 
 # Type for progress callback
