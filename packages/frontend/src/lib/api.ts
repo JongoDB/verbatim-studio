@@ -1,4 +1,4 @@
-const API_BASE_URL = 'http://127.0.0.1:8000';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
 
 class ApiClient {
   private baseUrl: string;
@@ -25,7 +25,6 @@ class ApiClient {
 
   // Health
   health = {
-    check: () => this.request<{ status: string }>('/health'),
     ready: () =>
       this.request<{
         status: string;

@@ -9,6 +9,7 @@ build/
 *.dmg
 *.tsbuildinfo
 *.d.ts
+!vite-env.d.ts
 vite.config.js
 
 # Python
