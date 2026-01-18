@@ -136,10 +136,10 @@ class ApiClient {
   recordings = {
     list: (page = 1, pageSize = 20) =>
       this.request<RecordingListResponse>(
-        `/recordings?page=${page}&page_size=${pageSize}`
+        `/api/recordings?page=${page}&page_size=${pageSize}`
       ),
 
-    get: (id: string) => this.request<Recording>(`/recordings/${id}`),
+    get: (id: string) => this.request<Recording>(`/api/recordings/${id}`),
 
     upload: async (file: File, title?: string): Promise<RecordingCreateResponse> => {
       const formData = new FormData();
@@ -151,7 +151,7 @@ class ApiClient {
       }
 
       const queryString = queryParams.toString();
-      const url = `${this.baseUrl}/recordings/upload${queryString ? `?${queryString}` : ''}`;
+      const url = `${this.baseUrl}/api/recordings/upload${queryString ? `?${queryString}` : ''}`;
 
       const response = await fetch(url, {
         method: 'POST',
@@ -167,7 +167,7 @@ class ApiClient {
     },
 
     delete: (id: string) =>
-      this.request<MessageResponse>(`/recordings/${id}`, {
+      this.request<MessageResponse>(`/api/recordings/${id}`, {
         method: 'DELETE',
       }),
 
@@ -178,7 +178,7 @@ class ApiClient {
       }
       const queryString = queryParams.toString();
       return this.request<TranscribeResponse>(
-        `/recordings/${id}/transcribe${queryString ? `?${queryString}` : ''}`,
+        `/api/recordings/${id}/transcribe${queryString ? `?${queryString}` : ''}`,
         { method: 'POST' }
       );
     },
@@ -192,20 +192,20 @@ class ApiClient {
         queryParams.set('status', status);
       }
       queryParams.set('limit', limit.toString());
-      return this.request<JobListResponse>(`/jobs?${queryParams.toString()}`);
+      return this.request<JobListResponse>(`/api/jobs?${queryParams.toString()}`);
     },
 
-    get: (id: string) => this.request<Job>(`/jobs/${id}`),
+    get: (id: string) => this.request<Job>(`/api/jobs/${id}`),
   };
 
   // Transcripts
   transcripts = {
     get: (id: string) =>
-      this.request<TranscriptWithSegments>(`/transcripts/${id}`),
+      this.request<TranscriptWithSegments>(`/api/transcripts/${id}`),
 
     byRecording: (recordingId: string) =>
       this.request<TranscriptWithSegments>(
-        `/transcripts/by-recording/${recordingId}`
+        `/api/transcripts/by-recording/${recordingId}`
       ),
   };
 }
