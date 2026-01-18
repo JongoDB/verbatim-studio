@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from api.routes import health
+from api.routes import health, recordings
 from core.config import settings
 from persistence import init_db
 
@@ -38,6 +38,7 @@ app.add_middleware(
 
 # Routes
 app.include_router(health.router)
+app.include_router(recordings.router, prefix="/api")
 
 
 @app.get("/")
