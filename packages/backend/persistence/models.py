@@ -52,7 +52,9 @@ class Recording(Base):
     updated_at: Mapped[datetime] = mapped_column(default=func.now(), onupdate=func.now())
 
     project: Mapped[Project | None] = relationship(back_populates="recordings")
-    transcript: Mapped["Transcript | None"] = relationship(back_populates="recording", uselist=False)
+    transcript: Mapped["Transcript | None"] = relationship(
+        back_populates="recording", uselist=False
+    )
 
 
 class Transcript(Base):
