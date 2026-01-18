@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
-import { api, type TranscriptWithSegments } from '@/lib/api';
-import { SegmentList } from '@/components/transcript/SegmentList';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { api, type TranscriptWithSegments, type Segment, type Speaker, type Recording } from '@/lib/api';
+import { AudioPlayer, type AudioPlayerRef } from '@/components/audio/AudioPlayer';
+import { EditableSegment } from '@/components/transcript/EditableSegment';
 
 interface TranscriptPageProps {
   recordingId: string;
@@ -9,17 +10,35 @@ interface TranscriptPageProps {
 
 export function TranscriptPage({ recordingId, onBack }: TranscriptPageProps) {
   const [transcript, setTranscript] = useState<TranscriptWithSegments | null>(null);
+  const [recording, setRecording] = useState<Recording | null>(null);
+  const [speakers, setSpeakers] = useState<Speaker[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [currentTime, setCurrentTime] = useState(0);
+  const audioRef = useRef<AudioPlayerRef>(null);
 
-  const loadTranscript = useCallback(async () => {
+  const loadData = useCallback(async () => {
     try {
       setIsLoading(true);
       setError(null);
 
-      // First get transcript by recording ID, which returns TranscriptWithSegments
-      const transcriptData = await api.transcripts.byRecording(recordingId);
+      // Load transcript and recording data in parallel
+      const [transcriptData, recordingData] = await Promise.all([
+        api.transcripts.byRecording(recordingId),
+        api.recordings.get(recordingId),
+      ]);
+
       setTranscript(transcriptData);
+      setRecording(recordingData);
+
+      // Load speakers for this transcript
+      try {
+        const speakersData = await api.speakers.byTranscript(transcriptData.id);
+        setSpeakers(speakersData.items);
+      } catch {
+        // Speakers might not exist (no diarization)
+        setSpeakers([]);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load transcript');
     } finally {
@@ -28,38 +47,78 @@ export function TranscriptPage({ recordingId, onBack }: TranscriptPageProps) {
   }, [recordingId]);
 
   useEffect(() => {
-    loadTranscript();
-  }, [loadTranscript]);
+    loadData();
+  }, [loadData]);
+
+  // Handle segment text/speaker updates
+  const handleSegmentUpdate = (updated: Segment) => {
+    setTranscript((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        segments: prev.segments.map((s) => (s.id === updated.id ? updated : s)),
+      };
+    });
+  };
+
+  // Handle speaker name updates
+  const handleSpeakerUpdate = (updated: Speaker) => {
+    setSpeakers((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
+  };
+
+  // Seek audio and start playing
+  const seekTo = (time: number) => {
+    if (audioRef.current) {
+      audioRef.current.seekTo(time);
+      audioRef.current.play();
+    }
+  };
+
+  // Find active segment based on current playback time
+  const activeSegmentId = transcript?.segments.find(
+    (s) => currentTime >= s.start_time && currentTime < s.end_time
+  )?.id;
+
+  // Create speaker lookup maps
+  const speakerMap = new Map<string, Speaker>();
+  const speakerIndexMap = new Map<string, number>();
+  speakers.forEach((s, idx) => {
+    speakerMap.set(s.speaker_label, s);
+    speakerIndexMap.set(s.speaker_label, idx);
+  });
+
+  // Back button component (reused across states)
+  const BackButton = () => (
+    <button
+      onClick={onBack}
+      className="inline-flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+    >
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        className="h-4 w-4"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+        strokeWidth="2"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          d="M10 19l-7-7m0 0l7-7m-7 7h18"
+        />
+      </svg>
+      Back to Recordings
+    </button>
+  );
 
   // Loading state
   if (isLoading) {
     return (
       <div className="space-y-6">
-        {/* Back button */}
-        <button
-          onClick={onBack}
-          className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            className="h-4 w-4"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth="2"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M10 19l-7-7m0 0l7-7m-7 7h18"
-            />
-          </svg>
-          Back to Recordings
-        </button>
-
+        <BackButton />
         <div className="flex items-center justify-center py-12">
           <svg
-            className="h-8 w-8 animate-spin text-primary"
+            className="h-8 w-8 animate-spin text-blue-600"
             xmlns="http://www.w3.org/2000/svg"
             fill="none"
             viewBox="0 0 24 24"
@@ -87,31 +146,10 @@ export function TranscriptPage({ recordingId, onBack }: TranscriptPageProps) {
   if (error) {
     return (
       <div className="space-y-6">
-        {/* Back button */}
-        <button
-          onClick={onBack}
-          className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
-        >
+        <BackButton />
+        <div className="rounded-lg border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-900/20 p-6 text-center">
           <svg
-            xmlns="http://www.w3.org/2000/svg"
-            className="h-4 w-4"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth="2"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M10 19l-7-7m0 0l7-7m-7 7h18"
-            />
-          </svg>
-          Back to Recordings
-        </button>
-
-        <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-6 text-center">
-          <svg
-            className="h-12 w-12 text-destructive mx-auto mb-4"
+            className="h-12 w-12 text-red-600 dark:text-red-400 mx-auto mb-4"
             xmlns="http://www.w3.org/2000/svg"
             fill="none"
             viewBox="0 0 24 24"
@@ -124,13 +162,13 @@ export function TranscriptPage({ recordingId, onBack }: TranscriptPageProps) {
               d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
             />
           </svg>
-          <h3 className="text-lg font-semibold text-destructive mb-2">
+          <h3 className="text-lg font-semibold text-red-600 dark:text-red-400 mb-2">
             Failed to Load Transcript
           </h3>
-          <p className="text-sm text-destructive/80">{error}</p>
+          <p className="text-sm text-red-600/80 dark:text-red-400/80">{error}</p>
           <button
-            onClick={loadTranscript}
-            className="mt-4 inline-flex items-center gap-2 rounded-md bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground hover:bg-destructive/90 transition-colors"
+            onClick={loadData}
+            className="mt-4 inline-flex items-center gap-2 rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 transition-colors"
           >
             Try Again
           </button>
@@ -140,33 +178,12 @@ export function TranscriptPage({ recordingId, onBack }: TranscriptPageProps) {
   }
 
   // No transcript found
-  if (!transcript) {
+  if (!transcript || !recording) {
     return (
       <div className="space-y-6">
-        {/* Back button */}
-        <button
-          onClick={onBack}
-          className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            className="h-4 w-4"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth="2"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M10 19l-7-7m0 0l7-7m-7 7h18"
-            />
-          </svg>
-          Back to Recordings
-        </button>
-
+        <BackButton />
         <div className="text-center py-12">
-          <p className="text-muted-foreground">No transcript found for this recording.</p>
+          <p className="text-gray-500 dark:text-gray-400">No transcript found for this recording.</p>
         </div>
       </div>
     );
@@ -175,75 +192,83 @@ export function TranscriptPage({ recordingId, onBack }: TranscriptPageProps) {
   // Transcript loaded successfully
   return (
     <div className="space-y-6">
-      {/* Back button */}
-      <button
-        onClick={onBack}
-        className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
-      >
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          className="h-4 w-4"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-          strokeWidth="2"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            d="M10 19l-7-7m0 0l7-7m-7 7h18"
-          />
-        </svg>
-        Back to Recordings
-      </button>
+      <BackButton />
+
+      {/* Audio Player - sticky at top */}
+      <div className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-900 pb-4 -mx-4 px-4 pt-2 -mt-2">
+        <AudioPlayer
+          ref={audioRef}
+          src={api.recordings.getAudioUrl(recordingId)}
+          onTimeUpdate={setCurrentTime}
+        />
+      </div>
 
       {/* Transcript info header */}
-      <div className="rounded-lg border bg-card p-4">
-        <h2 className="text-lg font-semibold text-foreground mb-3">
-          Transcript Details
+      <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">
+          {recording.title}
         </h2>
         <div className="flex flex-wrap gap-4 text-sm">
           {transcript.language && (
             <div className="flex items-center gap-2">
-              <span className="text-muted-foreground">Language:</span>
-              <span className="font-medium text-foreground">
-                {transcript.language}
+              <span className="text-gray-500 dark:text-gray-400">Language:</span>
+              <span className="font-medium text-gray-900 dark:text-gray-100">
+                {transcript.language.toUpperCase()}
               </span>
             </div>
           )}
           {transcript.word_count !== null && (
             <div className="flex items-center gap-2">
-              <span className="text-muted-foreground">Words:</span>
-              <span className="font-medium text-foreground">
+              <span className="text-gray-500 dark:text-gray-400">Words:</span>
+              <span className="font-medium text-gray-900 dark:text-gray-100">
                 {transcript.word_count.toLocaleString()}
               </span>
             </div>
           )}
           {transcript.model_used && (
             <div className="flex items-center gap-2">
-              <span className="text-muted-foreground">Model:</span>
-              <span className="font-mono text-xs bg-muted px-2 py-0.5 rounded">
+              <span className="text-gray-500 dark:text-gray-400">Model:</span>
+              <span className="font-mono text-xs bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded text-gray-700 dark:text-gray-300">
                 {transcript.model_used}
               </span>
             </div>
           )}
-          {transcript.confidence_avg !== null && (
+          {speakers.length > 0 && (
             <div className="flex items-center gap-2">
-              <span className="text-muted-foreground">Confidence:</span>
-              <span className="font-medium text-foreground">
-                {(transcript.confidence_avg * 100).toFixed(1)}%
+              <span className="text-gray-500 dark:text-gray-400">Speakers:</span>
+              <span className="font-medium text-gray-900 dark:text-gray-100">
+                {speakers.length}
               </span>
             </div>
           )}
         </div>
       </div>
 
-      {/* Segments list */}
+      {/* Editable Segments */}
       <div>
-        <h3 className="text-sm font-medium text-muted-foreground mb-3">
+        <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-3">
           {transcript.segments.length} segment{transcript.segments.length !== 1 ? 's' : ''}
         </h3>
-        <SegmentList segments={transcript.segments} transcriptId={transcript.id} />
+        <div className="space-y-2">
+          {transcript.segments.map((segment) => {
+            const speaker = segment.speaker ? speakerMap.get(segment.speaker) ?? null : null;
+            const speakerIndex = segment.speaker ? (speakerIndexMap.get(segment.speaker) ?? 0) : 0;
+
+            return (
+              <EditableSegment
+                key={segment.id}
+                segment={segment}
+                transcriptId={transcript.id}
+                speaker={speaker}
+                speakerIndex={speakerIndex}
+                isActive={segment.id === activeSegmentId}
+                onSegmentUpdate={handleSegmentUpdate}
+                onSpeakerUpdate={handleSpeakerUpdate}
+                onSeek={seekTo}
+              />
+            );
+          })}
+        </div>
       </div>
     </div>
   );
