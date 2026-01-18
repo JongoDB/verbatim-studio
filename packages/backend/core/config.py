@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "sqlite+aiosqlite:///./verbatim.db"
 
     # Data paths
+    # macOS-specific path (cross-platform support in future phases)
     DATA_DIR: Path = Path.home() / "Library" / "Application Support" / "Verbatim Studio"
     MEDIA_DIR: Path | None = None
     MODELS_DIR: Path | None = None
