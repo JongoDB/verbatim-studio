@@ -36,6 +36,7 @@ class TranscriptionService:
         self._model = None
         self._align_model = None
         self._align_metadata = None
+        self._align_language: str | None = None
         self._whisperx = None
 
     def _ensure_loaded(self) -> None:
@@ -127,12 +128,17 @@ class TranscriptionService:
         # Align timestamps for word-level timing
         logger.info("Aligning timestamps...")
 
-        # Load alignment model for the detected language
-        if self._align_model is None or self._align_metadata is None:
+        # Load alignment model for the detected language (reload if language changed)
+        if (
+            self._align_model is None
+            or self._align_metadata is None
+            or self._align_language != detected_language
+        ):
             self._align_model, self._align_metadata = self._whisperx.load_align_model(
                 language_code=detected_language,
                 device=self.device,
             )
+            self._align_language = detected_language
 
         aligned_result = self._whisperx.align(
             result["segments"],

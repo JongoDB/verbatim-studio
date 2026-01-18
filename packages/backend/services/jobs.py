@@ -321,7 +321,7 @@ async def handle_transcription(
             transcript = Transcript(
                 recording_id=recording_id,
                 language=detected_language,
-                model_used="whisperx-base",
+                model_used=f"whisperx-{transcription_service.model_name}",
                 word_count=word_count,
             )
             session.add(transcript)
@@ -361,7 +361,7 @@ async def handle_transcription(
             "language": detected_language,
         }
 
-    except Exception as e:
+    except Exception:
         # Update recording status to failed
         async with async_session() as session:
             await session.execute(
@@ -369,7 +369,7 @@ async def handle_transcription(
             )
             await session.commit()
         logger.exception("Transcription failed for recording %s", recording_id)
-        raise e
+        raise
 
 
 # Register the transcription handler

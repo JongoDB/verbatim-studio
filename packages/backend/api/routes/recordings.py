@@ -246,6 +246,7 @@ async def upload_recording(
             filename=safe_filename,
         )
         recording.file_path = str(file_path)
+        await db.commit()
     except Exception:
         await db.rollback()
         # Log the actual error for debugging, but return generic message to client
