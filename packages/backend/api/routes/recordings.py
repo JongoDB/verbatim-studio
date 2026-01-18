@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -294,6 +295,49 @@ async def get_recording(
         )
 
     return _recording_to_response(recording)
+
+
+@router.get("/{recording_id}/audio")
+async def stream_audio(
+    recording_id: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> FileResponse:
+    """Stream the audio file for a recording.
+
+    Args:
+        recording_id: The recording's unique ID.
+        db: Database session.
+
+    Returns:
+        Audio file stream.
+
+    Raises:
+        HTTPException: If recording or file not found.
+    """
+    result = await db.execute(select(Recording).where(Recording.id == recording_id))
+    recording = result.scalar_one_or_none()
+
+    if recording is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Recording not found: {recording_id}",
+        )
+
+    file_path = Path(recording.file_path)
+    if not file_path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Audio file not found on disk",
+        )
+
+    # Use stored mime_type or default to audio/mpeg
+    media_type = recording.mime_type or "audio/mpeg"
+
+    return FileResponse(
+        path=file_path,
+        media_type=media_type,
+        filename=recording.file_name,
+    )
 
 
 @router.delete("/{recording_id}", response_model=MessageResponse)
