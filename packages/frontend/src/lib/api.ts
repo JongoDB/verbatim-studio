@@ -160,6 +160,25 @@ export interface GlobalSearchResponse {
   total: number;
 }
 
+export interface RecordingStats {
+  total_recordings: number;
+  total_duration_seconds: number;
+  by_status: Record<string, number>;
+  avg_duration_seconds: number | null;
+}
+
+export interface TranscriptionStats {
+  total_transcripts: number;
+  total_segments: number;
+  total_words: number;
+  languages: Record<string, number>;
+}
+
+export interface DashboardStats {
+  recordings: RecordingStats;
+  transcriptions: TranscriptionStats;
+}
+
 export interface ExportOptions {
   format: ExportFormat;
   includeTimestamps?: boolean;
@@ -353,6 +372,11 @@ class ApiClient {
       const params = new URLSearchParams({ q: query, limit: String(limit) });
       return this.request<GlobalSearchResponse>(`/api/search/global?${params.toString()}`);
     },
+  };
+
+  // Stats
+  stats = {
+    dashboard: () => this.request<DashboardStats>('/api/stats'),
   };
 }
 

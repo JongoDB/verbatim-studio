@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, type TranscriptWithSegments, type Segment, type Speaker, type Recording } from '@/lib/api';
-import { AudioPlayer, type AudioPlayerRef } from '@/components/audio/AudioPlayer';
+import { WaveformPlayer, type WaveformPlayerRef } from '@/components/audio/WaveformPlayer';
 import { EditableSegment } from '@/components/transcript/EditableSegment';
 import { ExportButton } from '@/components/transcript/ExportButton';
+import { SpeakerPanel } from '@/components/transcript/SpeakerPanel';
+import { useKeyboardShortcuts, KEYBOARD_SHORTCUTS } from '@/hooks/useKeyboardShortcuts';
 
 interface TranscriptPageProps {
   recordingId: string;
@@ -16,7 +18,7 @@ export function TranscriptPage({ recordingId, onBack }: TranscriptPageProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
-  const audioRef = useRef<AudioPlayerRef>(null);
+  const audioRef = useRef<WaveformPlayerRef>(null);
 
   const loadData = useCallback(async () => {
     try {
@@ -76,9 +78,53 @@ export function TranscriptPage({ recordingId, onBack }: TranscriptPageProps) {
   };
 
   // Find active segment based on current playback time
-  const activeSegmentId = transcript?.segments.find(
+  const activeSegmentIndex = transcript?.segments.findIndex(
     (s) => currentTime >= s.start_time && currentTime < s.end_time
-  )?.id;
+  ) ?? -1;
+  const activeSegmentId = activeSegmentIndex >= 0 ? transcript?.segments[activeSegmentIndex]?.id : undefined;
+
+  // Keyboard shortcut handlers
+  const handleSkipBack = useCallback((seconds = 5) => {
+    if (audioRef.current) {
+      const newTime = Math.max(0, currentTime - seconds);
+      audioRef.current.seekTo(newTime);
+    }
+  }, [currentTime]);
+
+  const handleSkipForward = useCallback((seconds = 5) => {
+    if (audioRef.current) {
+      audioRef.current.seekTo(currentTime + seconds);
+    }
+  }, [currentTime]);
+
+  const handleNextSegment = useCallback(() => {
+    if (!transcript || activeSegmentIndex < 0) return;
+    const nextIndex = activeSegmentIndex + 1;
+    if (nextIndex < transcript.segments.length) {
+      seekTo(transcript.segments[nextIndex].start_time);
+    }
+  }, [transcript, activeSegmentIndex]);
+
+  const handlePrevSegment = useCallback(() => {
+    if (!transcript || activeSegmentIndex < 0) return;
+    const prevIndex = activeSegmentIndex - 1;
+    if (prevIndex >= 0) {
+      seekTo(transcript.segments[prevIndex].start_time);
+    }
+  }, [transcript, activeSegmentIndex]);
+
+  // Register keyboard shortcuts
+  useKeyboardShortcuts({
+    onPlayPause: () => audioRef.current?.toggle(),
+    onSkipBack: handleSkipBack,
+    onSkipForward: handleSkipForward,
+    onEscape: onBack,
+    onNextSegment: handleNextSegment,
+    onPrevSegment: handlePrevSegment,
+    enabled: !isLoading && !!transcript,
+  });
+
+  const [showShortcuts, setShowShortcuts] = useState(false);
 
   // Create speaker lookup maps
   const speakerMap = new Map<string, Speaker>();
@@ -195,9 +241,9 @@ export function TranscriptPage({ recordingId, onBack }: TranscriptPageProps) {
     <div className="space-y-6">
       <BackButton />
 
-      {/* Audio Player - sticky at top */}
+      {/* Waveform Player - sticky at top */}
       <div className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-900 pb-4 -mx-4 px-4 pt-2 -mt-2">
-        <AudioPlayer
+        <WaveformPlayer
           ref={audioRef}
           src={api.recordings.getAudioUrl(recordingId)}
           onTimeUpdate={setCurrentTime}
@@ -210,8 +256,47 @@ export function TranscriptPage({ recordingId, onBack }: TranscriptPageProps) {
           <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
             {recording.title}
           </h2>
-          <ExportButton transcriptId={transcript.id} title={recording.title} />
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowShortcuts(!showShortcuts)}
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-sm rounded-md border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+              title="Keyboard shortcuts"
+            >
+              <svg className="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+              </svg>
+              <span className="hidden sm:inline">Shortcuts</span>
+            </button>
+            <ExportButton transcriptId={transcript.id} title={recording.title} />
+          </div>
         </div>
+
+        {/* Keyboard Shortcuts Panel */}
+        {showShortcuts && (
+          <div className="mt-3 p-3 rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700">
+            <div className="flex items-center justify-between mb-2">
+              <h4 className="text-sm font-medium text-gray-900 dark:text-gray-100">Keyboard Shortcuts</h4>
+              <button
+                onClick={() => setShowShortcuts(false)}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+              {KEYBOARD_SHORTCUTS.map(({ key, description }) => (
+                <div key={key} className="flex items-center gap-2">
+                  <kbd className="px-1.5 py-0.5 bg-gray-200 dark:bg-gray-700 rounded text-gray-700 dark:text-gray-300 font-mono">
+                    {key}
+                  </kbd>
+                  <span className="text-gray-600 dark:text-gray-400">{description}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
         <div className="flex flex-wrap gap-4 text-sm">
           {transcript.language && (
             <div className="flex items-center gap-2">
@@ -247,6 +332,15 @@ export function TranscriptPage({ recordingId, onBack }: TranscriptPageProps) {
           )}
         </div>
       </div>
+
+      {/* Speaker Statistics Panel */}
+      {speakers.length > 0 && (
+        <SpeakerPanel
+          speakers={speakers}
+          segments={transcript.segments}
+          onSpeakerUpdate={handleSpeakerUpdate}
+        />
+      )}
 
       {/* Editable Segments */}
       <div>

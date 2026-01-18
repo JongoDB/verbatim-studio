@@ -3,29 +3,104 @@ import { api, type ApiInfo, type HealthStatus, type GlobalSearchResult } from '@
 import { RecordingsPage } from '@/pages/recordings/RecordingsPage';
 import { TranscriptPage } from '@/pages/transcript/TranscriptPage';
 import { SearchBox } from '@/components/search/SearchBox';
+import { Dashboard } from '@/components/dashboard/Dashboard';
+import { SettingsPage } from '@/pages/settings/SettingsPage';
 
 type NavigationState =
+  | { type: 'dashboard' }
   | { type: 'recordings' }
+  | { type: 'settings' }
   | { type: 'transcript'; recordingId: string };
+
+type Theme = 'light' | 'dark' | 'system';
+
+function getInitialTheme(): Theme {
+  if (typeof window === 'undefined') return 'system';
+  const stored = localStorage.getItem('theme');
+  if (stored === 'light' || stored === 'dark' || stored === 'system') {
+    return stored;
+  }
+  return 'system';
+}
+
+function getEffectiveDarkMode(theme: Theme): boolean {
+  if (theme === 'system') {
+    return window.matchMedia('(prefers-color-scheme: dark)').matches;
+  }
+  return theme === 'dark';
+}
 
 export function App() {
   const [apiInfo, setApiInfo] = useState<ApiInfo | null>(null);
   const [health, setHealth] = useState<HealthStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(true);
-  const [navigation, setNavigation] = useState<NavigationState>({ type: 'recordings' });
+  const [navigation, setNavigation] = useState<NavigationState>({ type: 'dashboard' });
+  const [theme, setTheme] = useState<Theme>(getInitialTheme);
 
   const handleViewTranscript = useCallback((recordingId: string) => {
     setNavigation({ type: 'transcript', recordingId });
+  }, []);
+
+  const handleNavigateToDashboard = useCallback(() => {
+    setNavigation({ type: 'dashboard' });
+  }, []);
+
+  const handleNavigateToRecordings = useCallback(() => {
+    setNavigation({ type: 'recordings' });
+  }, []);
+
+  const handleNavigateToSettings = useCallback(() => {
+    setNavigation({ type: 'settings' });
   }, []);
 
   const handleBackToRecordings = useCallback(() => {
     setNavigation({ type: 'recordings' });
   }, []);
 
+  const currentTab = navigation.type === 'transcript' ? 'recordings' : navigation.type as 'dashboard' | 'recordings' | 'settings';
+
   const handleSearchResult = useCallback((result: GlobalSearchResult) => {
     // Navigate to the recording's transcript
     setNavigation({ type: 'transcript', recordingId: result.recording_id });
+  }, []);
+
+  // Sync theme to document and localStorage
+  useEffect(() => {
+    const effectiveDark = getEffectiveDarkMode(theme);
+
+    if (effectiveDark) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+
+    localStorage.setItem('theme', theme);
+  }, [theme]);
+
+  // Listen for system theme changes when using 'system' mode
+  useEffect(() => {
+    if (theme !== 'system') return;
+
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const handleChange = () => {
+      if (mediaQuery.matches) {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+    };
+
+    mediaQuery.addEventListener('change', handleChange);
+    return () => mediaQuery.removeEventListener('change', handleChange);
+  }, [theme]);
+
+  const cycleTheme = useCallback(() => {
+    setTheme(current => {
+      if (current === 'light') return 'dark';
+      if (current === 'dark') return 'system';
+      return 'light';
+    });
   }, []);
 
   useEffect(() => {
@@ -117,16 +192,71 @@ export function App() {
       {/* Header */}
       <header className="border-b bg-card">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between gap-4">
-          <div className="flex-shrink-0">
-            <h1 className="text-xl font-bold text-foreground">Verbatim Studio</h1>
-            <p className="text-sm text-muted-foreground">
-              Privacy-first transcription for professionals
-            </p>
+          <div className="flex items-center gap-6">
+            <div className="flex-shrink-0">
+              <h1 className="text-xl font-bold text-foreground">Verbatim Studio</h1>
+              <p className="text-sm text-muted-foreground">
+                Privacy-first transcription for professionals
+              </p>
+            </div>
+            {/* Navigation Tabs */}
+            <nav className="flex items-center gap-1">
+              <button
+                onClick={handleNavigateToDashboard}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                  currentTab === 'dashboard'
+                    ? 'bg-muted text-foreground'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                }`}
+              >
+                Dashboard
+              </button>
+              <button
+                onClick={handleNavigateToRecordings}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                  currentTab === 'recordings'
+                    ? 'bg-muted text-foreground'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                }`}
+              >
+                Recordings
+              </button>
+              <button
+                onClick={handleNavigateToSettings}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                  currentTab === 'settings'
+                    ? 'bg-muted text-foreground'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                }`}
+              >
+                Settings
+              </button>
+            </nav>
           </div>
           <div className="flex-1 max-w-md">
             <SearchBox onResultClick={handleSearchResult} />
           </div>
           <div className="flex items-center gap-4 text-sm flex-shrink-0">
+            {/* Theme Toggle */}
+            <button
+              onClick={cycleTheme}
+              className="p-2 rounded-lg hover:bg-muted transition-colors"
+              title={`Theme: ${theme} (click to change)`}
+            >
+              {theme === 'light' ? (
+                <svg className="w-5 h-5 text-amber-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+                </svg>
+              ) : theme === 'dark' ? (
+                <svg className="w-5 h-5 text-blue-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+                </svg>
+              ) : (
+                <svg className="w-5 h-5 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+              )}
+            </button>
             {apiInfo && (
               <span className="text-muted-foreground font-mono">
                 v{apiInfo.version}
@@ -154,13 +284,20 @@ export function App() {
 
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8">
-        {navigation.type === 'recordings' ? (
+        {navigation.type === 'dashboard' && (
+          <Dashboard onNavigateToRecordings={handleNavigateToRecordings} />
+        )}
+        {navigation.type === 'recordings' && (
           <RecordingsPage onViewTranscript={handleViewTranscript} />
-        ) : (
+        )}
+        {navigation.type === 'transcript' && (
           <TranscriptPage
             recordingId={navigation.recordingId}
             onBack={handleBackToRecordings}
           />
+        )}
+        {navigation.type === 'settings' && (
+          <SettingsPage theme={theme} onThemeChange={setTheme} />
         )}
       </main>
     </div>
