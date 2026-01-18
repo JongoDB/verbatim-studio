@@ -34,7 +34,9 @@ ALLOWED_MIME_TYPES = {
     "audio/aac",
     "audio/m4a",
     "audio/x-m4a",
+    "audio/mp4",  # Browser recording fallback
     "audio/webm",
+    "audio/webm;codecs=opus",  # Browser recording format
     # Video formats
     "video/mp4",
     "video/webm",
