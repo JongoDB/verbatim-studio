@@ -53,7 +53,7 @@ class Recording(Base):
 
     project: Mapped[Project | None] = relationship(back_populates="recordings")
     transcript: Mapped["Transcript | None"] = relationship(
-        back_populates="recording", uselist=False
+        back_populates="recording", uselist=False, cascade="all, delete-orphan"
     )
 
 
@@ -74,8 +74,12 @@ class Transcript(Base):
     updated_at: Mapped[datetime] = mapped_column(default=func.now(), onupdate=func.now())
 
     recording: Mapped[Recording] = relationship(back_populates="transcript")
-    segments: Mapped[list["Segment"]] = relationship(back_populates="transcript")
-    speakers: Mapped[list["Speaker"]] = relationship(back_populates="transcript")
+    segments: Mapped[list["Segment"]] = relationship(
+        back_populates="transcript", cascade="all, delete-orphan"
+    )
+    speakers: Mapped[list["Speaker"]] = relationship(
+        back_populates="transcript", cascade="all, delete-orphan"
+    )
 
 
 class Speaker(Base):

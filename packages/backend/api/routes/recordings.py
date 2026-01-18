@@ -409,6 +409,7 @@ async def delete_recording(
 
     # Delete the database record
     await db.delete(recording)
+    await db.commit()
 
     return MessageResponse(
         message="Recording deleted successfully",
