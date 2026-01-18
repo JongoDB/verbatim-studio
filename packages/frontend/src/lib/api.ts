@@ -199,6 +199,8 @@ class ApiClient {
         { method: 'POST' }
       );
     },
+
+    getAudioUrl: (id: string) => `${this.baseUrl}/api/recordings/${id}/audio`,
   };
 
   // Jobs
@@ -224,6 +226,12 @@ class ApiClient {
       this.request<TranscriptWithSegments>(
         `/api/transcripts/by-recording/${recordingId}`
       ),
+
+    updateSegment: (transcriptId: string, segmentId: string, data: { text?: string; speaker?: string }) =>
+      this.request<Segment>(`/api/transcripts/${transcriptId}/segments/${segmentId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      }),
   };
 
   // Speakers
