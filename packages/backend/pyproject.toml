@@ -10,6 +10,7 @@ dependencies = [
     "pydantic-settings>=2.7.0",
     "sqlalchemy>=2.0.0",
     "aiosqlite>=0.20.0",
+    "greenlet>=3.0.0",
     "httpx>=0.28.0",
     "python-multipart>=0.0.18",
 ]
@@ -29,7 +30,7 @@ target-version = "py311"
 select = ["E", "F", "I", "N", "W"]
 
 [tool.setuptools.packages.find]
-include = ["api*", "core*"]
+include = ["api*", "core*", "persistence*"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

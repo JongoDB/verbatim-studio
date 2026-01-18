@@ -20,6 +20,7 @@ __pycache__/
 venv/
 *.egg-info/
 .eggs/
+*.db
 
 # IDE
 .idea/

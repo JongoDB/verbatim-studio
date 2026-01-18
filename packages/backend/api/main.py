@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from api.routes import health
 from core.config import settings
+from persistence import init_db
 
 
 @asynccontextmanager
@@ -14,6 +15,7 @@ async def lifespan(app: FastAPI):
     """Application lifespan handler."""
     # Startup
     settings.ensure_directories()
+    await init_db()
     yield
     # Shutdown
 
