@@ -13,6 +13,7 @@ class BackendManager extends EventEmitter {
   private process: ChildProcess | null = null;
   private config: BackendConfig;
   private healthCheckInterval: NodeJS.Timeout | null = null;
+  private isStopping = false;
 
   constructor(config: BackendConfig) {
     super();
@@ -68,8 +69,14 @@ class BackendManager extends EventEmitter {
       this.emit('error', err);
     });
 
-    await this.waitForHealth();
-    this.startHealthCheck();
+    try {
+      await this.waitForHealth();
+      this.startHealthCheck();
+    } catch (error) {
+      this.process?.kill('SIGKILL');
+      this.process = null;
+      throw error;
+    }
   }
 
   async stop(): Promise<void> {
@@ -78,7 +85,8 @@ class BackendManager extends EventEmitter {
       this.healthCheckInterval = null;
     }
 
-    if (!this.process) return;
+    if (!this.process || this.isStopping) return;
+    this.isStopping = true;
 
     return new Promise((resolve) => {
       const timeout = setTimeout(() => {
@@ -86,11 +94,13 @@ class BackendManager extends EventEmitter {
           console.log('[Backend] Force killing');
           this.process.kill('SIGKILL');
         }
+        this.isStopping = false;
         resolve();
       }, 5000);
 
       this.process!.on('exit', () => {
         clearTimeout(timeout);
+        this.isStopping = false;
         resolve();
       });
 

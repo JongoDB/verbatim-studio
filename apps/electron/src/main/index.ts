@@ -60,7 +60,7 @@ backendManager.on('unhealthy', () => {
   console.warn('[Main] Backend unhealthy');
 });
 
-backendManager.on('exit', (code: number) => {
+backendManager.on('exit', (code: number | null) => {
   console.warn(`[Main] Backend exited with code ${code}`);
   if (code !== 0 && code !== null) {
     // Unexpected exit, could show error dialog
