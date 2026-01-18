@@ -12,9 +12,7 @@
     "pack": "electron-builder --dir",
     "dist": "electron-builder"
   },
-  "dependencies": {
-    "electron-updater": "^6.3.9"
-  },
+  "dependencies": {},
   "devDependencies": {
     "@types/node": "^22.10.5",
     "concurrently": "^9.1.2",

@@ -1,5 +1,6 @@
 import { app, BrowserWindow } from 'electron';
 import { createMainWindow } from './windows';
+import { registerIpcHandlers } from './ipc';
 
 // Single instance lock
 const gotTheLock = app.requestSingleInstanceLock();
@@ -10,6 +11,7 @@ if (!gotTheLock) {
 let mainWindow: BrowserWindow | null = null;
 
 async function bootstrap(): Promise<void> {
+  registerIpcHandlers();
   mainWindow = createMainWindow();
 }
 
