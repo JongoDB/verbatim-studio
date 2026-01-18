@@ -5,9 +5,10 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from api.routes import health, recordings
+from api.routes import health, jobs, recordings
 from core.config import settings
 from persistence import init_db
+from services.jobs import job_queue
 
 
 @asynccontextmanager
@@ -18,6 +19,7 @@ async def lifespan(app: FastAPI):
     await init_db()
     yield
     # Shutdown
+    job_queue.shutdown(wait=True)
 
 
 app = FastAPI(
@@ -39,6 +41,7 @@ app.add_middleware(
 # Routes
 app.include_router(health.router)
 app.include_router(recordings.router, prefix="/api")
+app.include_router(jobs.router, prefix="/api")
 
 
 @app.get("/")
