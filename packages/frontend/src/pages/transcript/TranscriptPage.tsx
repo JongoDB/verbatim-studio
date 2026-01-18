@@ -243,7 +243,7 @@ export function TranscriptPage({ recordingId, onBack }: TranscriptPageProps) {
         <h3 className="text-sm font-medium text-muted-foreground mb-3">
           {transcript.segments.length} segment{transcript.segments.length !== 1 ? 's' : ''}
         </h3>
-        <SegmentList segments={transcript.segments} />
+        <SegmentList segments={transcript.segments} transcriptId={transcript.id} />
       </div>
     </div>
   );
