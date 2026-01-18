@@ -75,6 +75,23 @@ class Transcript(Base):
 
     recording: Mapped[Recording] = relationship(back_populates="transcript")
     segments: Mapped[list["Segment"]] = relationship(back_populates="transcript")
+    speakers: Mapped[list["Speaker"]] = relationship(back_populates="transcript")
+
+
+class Speaker(Base):
+    """Speaker mapping for transcript diarization."""
+
+    __tablename__ = "speakers"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    transcript_id: Mapped[str] = mapped_column(
+        ForeignKey("transcripts.id", ondelete="CASCADE"), nullable=False
+    )
+    speaker_label: Mapped[str] = mapped_column(String(50), nullable=False)  # "SPEAKER_00"
+    speaker_name: Mapped[str | None] = mapped_column(String(255))  # "John Smith"
+    color: Mapped[str | None] = mapped_column(String(7))  # "#FF5733"
+
+    transcript: Mapped[Transcript] = relationship(back_populates="speakers")
 
 
 class Segment(Base):
