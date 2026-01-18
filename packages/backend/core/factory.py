@@ -30,10 +30,14 @@ class AdapterConfig:
     # Database
     database_url: str
 
-    # Transcription
+    # Transcription (local WhisperX)
     transcription_model: str = "base"
     transcription_device: str = "cpu"
     transcription_compute_type: str = "int8"
+
+    # External WhisperX
+    whisperx_external_url: str | None = None
+    whisperx_api_key: str | None = None
 
     # Diarization
     diarization_device: str = "cpu"
@@ -111,16 +115,31 @@ class AdapterFactory:
     def create_transcription_engine(self) -> "ITranscriptionEngine":
         """Create a transcription engine.
 
-        Basic tier: WhisperX (local)
-        Enterprise tier: External service or WhisperX (configurable)
+        If WHISPERX_EXTERNAL_URL is configured, uses external service.
+        Otherwise uses local WhisperX.
 
         Returns:
             Transcription engine instance
         """
+        # Use external WhisperX if URL is configured
+        if self._config.whisperx_external_url:
+            from adapters.transcription.external_whisperx import ExternalWhisperXEngine
+
+            logger.info(
+                "Creating external WhisperX engine (url=%s)",
+                self._config.whisperx_external_url,
+            )
+
+            return ExternalWhisperXEngine(
+                base_url=self._config.whisperx_external_url,
+                api_key=self._config.whisperx_api_key,
+            )
+
+        # Fall back to local WhisperX
         from adapters.transcription.whisperx import WhisperXTranscriptionEngine
 
         logger.info(
-            "Creating WhisperX transcription engine (model=%s, device=%s)",
+            "Creating local WhisperX transcription engine (model=%s, device=%s)",
             self._config.transcription_model,
             self._config.transcription_device,
         )
@@ -212,6 +231,13 @@ def create_factory_from_settings(settings: Settings) -> AdapterFactory:
     """
     config = AdapterConfig(
         database_url=settings.DATABASE_URL,
+        # WhisperX settings
+        transcription_model=settings.WHISPERX_MODEL,
+        transcription_device=settings.WHISPERX_DEVICE,
+        transcription_compute_type=settings.WHISPERX_COMPUTE_TYPE,
+        whisperx_external_url=settings.WHISPERX_EXTERNAL_URL,
+        whisperx_api_key=settings.WHISPERX_API_KEY,
+        # AI settings
         ai_model_path=settings.AI_MODEL_PATH,
         ai_n_ctx=settings.AI_N_CTX,
         ai_n_gpu_layers=settings.AI_N_GPU_LAYERS,

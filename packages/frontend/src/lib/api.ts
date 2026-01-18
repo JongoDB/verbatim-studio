@@ -261,6 +261,27 @@ export interface ExportOptions {
   includeTimestamps?: boolean;
 }
 
+// Config Types
+export interface WhisperXStatus {
+  mode: 'local' | 'external';
+  external_url: string | null;
+  model: string;
+  device: string;
+  compute_type: string;
+}
+
+export interface AIConfigStatus {
+  model_path: string | null;
+  context_size: number;
+  gpu_layers: number;
+}
+
+export interface ConfigStatus {
+  mode: string;
+  whisperx: WhisperXStatus;
+  ai: AIConfigStatus;
+}
+
 class ApiClient {
   private baseUrl: string;
 
@@ -562,6 +583,11 @@ class ApiClient {
       this.request<MessageResponse>(`/api/projects/${projectId}/recordings/${recordingId}`, {
         method: 'DELETE',
       }),
+  };
+
+  // Config
+  config = {
+    status: () => this.request<ConfigStatus>('/api/config/status'),
   };
 }
 

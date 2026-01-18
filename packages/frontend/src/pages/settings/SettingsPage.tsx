@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { api, type ArchiveInfo } from '@/lib/api';
+import { api, type ArchiveInfo, type ConfigStatus } from '@/lib/api';
 
 interface SettingsPageProps {
   theme: 'light' | 'dark' | 'system';
@@ -82,13 +82,17 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
   const [importResult, setImportResult] = useState<{ success: boolean; message: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Config status
+  const [configStatus, setConfigStatus] = useState<ConfigStatus | null>(null);
+
   const defaultLanguage = settings.defaultLanguage || '';
   const defaultPlaybackSpeed = settings.defaultPlaybackSpeed || 1;
   const autoTranscribe = settings.autoTranscribe ?? false;
 
-  // Load archive info
+  // Load archive info and config status
   useEffect(() => {
     api.archive.info().then(setArchiveInfo).catch(console.error);
+    api.config.status().then(setConfigStatus).catch(console.error);
   }, []);
 
   const handleExport = useCallback(async () => {
@@ -253,6 +257,41 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
           </SettingSection>
         </div>
       </div>
+
+      {/* WhisperX Configuration */}
+      {configStatus && (
+        <div className="mt-6 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+          <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-700">
+            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">WhisperX Engine</h2>
+          </div>
+          <div className="px-5 py-4">
+            <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-900 text-sm">
+              <div className="flex items-center gap-2 mb-3">
+                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                  configStatus.whisperx.mode === 'external'
+                    ? 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300'
+                    : 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
+                }`}>
+                  {configStatus.whisperx.mode === 'external' ? 'External Service' : 'Local Processing'}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-gray-600 dark:text-gray-400">
+                <div>Model: <span className="font-medium text-gray-900 dark:text-gray-100">{configStatus.whisperx.model}</span></div>
+                <div>Device: <span className="font-medium text-gray-900 dark:text-gray-100">{configStatus.whisperx.device}</span></div>
+                <div>Compute: <span className="font-medium text-gray-900 dark:text-gray-100">{configStatus.whisperx.compute_type}</span></div>
+                {configStatus.whisperx.external_url && (
+                  <div className="col-span-2">
+                    URL: <span className="font-medium text-gray-900 dark:text-gray-100 font-mono text-xs">{configStatus.whisperx.external_url}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+            <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
+              Configure via environment variables: VERBATIM_WHISPERX_EXTERNAL_URL, VERBATIM_WHISPERX_MODEL, VERBATIM_WHISPERX_DEVICE
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Playback Section */}
       <div className="mt-6 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
