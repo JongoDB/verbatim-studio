@@ -5,8 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "build": "npm run update-version && tsc -b && vite build",
+    "preview": "vite preview",
+    "update-version": "../../scripts/update-version.sh"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.62.0",

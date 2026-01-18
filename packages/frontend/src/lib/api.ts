@@ -1,3 +1,4 @@
+// Backend API URL - default to localhost for dev
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
 
 // Interfaces matching backend response models

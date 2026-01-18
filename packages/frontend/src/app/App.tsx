@@ -5,6 +5,7 @@ import { TranscriptPage } from '@/pages/transcript/TranscriptPage';
 import { SearchBox } from '@/components/search/SearchBox';
 import { Dashboard } from '@/components/dashboard/Dashboard';
 import { SettingsPage } from '@/pages/settings/SettingsPage';
+import { APP_VERSION } from '@/version';
 
 type NavigationState =
   | { type: 'dashboard' }
@@ -257,11 +258,9 @@ export function App() {
                 </svg>
               )}
             </button>
-            {apiInfo && (
-              <span className="text-muted-foreground font-mono">
-                v{apiInfo.version}
-              </span>
-            )}
+            <span className="text-muted-foreground font-mono">
+              {APP_VERSION}
+            </span>
             {health && (
               <span
                 className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${

@@ -47,6 +47,9 @@ export const WaveformPlayer = forwardRef<WaveformPlayerRef, WaveformPlayerProps>
     useEffect(() => {
       if (!containerRef.current) return;
 
+      // Track if component is still mounted
+      let isMounted = true;
+
       // Get theme state for colors
       const isDark = document.documentElement.classList.contains('dark');
 
@@ -61,13 +64,15 @@ export const WaveformPlayer = forwardRef<WaveformPlayerRef, WaveformPlayerProps>
         barRadius: 2,
         height: 64,
         normalize: true,
-        backend: 'WebAudio',
+        // Use url option - WaveSurfer will fetch and decode for waveform
+        url: src,
       });
 
       wavesurferRef.current = wavesurfer;
 
       // Event handlers
       wavesurfer.on('ready', () => {
+        if (!isMounted) return;
         setIsLoading(false);
         const dur = wavesurfer.getDuration();
         setDuration(dur);
@@ -75,24 +80,25 @@ export const WaveformPlayer = forwardRef<WaveformPlayerRef, WaveformPlayerProps>
         onReady?.();
       });
 
-      wavesurfer.on('play', () => setIsPlaying(true));
-      wavesurfer.on('pause', () => setIsPlaying(false));
-      wavesurfer.on('finish', () => setIsPlaying(false));
+      wavesurfer.on('play', () => isMounted && setIsPlaying(true));
+      wavesurfer.on('pause', () => isMounted && setIsPlaying(false));
+      wavesurfer.on('finish', () => isMounted && setIsPlaying(false));
 
       wavesurfer.on('timeupdate', (time) => {
+        if (!isMounted) return;
         setCurrentTime(time);
         onTimeUpdate?.(time);
       });
 
       wavesurfer.on('error', (err) => {
+        // Ignore abort errors from unmounting
+        if (err instanceof Error && err.name === 'AbortError') return;
         console.error('WaveSurfer error:', err);
-        setIsLoading(false);
+        if (isMounted) setIsLoading(false);
       });
 
-      // Load audio
-      wavesurfer.load(src);
-
       return () => {
+        isMounted = false;
         wavesurfer.destroy();
       };
     }, [src]); // Only recreate when src changes
