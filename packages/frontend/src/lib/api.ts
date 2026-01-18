@@ -179,6 +179,30 @@ export interface DashboardStats {
   transcriptions: TranscriptionStats;
 }
 
+export interface Project {
+  id: string;
+  name: string;
+  description: string | null;
+  recording_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProjectListResponse {
+  items: Project[];
+  total: number;
+}
+
+export interface ProjectCreateRequest {
+  name: string;
+  description?: string | null;
+}
+
+export interface ProjectUpdateRequest {
+  name?: string;
+  description?: string | null;
+}
+
 export interface ExportOptions {
   format: ExportFormat;
   includeTimestamps?: boolean;
@@ -377,6 +401,45 @@ class ApiClient {
   // Stats
   stats = {
     dashboard: () => this.request<DashboardStats>('/api/stats'),
+  };
+
+  // Projects
+  projects = {
+    list: (search?: string) => {
+      const params = new URLSearchParams();
+      if (search) params.set('search', search);
+      const queryString = params.toString();
+      return this.request<ProjectListResponse>(`/api/projects${queryString ? `?${queryString}` : ''}`);
+    },
+
+    get: (id: string) => this.request<Project>(`/api/projects/${id}`),
+
+    create: (data: ProjectCreateRequest) =>
+      this.request<Project>('/api/projects', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+
+    update: (id: string, data: ProjectUpdateRequest) =>
+      this.request<Project>(`/api/projects/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      }),
+
+    delete: (id: string) =>
+      this.request<MessageResponse>(`/api/projects/${id}`, {
+        method: 'DELETE',
+      }),
+
+    addRecording: (projectId: string, recordingId: string) =>
+      this.request<MessageResponse>(`/api/projects/${projectId}/recordings/${recordingId}`, {
+        method: 'POST',
+      }),
+
+    removeRecording: (projectId: string, recordingId: string) =>
+      this.request<MessageResponse>(`/api/projects/${projectId}/recordings/${recordingId}`, {
+        method: 'DELETE',
+      }),
   };
 }
 

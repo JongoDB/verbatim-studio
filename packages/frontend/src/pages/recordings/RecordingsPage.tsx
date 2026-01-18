@@ -5,6 +5,7 @@ import { RecordingCard } from '@/components/recordings/RecordingCard';
 import { RecordingFilters, type FilterState } from '@/components/recordings/RecordingFilters';
 import { TranscribeDialog } from '@/components/recordings/TranscribeDialog';
 import { AudioRecorder } from '@/components/recordings/AudioRecorder';
+import { ProjectSelector } from '@/components/projects/ProjectSelector';
 
 interface RecordingsPageProps {
   onViewTranscript: (recordingId: string) => void;
@@ -26,6 +27,7 @@ export function RecordingsPage({ onViewTranscript }: RecordingsPageProps) {
   const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
   const [transcribeDialogRecording, setTranscribeDialogRecording] = useState<Recording | null>(null);
   const [showRecorder, setShowRecorder] = useState(false);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
 
   const loadRecordings = useCallback(async () => {
     try {
@@ -34,6 +36,7 @@ export function RecordingsPage({ onViewTranscript }: RecordingsPageProps) {
         status: filters.status || undefined,
         sortBy: filters.sortBy,
         sortOrder: filters.sortOrder,
+        projectId: selectedProjectId || undefined,
       });
       setRecordings(response.items);
       setTotalRecordings(response.total);
@@ -43,7 +46,7 @@ export function RecordingsPage({ onViewTranscript }: RecordingsPageProps) {
     } finally {
       setIsLoading(false);
     }
-  }, [filters]);
+  }, [filters, selectedProjectId]);
 
   // Initial load and polling
   useEffect(() => {
@@ -220,12 +223,20 @@ export function RecordingsPage({ onViewTranscript }: RecordingsPageProps) {
         </div>
       )}
 
-      {/* Filters */}
-      <RecordingFilters
-        filters={filters}
-        onFiltersChange={handleFiltersChange}
-        totalResults={totalRecordings}
-      />
+      {/* Project Selector and Filters */}
+      <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
+        <ProjectSelector
+          selectedProjectId={selectedProjectId}
+          onProjectChange={setSelectedProjectId}
+        />
+        <div className="flex-1">
+          <RecordingFilters
+            filters={filters}
+            onFiltersChange={handleFiltersChange}
+            totalResults={totalRecordings}
+          />
+        </div>
+      </div>
 
       {recordings.length === 0 ? (
         <div className="text-center py-12">
