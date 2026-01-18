@@ -3,7 +3,11 @@ import { api, type Recording } from '@/lib/api';
 import { UploadDropzone } from '@/components/recordings/UploadDropzone';
 import { RecordingCard } from '@/components/recordings/RecordingCard';
 
-export function RecordingsPage() {
+interface RecordingsPageProps {
+  onViewTranscript: (recordingId: string) => void;
+}
+
+export function RecordingsPage({ onViewTranscript }: RecordingsPageProps) {
   const [recordings, setRecordings] = useState<Recording[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
@@ -75,10 +79,8 @@ export function RecordingsPage() {
   );
 
   const handleView = useCallback((recordingId: string) => {
-    // TODO: Navigate to transcript view or open modal
-    console.log('View transcript for recording:', recordingId);
-    alert(`Transcript viewer coming soon for recording: ${recordingId}`);
-  }, []);
+    onViewTranscript(recordingId);
+  }, [onViewTranscript]);
 
   if (isLoading) {
     return (

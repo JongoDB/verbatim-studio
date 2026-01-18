@@ -1,12 +1,26 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { api, type ApiInfo, type HealthStatus } from '@/lib/api';
 import { RecordingsPage } from '@/pages/recordings/RecordingsPage';
+import { TranscriptPage } from '@/pages/transcript/TranscriptPage';
+
+type NavigationState =
+  | { type: 'recordings' }
+  | { type: 'transcript'; recordingId: string };
 
 export function App() {
   const [apiInfo, setApiInfo] = useState<ApiInfo | null>(null);
   const [health, setHealth] = useState<HealthStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(true);
+  const [navigation, setNavigation] = useState<NavigationState>({ type: 'recordings' });
+
+  const handleViewTranscript = useCallback((recordingId: string) => {
+    setNavigation({ type: 'transcript', recordingId });
+  }, []);
+
+  const handleBackToRecordings = useCallback(() => {
+    setNavigation({ type: 'recordings' });
+  }, []);
 
   useEffect(() => {
     async function checkBackend() {
@@ -131,7 +145,14 @@ export function App() {
 
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8">
-        <RecordingsPage />
+        {navigation.type === 'recordings' ? (
+          <RecordingsPage onViewTranscript={handleViewTranscript} />
+        ) : (
+          <TranscriptPage
+            recordingId={navigation.recordingId}
+            onBack={handleBackToRecordings}
+          />
+        )}
       </main>
     </div>
   );
