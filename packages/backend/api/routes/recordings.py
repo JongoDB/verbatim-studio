@@ -1,6 +1,8 @@
 """Recording file management endpoints."""
 
+import logging
 from datetime import datetime
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
@@ -11,6 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from persistence import get_db
 from persistence.models import Recording
 from services.storage import storage_service
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/recordings", tags=["recordings"])
 
@@ -203,11 +207,21 @@ async def upload_recording(
             detail="Uploaded file is empty",
         )
 
+    # Sanitize filename to prevent path traversal attacks
+    # First normalize backslashes to forward slashes (handles Windows-style paths on any OS)
+    # Then use Path().name to get only the basename, stripping any directory components
+    raw_filename = file.filename or "unknown"
+    normalized_filename = raw_filename.replace("\\", "/")
+    safe_filename = Path(normalized_filename).name
+    # Additional safety: if filename is empty after sanitization, use a default
+    if not safe_filename or safe_filename in (".", ".."):
+        safe_filename = "unknown"
+
     # Create recording record first to get ID
     recording = Recording(
-        title=title or file.filename or "Untitled Recording",
+        title=title or safe_filename or "Untitled Recording",
         file_path="",  # Will be updated after saving
-        file_name=file.filename or "unknown",
+        file_name=safe_filename,
         file_size=file_size,
         mime_type=content_type,
         project_id=project_id,
@@ -221,14 +235,16 @@ async def upload_recording(
         file_path = await storage_service.save_upload(
             content=content,
             recording_id=recording.id,
-            filename=file.filename or f"recording_{recording.id}",
+            filename=safe_filename,
         )
         recording.file_path = str(file_path)
-    except Exception as e:
+    except Exception:
         await db.rollback()
+        # Log the actual error for debugging, but return generic message to client
+        logger.exception("Failed to save uploaded file for recording %s", recording.id)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to save file: {str(e)}",
+            detail="Failed to save uploaded file. Please try again.",
         )
 
     return RecordingCreateResponse(

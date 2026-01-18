@@ -28,14 +28,37 @@ class StorageService:
 
         Returns:
             Full path where the recording file should be stored.
-        """
-        # Create a subdirectory based on recording ID to avoid filename collisions
-        recording_dir = self.media_dir / "recordings" / recording_id
-        return recording_dir / filename
 
-    async def save_upload(
-        self, content: bytes, recording_id: str, filename: str
-    ) -> Path:
+        Raises:
+            ValueError: If filename contains path traversal attempts.
+        """
+        # Defense in depth: sanitize filename to prevent path traversal
+        # First normalize backslashes to forward slashes (handles Windows-style paths on any OS)
+        # Then use Path().name to get only the basename, stripping any directory components
+        normalized_filename = filename.replace("\\", "/")
+        safe_filename = Path(normalized_filename).name
+        if not safe_filename or safe_filename in (".", ".."):
+            safe_filename = "unknown"
+
+        # Also sanitize recording_id to prevent path traversal via that parameter
+        normalized_recording_id = recording_id.replace("\\", "/")
+        safe_recording_id = Path(normalized_recording_id).name
+        if not safe_recording_id or safe_recording_id in (".", ".."):
+            raise ValueError("Invalid recording ID")
+
+        # Create a subdirectory based on recording ID to avoid filename collisions
+        recording_dir = self.media_dir / "recordings" / safe_recording_id
+        result_path = recording_dir / safe_filename
+
+        # Final safety check: ensure resulting path is within media_dir
+        try:
+            result_path.resolve().relative_to(self.media_dir.resolve())
+        except ValueError:
+            raise ValueError("Path traversal detected in filename or recording_id")
+
+        return result_path
+
+    async def save_upload(self, content: bytes, recording_id: str, filename: str) -> Path:
         """Save an uploaded file to storage.
 
         Args:
