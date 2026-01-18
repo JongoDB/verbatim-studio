@@ -1,0 +1,50 @@
+{
+  "name": "@verbatim/electron",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist/main/index.js",
+  "scripts": {
+    "dev": "concurrently \"pnpm dev:main\" \"pnpm dev:preload\"",
+    "dev:main": "tsc -p tsconfig.json --watch",
+    "dev:preload": "tsc -p tsconfig.preload.json --watch",
+    "build": "tsc -p tsconfig.json && tsc -p tsconfig.preload.json",
+    "start": "electron .",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder"
+  },
+  "dependencies": {
+    "electron-updater": "^6.3.9"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "concurrently": "^9.1.2",
+    "electron": "^34.0.0",
+    "electron-builder": "^25.1.8",
+    "typescript": "^5.7.2"
+  },
+  "build": {
+    "appId": "com.verbatimstudio.app",
+    "productName": "Verbatim Studio",
+    "directories": {
+      "output": "../../dist"
+    },
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["arm64"]
+        }
+      ],
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false
+    },
+    "extraResources": [
+      {
+        "from": "../../build/resources",
+        "to": ".",
+        "filter": ["**/*"]
+      }
+    ]
+  }
+}
