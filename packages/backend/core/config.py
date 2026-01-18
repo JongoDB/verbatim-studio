@@ -28,6 +28,11 @@ class Settings(BaseSettings):
     # Auth (disabled in basic mode)
     AUTH_ENABLED: bool = False
 
+    # AI settings (llama.cpp)
+    AI_MODEL_PATH: str | None = None  # Path to GGUF model file
+    AI_N_CTX: int = 4096  # Context window size
+    AI_N_GPU_LAYERS: int = 0  # Number of layers to offload to GPU (0 = CPU only)
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         # Set derived paths

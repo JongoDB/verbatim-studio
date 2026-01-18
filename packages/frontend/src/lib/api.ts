@@ -203,6 +203,41 @@ export interface ProjectUpdateRequest {
   description?: string | null;
 }
 
+// AI Types
+export interface AIStatusResponse {
+  available: boolean;
+  provider: string;
+  model_loaded: boolean;
+  model_path: string | null;
+  models: Array<{ id: string; name: string }>;
+}
+
+export interface AIChatRequest {
+  message: string;
+  context?: string | null;
+  temperature?: number;
+  max_tokens?: number | null;
+}
+
+export interface AIChatResponse {
+  content: string;
+  model: string;
+}
+
+export interface SummarizationResponse {
+  summary: string;
+  key_points: string[] | null;
+  action_items: string[] | null;
+  topics: string[] | null;
+}
+
+export interface AnalysisResponse {
+  analysis_type: string;
+  content: Record<string, unknown>;
+}
+
+export type AnalysisType = 'sentiment' | 'topics' | 'entities' | 'questions' | 'action_items';
+
 export interface ExportOptions {
   format: ExportFormat;
   includeTimestamps?: boolean;
@@ -401,6 +436,47 @@ class ApiClient {
   // Stats
   stats = {
     dashboard: () => this.request<DashboardStats>('/api/stats'),
+  };
+
+  // AI
+  ai = {
+    status: () => this.request<AIStatusResponse>('/api/ai/status'),
+
+    chat: (data: AIChatRequest) =>
+      this.request<AIChatResponse>('/api/ai/chat', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+
+    summarize: (transcriptId: string, temperature = 0.3) => {
+      const params = new URLSearchParams({ temperature: String(temperature) });
+      return this.request<SummarizationResponse>(
+        `/api/ai/transcripts/${transcriptId}/summarize?${params.toString()}`,
+        { method: 'POST' }
+      );
+    },
+
+    analyze: (transcriptId: string, analysisType: AnalysisType, temperature = 0.3) => {
+      const params = new URLSearchParams({
+        analysis_type: analysisType,
+        temperature: String(temperature),
+      });
+      return this.request<AnalysisResponse>(
+        `/api/ai/transcripts/${transcriptId}/analyze?${params.toString()}`,
+        { method: 'POST' }
+      );
+    },
+
+    ask: (transcriptId: string, question: string, temperature = 0.5) => {
+      const params = new URLSearchParams({
+        question,
+        temperature: String(temperature),
+      });
+      return this.request<AIChatResponse>(
+        `/api/ai/transcripts/${transcriptId}/ask?${params.toString()}`,
+        { method: 'POST' }
+      );
+    },
   };
 
   // Projects

@@ -4,6 +4,7 @@ import { WaveformPlayer, type WaveformPlayerRef } from '@/components/audio/Wavef
 import { EditableSegment } from '@/components/transcript/EditableSegment';
 import { ExportButton } from '@/components/transcript/ExportButton';
 import { SpeakerPanel } from '@/components/transcript/SpeakerPanel';
+import { AIAnalysisPanel } from '@/components/ai/AIAnalysisPanel';
 import { useKeyboardShortcuts, KEYBOARD_SHORTCUTS } from '@/hooks/useKeyboardShortcuts';
 
 interface TranscriptPageProps {
@@ -341,6 +342,9 @@ export function TranscriptPage({ recordingId, onBack }: TranscriptPageProps) {
           onSpeakerUpdate={handleSpeakerUpdate}
         />
       )}
+
+      {/* AI Analysis Panel */}
+      <AIAnalysisPanel transcriptId={transcript.id} />
 
       {/* Editable Segments */}
       <div>

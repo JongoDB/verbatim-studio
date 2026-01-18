@@ -212,7 +212,9 @@ def create_factory_from_settings(settings: Settings) -> AdapterFactory:
     """
     config = AdapterConfig(
         database_url=settings.DATABASE_URL,
-        # Other settings can be added to Settings class and mapped here
+        ai_model_path=settings.AI_MODEL_PATH,
+        ai_n_ctx=settings.AI_N_CTX,
+        ai_n_gpu_layers=settings.AI_N_GPU_LAYERS,
     )
 
     return AdapterFactory(settings.MODE, config)
