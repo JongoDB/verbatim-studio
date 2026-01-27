@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from sqlalchemy import distinct, func, select, update
 
 from persistence.database import async_session
-from persistence.models import Speaker, Transcript
+from persistence.models import Segment, Speaker, Transcript
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +29,19 @@ class SpeakerUpdateRequest(BaseModel):
 
     speaker_name: str | None = None
     color: str | None = None
+
+
+class SpeakerMergeRequest(BaseModel):
+    """Speaker merge request model."""
+
+    target_speaker_id: str
+
+
+class SpeakerMergeResponse(BaseModel):
+    """Speaker merge response model."""
+
+    speaker: SpeakerResponse
+    segments_moved: int
 
 
 class SpeakerListResponse(BaseModel):
@@ -161,4 +174,90 @@ async def update_speaker(speaker_id: str, request: SpeakerUpdateRequest) -> Spea
             speaker_label=speaker.speaker_label,
             speaker_name=speaker.speaker_name,
             color=speaker.color,
+        )
+
+
+@router.post("/{speaker_id}/merge", response_model=SpeakerMergeResponse)
+async def merge_speaker(speaker_id: str, request: SpeakerMergeRequest) -> SpeakerMergeResponse:
+    """Merge source speaker into target speaker.
+
+    Reassigns all segments from the source speaker to the target speaker,
+    then deletes the source speaker record.
+
+    Args:
+        speaker_id: The source speaker ID (will be deleted).
+        request: Contains target_speaker_id.
+
+    Returns:
+        The target speaker and count of segments moved.
+
+    Raises:
+        HTTPException: If speakers not found or belong to different transcripts.
+    """
+    async with async_session() as session:
+        # Load source speaker
+        result = await session.execute(select(Speaker).where(Speaker.id == speaker_id))
+        source = result.scalar_one_or_none()
+        if source is None:
+            raise HTTPException(status_code=404, detail="Source speaker not found")
+
+        # Load target speaker
+        result = await session.execute(
+            select(Speaker).where(Speaker.id == request.target_speaker_id)
+        )
+        target = result.scalar_one_or_none()
+        if target is None:
+            raise HTTPException(status_code=404, detail="Target speaker not found")
+
+        # Verify same transcript
+        if source.transcript_id != target.transcript_id:
+            raise HTTPException(
+                status_code=400, detail="Speakers must belong to the same transcript"
+            )
+
+        # Count segments to move
+        count_result = await session.execute(
+            select(func.count())
+            .select_from(Segment)
+            .where(
+                Segment.transcript_id == source.transcript_id,
+                Segment.speaker == source.speaker_label,
+            )
+        )
+        segments_moved = count_result.scalar() or 0
+
+        # Reassign segments from source to target
+        await session.execute(
+            update(Segment)
+            .where(
+                Segment.transcript_id == source.transcript_id,
+                Segment.speaker == source.speaker_label,
+            )
+            .values(speaker=target.speaker_label)
+        )
+
+        # Delete source speaker
+        await session.delete(source)
+        await session.commit()
+
+        # Refresh target
+        result = await session.execute(select(Speaker).where(Speaker.id == target.id))
+        target = result.scalar_one()
+
+        logger.info(
+            "Merged speaker %s into %s: %d segments moved",
+            source.speaker_label,
+            target.speaker_label,
+            segments_moved,
+        )
+
+        return SpeakerMergeResponse(
+            speaker=SpeakerResponse(
+                id=target.id,
+                transcript_id=target.transcript_id,
+                speaker_label=target.speaker_label,
+                speaker_name=target.speaker_name,
+                color=target.color,
+            ),
+            segments_moved=segments_moved,
         )

@@ -90,6 +90,24 @@ export function TranscriptPage({ recordingId, onBack, initialSeekTime }: Transcr
     setSpeakers((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
   };
 
+  // Handle speaker merge
+  const handleSpeakerMerge = useCallback((removedSpeaker: Speaker, targetSpeaker: Speaker, _segmentsMoved: number) => {
+    // Remove the merged speaker from the list
+    setSpeakers((prev) => prev.filter((s) => s.id !== removedSpeaker.id));
+    // Update all segments that had the removed speaker's label to the target's label
+    setTranscript((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        segments: prev.segments.map((s) =>
+          s.speaker === removedSpeaker.speaker_label
+            ? { ...s, speaker: targetSpeaker.speaker_label }
+            : s
+        ),
+      };
+    });
+  }, []);
+
   // --- Selection & annotation state ---
   const [selectedSegmentIds, setSelectedSegmentIds] = useState<Set<string>>(new Set());
 
@@ -445,6 +463,7 @@ export function TranscriptPage({ recordingId, onBack, initialSeekTime }: Transcr
           speakers={speakers}
           segments={transcript.segments}
           onSpeakerUpdate={handleSpeakerUpdate}
+          onSpeakerMerge={handleSpeakerMerge}
         />
       )}
 

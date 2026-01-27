@@ -496,6 +496,15 @@ class ApiClient {
         method: 'PATCH',
         body: JSON.stringify(data),
       }),
+
+    merge: (speakerId: string, targetSpeakerId: string) =>
+      this.request<{ speaker: Speaker; segments_moved: number }>(
+        `/api/speakers/${speakerId}/merge`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ target_speaker_id: targetSpeakerId }),
+        },
+      ),
   };
 
   // Comments
