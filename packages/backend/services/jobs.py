@@ -5,6 +5,7 @@ import logging
 from collections.abc import Awaitable, Callable
 from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from sqlalchemy import select, update
@@ -334,6 +335,7 @@ async def handle_transcription(
                 await progress_callback(60 + p * 0.35)
 
             try:
+                logger.info("Starting diarization for %s with %d segments", audio_path, len(segments_data))
                 diarization_result = await diarization_service.diarize(
                     audio_path=audio_path,
                     segments=segments_data,
@@ -344,7 +346,7 @@ async def handle_transcription(
                 logger.info("Diarization found %d speakers", len(speakers_found))
             except Exception as e:
                 # Log but don't fail - diarization is optional
-                logger.warning("Diarization failed, continuing without speakers: %s", e)
+                logger.warning("Diarization failed, continuing without speakers: %s", e, exc_info=True)
 
         await progress_callback(95)
 
@@ -353,6 +355,15 @@ async def handle_transcription(
 
         # Create transcript, segments, and speakers in database
         async with async_session() as session:
+            # Delete existing transcript if re-transcribing (CASCADE deletes segments, speakers, etc.)
+            existing = await session.execute(
+                select(Transcript).where(Transcript.recording_id == recording_id)
+            )
+            existing_transcript = existing.scalar_one_or_none()
+            if existing_transcript:
+                await session.delete(existing_transcript)
+                await session.flush()
+
             # Create transcript
             transcript = Transcript(
                 recording_id=recording_id,

@@ -40,6 +40,9 @@ class Settings(BaseSettings):
     WHISPERX_DEVICE: str = "cpu"  # Device: cpu, cuda, mps
     WHISPERX_COMPUTE_TYPE: str = "int8"  # Compute type: int8, float16, float32
 
+    # HuggingFace token for pyannote speaker diarization
+    HF_TOKEN: str | None = None
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         # Set derived paths
@@ -54,7 +57,7 @@ class Settings(BaseSettings):
         self.MEDIA_DIR.mkdir(parents=True, exist_ok=True)
         self.MODELS_DIR.mkdir(parents=True, exist_ok=True)
 
-    model_config = {"env_prefix": "VERBATIM_"}
+    model_config = {"env_prefix": "VERBATIM_", "env_file": ".env"}
 
 
 settings = Settings()

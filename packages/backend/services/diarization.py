@@ -1,4 +1,4 @@
-"""Diarization service using Pyannote."""
+"""Diarization service using WhisperX's DiarizationPipeline (pyannote-based)."""
 
 import logging
 import os
@@ -13,7 +13,7 @@ ProgressCallback = Callable[[float], Coroutine[Any, Any, None]]
 
 
 class DiarizationService:
-    """Service for speaker diarization using Pyannote.
+    """Service for speaker diarization using WhisperX's DiarizationPipeline.
 
     Uses lazy loading to avoid import errors when dependencies are not installed.
     """
@@ -27,7 +27,7 @@ class DiarizationService:
 
         Args:
             device: Device to run inference on (cpu, cuda, mps).
-            hf_token: HuggingFace token for pyannote models (optional if pre-downloaded).
+            hf_token: HuggingFace token for pyannote models.
         """
         self.device = device
         self.hf_token = hf_token or os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_TOKEN")
@@ -35,7 +35,7 @@ class DiarizationService:
         self._whisperx = None
 
     def _ensure_loaded(self) -> None:
-        """Ensure Pyannote diarization pipeline is loaded.
+        """Ensure WhisperX diarization pipeline is loaded.
 
         Raises:
             ImportError: If dependencies are not installed.
@@ -45,31 +45,22 @@ class DiarizationService:
 
         try:
             import whisperx
-            from pyannote.audio import Pipeline
+            from whisperx.diarize import DiarizationPipeline
         except ImportError as e:
             raise ImportError(
-                "Pyannote/WhisperX is not installed. Install with: pip install 'verbatim-backend[ml]'"
+                "WhisperX/pyannote is not installed. Install with: pip install 'verbatim-backend[ml]'"
             ) from e
 
         self._whisperx = whisperx
 
-        logger.info("Loading pyannote diarization pipeline (device=%s)", self.device)
+        logger.info("Loading WhisperX diarization pipeline (device=%s)", self.device)
 
-        # Load diarization pipeline from pyannote
-        self._pipeline = Pipeline.from_pretrained(
-            "pyannote/speaker-diarization-3.1",
+        self._pipeline = DiarizationPipeline(
             use_auth_token=self.hf_token,
+            device=self.device,
         )
 
-        # Move to device
-        import torch
-        if self.device == "cuda" and torch.cuda.is_available():
-            self._pipeline.to(torch.device("cuda"))
-        elif self.device == "mps" and torch.backends.mps.is_available():
-            # Note: pyannote may not fully support MPS yet
-            pass
-
-        logger.info("Pyannote diarization pipeline loaded successfully")
+        logger.info("WhisperX diarization pipeline loaded successfully")
 
     async def diarize(
         self,
@@ -81,7 +72,7 @@ class DiarizationService:
 
         Args:
             audio_path: Path to the audio file.
-            segments: List of transcript segments with start, end, text.
+            segments: List of transcript segments with start, end, text, and words.
             progress_callback: Optional async callback for progress updates.
 
         Returns:
@@ -107,28 +98,18 @@ class DiarizationService:
         if progress_callback:
             await progress_callback(10)
 
-        # Run diarization directly on audio file
+        # Run diarization via WhisperX's pipeline (returns pandas DataFrame)
         logger.info("Running diarization on: %s", audio_path)
-        diarization = self._pipeline(str(audio_path))
+        diarize_df = self._pipeline(str(audio_path))
 
         if progress_callback:
             await progress_callback(70)
 
-        # Convert diarization output to format expected by whisperx.assign_word_speakers
-        # pyannote returns an Annotation object, we need to convert to dict format
-        diarize_segments = {"segments": []}
-        for turn, _, speaker in diarization.itertracks(yield_label=True):
-            diarize_segments["segments"].append({
-                "start": turn.start,
-                "end": turn.end,
-                "speaker": speaker,
-            })
-
-        logger.info("Diarization found %d speaker turns", len(diarize_segments["segments"]))
+        logger.info("Diarization found %d speaker turns", len(diarize_df))
 
         # Assign speakers to transcript segments using whisperx
         logger.info("Assigning speakers to transcript segments...")
-        result = self._whisperx.assign_word_speakers(diarize_segments, {"segments": segments})
+        result = self._whisperx.assign_word_speakers(diarize_df, {"segments": segments})
 
         if progress_callback:
             await progress_callback(90)
@@ -151,5 +132,12 @@ class DiarizationService:
         }
 
 
-# Default diarization service instance
-diarization_service = DiarizationService()
+# Default diarization service instance (configured from app settings)
+def _create_diarization_service() -> DiarizationService:
+    from core.config import settings
+    return DiarizationService(
+        device=settings.WHISPERX_DEVICE,
+        hf_token=settings.HF_TOKEN,
+    )
+
+diarization_service = _create_diarization_service()

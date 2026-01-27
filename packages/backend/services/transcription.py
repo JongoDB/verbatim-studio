@@ -181,17 +181,18 @@ class TranscriptionService:
         if progress_callback:
             await progress_callback(90)
 
-        # Format segments
+        # Format segments (include words for diarization speaker alignment)
         segments = []
         for segment in aligned_result.get("segments", []):
-            segments.append(
-                {
-                    "start": segment.get("start", 0.0),
-                    "end": segment.get("end", 0.0),
-                    "text": segment.get("text", "").strip(),
-                    "confidence": segment.get("score"),  # May be None
-                }
-            )
+            seg_data = {
+                "start": segment.get("start", 0.0),
+                "end": segment.get("end", 0.0),
+                "text": segment.get("text", "").strip(),
+                "confidence": segment.get("score"),  # May be None
+            }
+            if "words" in segment:
+                seg_data["words"] = segment["words"]
+            segments.append(seg_data)
 
         logger.info("Transcription complete: %d segments", len(segments))
 
