@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { api, type TranscriptWithSegments, type Segment, type Speaker, type Recording } from '@/lib/api';
+import { api, type TranscriptWithSegments, type Segment, type Speaker, type Recording, type HighlightColor } from '@/lib/api';
 import { WaveformPlayer, type WaveformPlayerRef } from '@/components/audio/WaveformPlayer';
 import { EditableSegment } from '@/components/transcript/EditableSegment';
 import { ExportButton } from '@/components/transcript/ExportButton';
 import { SpeakerPanel } from '@/components/transcript/SpeakerPanel';
 import { AIAnalysisPanel } from '@/components/ai/AIAnalysisPanel';
+import { BulkHighlightToolbar } from '@/components/transcript/BulkHighlightToolbar';
 import { useKeyboardShortcuts, KEYBOARD_SHORTCUTS } from '@/hooks/useKeyboardShortcuts';
 
 interface TranscriptPageProps {
@@ -88,6 +89,91 @@ export function TranscriptPage({ recordingId, onBack, initialSeekTime }: Transcr
   const handleSpeakerUpdate = (updated: Speaker) => {
     setSpeakers((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
   };
+
+  // --- Selection & annotation state ---
+  const [selectedSegmentIds, setSelectedSegmentIds] = useState<Set<string>>(new Set());
+
+  const handleToggleSelect = useCallback((segmentId: string) => {
+    setSelectedSegmentIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(segmentId)) next.delete(segmentId);
+      else next.add(segmentId);
+      return next;
+    });
+  }, []);
+
+  const handleHighlightChange = useCallback(async (segmentId: string, color: HighlightColor | null) => {
+    try {
+      if (color) {
+        await api.highlights.set(segmentId, color);
+      } else {
+        await api.highlights.remove(segmentId);
+      }
+      setTranscript((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          segments: prev.segments.map((s) =>
+            s.id === segmentId ? { ...s, highlight_color: color } : s
+          ),
+        };
+      });
+    } catch (err) {
+      console.error('Failed to update highlight:', err);
+    }
+  }, []);
+
+  const handleBulkHighlight = useCallback(async (color: HighlightColor) => {
+    if (!transcript || selectedSegmentIds.size === 0) return;
+    try {
+      const ids = Array.from(selectedSegmentIds);
+      await api.highlights.bulkSet(transcript.id, ids, color);
+      setTranscript((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          segments: prev.segments.map((s) =>
+            selectedSegmentIds.has(s.id) ? { ...s, highlight_color: color } : s
+          ),
+        };
+      });
+      setSelectedSegmentIds(new Set());
+    } catch (err) {
+      console.error('Failed to bulk highlight:', err);
+    }
+  }, [transcript, selectedSegmentIds]);
+
+  const handleBulkRemoveHighlight = useCallback(async () => {
+    if (!transcript || selectedSegmentIds.size === 0) return;
+    try {
+      const ids = Array.from(selectedSegmentIds);
+      await api.highlights.bulkRemove(transcript.id, ids);
+      setTranscript((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          segments: prev.segments.map((s) =>
+            selectedSegmentIds.has(s.id) ? { ...s, highlight_color: null } : s
+          ),
+        };
+      });
+      setSelectedSegmentIds(new Set());
+    } catch (err) {
+      console.error('Failed to remove highlights:', err);
+    }
+  }, [transcript, selectedSegmentIds]);
+
+  const handleCommentCountChange = useCallback((segmentId: string, delta: number) => {
+    setTranscript((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        segments: prev.segments.map((s) =>
+          s.id === segmentId ? { ...s, comment_count: s.comment_count + delta } : s
+        ),
+      };
+    });
+  }, []);
 
   // Seek audio and start playing
   const seekTo = (time: number) => {
@@ -383,14 +469,28 @@ export function TranscriptPage({ recordingId, onBack, initialSeekTime }: Transcr
                 speaker={speaker}
                 speakerIndex={speakerIndex}
                 isActive={segment.id === activeSegmentId}
+                isSelected={selectedSegmentIds.has(segment.id)}
                 onSegmentUpdate={handleSegmentUpdate}
                 onSpeakerUpdate={handleSpeakerUpdate}
                 onSeek={seekTo}
+                onToggleSelect={handleToggleSelect}
+                onHighlightChange={handleHighlightChange}
+                onCommentCountChange={handleCommentCountChange}
               />
             );
           })}
         </div>
       </div>
+
+      {/* Bulk highlight toolbar */}
+      {selectedSegmentIds.size > 0 && (
+        <BulkHighlightToolbar
+          selectedCount={selectedSegmentIds.size}
+          onHighlight={handleBulkHighlight}
+          onRemoveHighlight={handleBulkRemoveHighlight}
+          onClearSelection={() => setSelectedSegmentIds(new Set())}
+        />
+      )}
     </div>
   );
 }

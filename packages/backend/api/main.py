@@ -7,6 +7,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.routes import ai, archive, config, health, jobs, projects, recordings, search, speakers, stats, tags, transcripts
+from api.routes.comments import comments_router, segment_comments_router
+from api.routes.highlights import segment_highlights_router, transcript_highlights_router
 from core.config import settings
 from persistence import init_db
 from services.jobs import job_queue
@@ -70,6 +72,10 @@ app.include_router(ai.router, prefix="/api")
 app.include_router(archive.router, prefix="/api")
 app.include_router(config.router, prefix="/api")
 app.include_router(tags.router, prefix="/api")
+app.include_router(segment_comments_router, prefix="/api")
+app.include_router(comments_router, prefix="/api")
+app.include_router(segment_highlights_router, prefix="/api")
+app.include_router(transcript_highlights_router, prefix="/api")
 
 
 @app.get("/")

@@ -79,6 +79,8 @@ export interface JobListResponse {
   total: number;
 }
 
+export type HighlightColor = 'yellow' | 'green' | 'blue' | 'red' | 'purple' | 'orange';
+
 export interface Segment {
   id: string;
   segment_index: number;
@@ -88,8 +90,22 @@ export interface Segment {
   text: string;
   confidence: number | null;
   edited: boolean;
+  highlight_color: HighlightColor | null;
+  comment_count: number;
   created_at: string;
   updated_at: string;
+}
+
+export interface SegmentComment {
+  id: string;
+  segment_id: string;
+  text: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CommentListResponse {
+  items: SegmentComment[];
 }
 
 export interface Transcript {
@@ -479,6 +495,58 @@ class ApiClient {
       this.request<Speaker>(`/api/speakers/${speakerId}`, {
         method: 'PATCH',
         body: JSON.stringify(data),
+      }),
+  };
+
+  // Comments
+  comments = {
+    list: (segmentId: string) =>
+      this.request<CommentListResponse>(`/api/segments/${segmentId}/comments`),
+
+    create: (segmentId: string, text: string) =>
+      this.request<SegmentComment>(`/api/segments/${segmentId}/comments`, {
+        method: 'POST',
+        body: JSON.stringify({ text }),
+      }),
+
+    update: (commentId: string, text: string) =>
+      this.request<SegmentComment>(`/api/comments/${commentId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ text }),
+      }),
+
+    delete: (commentId: string) =>
+      this.request<MessageResponse>(`/api/comments/${commentId}`, {
+        method: 'DELETE',
+      }),
+  };
+
+  // Highlights
+  highlights = {
+    set: (segmentId: string, color: HighlightColor) =>
+      this.request<{ id: string; segment_id: string; color: string; created_at: string }>(
+        `/api/segments/${segmentId}/highlight`,
+        {
+          method: 'PUT',
+          body: JSON.stringify({ color }),
+        }
+      ),
+
+    remove: (segmentId: string) =>
+      this.request<MessageResponse>(`/api/segments/${segmentId}/highlight`, {
+        method: 'DELETE',
+      }),
+
+    bulkSet: (transcriptId: string, segmentIds: string[], color: HighlightColor) =>
+      this.request<MessageResponse>(`/api/transcripts/${transcriptId}/bulk-highlight`, {
+        method: 'POST',
+        body: JSON.stringify({ segment_ids: segmentIds, color }),
+      }),
+
+    bulkRemove: (transcriptId: string, segmentIds: string[]) =>
+      this.request<MessageResponse>(`/api/transcripts/${transcriptId}/bulk-highlight`, {
+        method: 'POST',
+        body: JSON.stringify({ segment_ids: segmentIds, remove: true }),
       }),
   };
 

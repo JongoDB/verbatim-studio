@@ -149,6 +149,43 @@ class Segment(Base):
     updated_at: Mapped[datetime] = mapped_column(default=func.now(), onupdate=func.now())
 
     transcript: Mapped[Transcript] = relationship(back_populates="segments")
+    comments: Mapped[list["SegmentComment"]] = relationship(
+        back_populates="segment", cascade="all, delete-orphan"
+    )
+    highlight: Mapped["SegmentHighlight | None"] = relationship(
+        back_populates="segment", uselist=False, cascade="all, delete-orphan"
+    )
+
+
+class SegmentComment(Base):
+    """Comment on a transcript segment."""
+
+    __tablename__ = "segment_comments"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    segment_id: Mapped[str] = mapped_column(
+        ForeignKey("segments.id", ondelete="CASCADE"), nullable=False
+    )
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(default=func.now(), onupdate=func.now())
+
+    segment: Mapped[Segment] = relationship(back_populates="comments")
+
+
+class SegmentHighlight(Base):
+    """Highlight color for a transcript segment. One per segment."""
+
+    __tablename__ = "segment_highlights"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    segment_id: Mapped[str] = mapped_column(
+        ForeignKey("segments.id", ondelete="CASCADE"), nullable=False, unique=True
+    )
+    color: Mapped[str] = mapped_column(String(20), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(default=func.now())
+
+    segment: Mapped[Segment] = relationship(back_populates="highlight")
 
 
 class Job(Base):

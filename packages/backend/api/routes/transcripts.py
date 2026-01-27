@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from persistence import get_db
-from persistence.models import Recording, Segment, Speaker, Transcript
+from persistence.models import Recording, Segment, SegmentComment, SegmentHighlight, Speaker, Transcript
 from services.export import ExportData, ExportSegment, export_service
 
 logger = logging.getLogger(__name__)
@@ -33,6 +33,8 @@ class SegmentResponse(BaseModel):
     text: str
     confidence: float | None
     edited: bool
+    highlight_color: str | None = None
+    comment_count: int = 0
     created_at: datetime
     updated_at: datetime
 
@@ -78,6 +80,58 @@ class SegmentListResponse(BaseModel):
     limit: int
 
 
+async def _load_segment_annotations(
+    db: AsyncSession, segment_ids: list[str]
+) -> tuple[dict[str, str], dict[str, int]]:
+    """Batch-load highlight colors and comment counts for segments.
+
+    Returns:
+        Tuple of (highlight_map, comment_count_map).
+    """
+    if not segment_ids:
+        return {}, {}
+
+    # Highlights: segment_id -> color
+    hl_result = await db.execute(
+        select(SegmentHighlight.segment_id, SegmentHighlight.color).where(
+            SegmentHighlight.segment_id.in_(segment_ids)
+        )
+    )
+    highlight_map = dict(hl_result.all())
+
+    # Comment counts: segment_id -> count
+    cc_result = await db.execute(
+        select(SegmentComment.segment_id, func.count(SegmentComment.id))
+        .where(SegmentComment.segment_id.in_(segment_ids))
+        .group_by(SegmentComment.segment_id)
+    )
+    comment_count_map = dict(cc_result.all())
+
+    return highlight_map, comment_count_map
+
+
+def _build_segment_response(
+    s: Segment,
+    highlight_map: dict[str, str],
+    comment_count_map: dict[str, int],
+) -> SegmentResponse:
+    """Build a SegmentResponse with annotation data."""
+    return SegmentResponse(
+        id=s.id,
+        segment_index=s.segment_index,
+        speaker=s.speaker,
+        start_time=s.start_time,
+        end_time=s.end_time,
+        text=s.text,
+        confidence=s.confidence,
+        edited=s.edited,
+        highlight_color=highlight_map.get(s.id),
+        comment_count=comment_count_map.get(s.id, 0),
+        created_at=s.created_at,
+        updated_at=s.updated_at,
+    )
+
+
 @router.get("/{transcript_id}", response_model=TranscriptWithSegmentsResponse)
 async def get_transcript(
     transcript_id: str,
@@ -111,6 +165,10 @@ async def get_transcript(
     # Sort segments by segment_index
     sorted_segments = sorted(transcript.segments, key=lambda s: s.segment_index)
 
+    # Batch-load annotations
+    segment_ids = [s.id for s in sorted_segments]
+    highlight_map, comment_count_map = await _load_segment_annotations(db, segment_ids)
+
     return TranscriptWithSegmentsResponse(
         id=transcript.id,
         recording_id=transcript.recording_id,
@@ -121,18 +179,7 @@ async def get_transcript(
         created_at=transcript.created_at,
         updated_at=transcript.updated_at,
         segments=[
-            SegmentResponse(
-                id=s.id,
-                segment_index=s.segment_index,
-                speaker=s.speaker,
-                start_time=s.start_time,
-                end_time=s.end_time,
-                text=s.text,
-                confidence=s.confidence,
-                edited=s.edited,
-                created_at=s.created_at,
-                updated_at=s.updated_at,
-            )
+            _build_segment_response(s, highlight_map, comment_count_map)
             for s in sorted_segments
         ],
     )
@@ -185,20 +232,13 @@ async def get_transcript_segments(
     )
     segments = result.scalars().all()
 
+    # Batch-load annotations
+    segment_ids = [s.id for s in segments]
+    highlight_map, comment_count_map = await _load_segment_annotations(db, segment_ids)
+
     return SegmentListResponse(
         items=[
-            SegmentResponse(
-                id=s.id,
-                segment_index=s.segment_index,
-                speaker=s.speaker,
-                start_time=s.start_time,
-                end_time=s.end_time,
-                text=s.text,
-                confidence=s.confidence,
-                edited=s.edited,
-                created_at=s.created_at,
-                updated_at=s.updated_at,
-            )
+            _build_segment_response(s, highlight_map, comment_count_map)
             for s in segments
         ],
         total=total,
@@ -273,18 +313,9 @@ async def update_segment(
     await db.commit()
     await db.refresh(segment)
 
-    return SegmentResponse(
-        id=segment.id,
-        segment_index=segment.segment_index,
-        speaker=segment.speaker,
-        start_time=segment.start_time,
-        end_time=segment.end_time,
-        text=segment.text,
-        confidence=segment.confidence,
-        edited=segment.edited,
-        created_at=segment.created_at,
-        updated_at=segment.updated_at,
-    )
+    highlight_map, comment_count_map = await _load_segment_annotations(db, [segment.id])
+
+    return _build_segment_response(segment, highlight_map, comment_count_map)
 
 
 @router.get("/by-recording/{recording_id}", response_model=TranscriptWithSegmentsResponse)
@@ -320,6 +351,10 @@ async def get_transcript_by_recording(
     # Sort segments by segment_index
     sorted_segments = sorted(transcript.segments, key=lambda s: s.segment_index)
 
+    # Batch-load annotations
+    segment_ids = [s.id for s in sorted_segments]
+    highlight_map, comment_count_map = await _load_segment_annotations(db, segment_ids)
+
     return TranscriptWithSegmentsResponse(
         id=transcript.id,
         recording_id=transcript.recording_id,
@@ -330,18 +365,7 @@ async def get_transcript_by_recording(
         created_at=transcript.created_at,
         updated_at=transcript.updated_at,
         segments=[
-            SegmentResponse(
-                id=s.id,
-                segment_index=s.segment_index,
-                speaker=s.speaker,
-                start_time=s.start_time,
-                end_time=s.end_time,
-                text=s.text,
-                confidence=s.confidence,
-                edited=s.edited,
-                created_at=s.created_at,
-                updated_at=s.updated_at,
-            )
+            _build_segment_response(s, highlight_map, comment_count_map)
             for s in sorted_segments
         ],
     )
