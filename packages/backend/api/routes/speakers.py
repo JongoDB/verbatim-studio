@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from sqlalchemy import distinct, func, select, update
 
 from persistence.database import async_session
-from persistence.models import Segment, Speaker, Transcript
+from persistence.models import Segment, SegmentComment, SegmentHighlight, Speaker, Transcript
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +48,38 @@ class SpeakerListResponse(BaseModel):
     """Speaker list response model."""
 
     items: list[SpeakerResponse]
+
+
+class ReassignSegmentRequest(BaseModel):
+    """Request to reassign a segment to a different speaker."""
+
+    segment_id: str
+    transcript_id: str
+    speaker_name: str
+
+
+class SegmentResponse(BaseModel):
+    """Segment response (mirrors transcripts.SegmentResponse)."""
+
+    id: str
+    segment_index: int
+    speaker: str | None
+    start_time: float
+    end_time: float
+    text: str
+    confidence: float | None
+    edited: bool
+    highlight_color: str | None = None
+    comment_count: int = 0
+    created_at: str
+    updated_at: str
+
+
+class ReassignSegmentResponse(BaseModel):
+    """Response from reassigning a segment."""
+
+    segment: SegmentResponse
+    speakers: list[SpeakerResponse]
 
 
 class UniqueSpeakerResponse(BaseModel):
@@ -260,4 +292,161 @@ async def merge_speaker(speaker_id: str, request: SpeakerMergeRequest) -> Speake
                 color=target.color,
             ),
             segments_moved=segments_moved,
+        )
+
+
+@router.post("/reassign-segment", response_model=ReassignSegmentResponse)
+async def reassign_segment(request: ReassignSegmentRequest) -> ReassignSegmentResponse:
+    """Reassign a single segment to a different speaker by name.
+
+    If speaker_name matches an existing speaker (by name or label, case-insensitive),
+    the segment is moved to that speaker. If no match, a new Speaker record is created.
+    Orphaned speakers (0 remaining segments) are automatically deleted.
+    """
+    async with async_session() as session:
+        # Load the segment and verify it belongs to the transcript
+        result = await session.execute(
+            select(Segment).where(
+                Segment.id == request.segment_id,
+                Segment.transcript_id == request.transcript_id,
+            )
+        )
+        segment = result.scalar_one_or_none()
+        if segment is None:
+            raise HTTPException(status_code=404, detail="Segment not found")
+
+        old_speaker_label = segment.speaker
+
+        # Load all speakers for this transcript
+        result = await session.execute(
+            select(Speaker)
+            .where(Speaker.transcript_id == request.transcript_id)
+            .order_by(Speaker.speaker_label)
+        )
+        all_speakers = list(result.scalars().all())
+
+        # Find matching speaker (case-insensitive match on speaker_name or speaker_label)
+        target_speaker = None
+        for s in all_speakers:
+            if (
+                (s.speaker_name and s.speaker_name.lower() == request.speaker_name.lower())
+                or s.speaker_label.lower() == request.speaker_name.lower()
+            ):
+                target_speaker = s
+                break
+
+        if target_speaker:
+            # Reassign segment to existing speaker
+            segment.speaker = target_speaker.speaker_label
+        else:
+            # Generate next speaker label (SPEAKER_XX)
+            existing_labels = [s.speaker_label for s in all_speakers]
+            next_index = 0
+            while f"SPEAKER_{next_index:02d}" in existing_labels:
+                next_index += 1
+            new_label = f"SPEAKER_{next_index:02d}"
+
+            # Create new Speaker record
+            new_speaker = Speaker(
+                transcript_id=request.transcript_id,
+                speaker_label=new_label,
+                speaker_name=request.speaker_name,
+            )
+            session.add(new_speaker)
+
+            # Reassign segment to the new speaker
+            segment.speaker = new_label
+
+        # Cleanup: check if old speaker is now orphaned
+        if old_speaker_label:
+            remaining = await session.execute(
+                select(func.count())
+                .select_from(Segment)
+                .where(
+                    Segment.transcript_id == request.transcript_id,
+                    Segment.speaker == old_speaker_label,
+                )
+            )
+            remaining_count = remaining.scalar() or 0
+            if remaining_count == 0:
+                # Delete orphaned speaker
+                result = await session.execute(
+                    select(Speaker).where(
+                        Speaker.transcript_id == request.transcript_id,
+                        Speaker.speaker_label == old_speaker_label,
+                    )
+                )
+                orphaned = result.scalar_one_or_none()
+                if orphaned:
+                    await session.delete(orphaned)
+                    logger.info(
+                        "Deleted orphaned speaker %s from transcript %s",
+                        old_speaker_label,
+                        request.transcript_id,
+                    )
+
+        await session.commit()
+
+        # Refresh segment
+        result = await session.execute(
+            select(Segment).where(Segment.id == request.segment_id)
+        )
+        segment = result.scalar_one()
+
+        # Load annotation data for this segment
+        hl_result = await session.execute(
+            select(SegmentHighlight.color).where(
+                SegmentHighlight.segment_id == segment.id
+            )
+        )
+        highlight_color = hl_result.scalar_one_or_none()
+
+        cc_result = await session.execute(
+            select(func.count(SegmentComment.id)).where(
+                SegmentComment.segment_id == segment.id
+            )
+        )
+        comment_count = cc_result.scalar() or 0
+
+        # Reload all speakers (after potential add/delete)
+        result = await session.execute(
+            select(Speaker)
+            .where(Speaker.transcript_id == request.transcript_id)
+            .order_by(Speaker.speaker_label)
+        )
+        speakers = result.scalars().all()
+
+        logger.info(
+            "Reassigned segment %s from %s to %s in transcript %s",
+            request.segment_id,
+            old_speaker_label,
+            segment.speaker,
+            request.transcript_id,
+        )
+
+        return ReassignSegmentResponse(
+            segment=SegmentResponse(
+                id=segment.id,
+                segment_index=segment.segment_index,
+                speaker=segment.speaker,
+                start_time=segment.start_time,
+                end_time=segment.end_time,
+                text=segment.text,
+                confidence=segment.confidence,
+                edited=segment.edited,
+                highlight_color=highlight_color,
+                comment_count=comment_count,
+                created_at=segment.created_at.isoformat(),
+                updated_at=segment.updated_at.isoformat(),
+            ),
+            speakers=[
+                SpeakerResponse(
+                    id=s.id,
+                    transcript_id=s.transcript_id,
+                    speaker_label=s.speaker_label,
+                    speaker_name=s.speaker_name,
+                    color=s.color,
+                )
+                for s in speakers
+            ],
         )

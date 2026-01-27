@@ -17,6 +17,7 @@ interface EditableSegmentProps {
   onToggleSelect: (segmentId: string) => void;
   onHighlightChange: (segmentId: string, color: HighlightColor | null) => void;
   onCommentCountChange: (segmentId: string, delta: number) => void;
+  onSpeakerReassign?: (segmentId: string, speakerName: string) => void;
 }
 
 function formatTime(seconds: number): string {
@@ -47,6 +48,7 @@ export function EditableSegment({
   onToggleSelect,
   onHighlightChange,
   onCommentCountChange,
+  onSpeakerReassign,
 }: EditableSegmentProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [text, setText] = useState(segment.text);
@@ -155,6 +157,11 @@ export function EditableSegment({
               speaker={speaker}
               speakerIndex={speakerIndex}
               onUpdate={onSpeakerUpdate}
+              onReassign={
+                onSpeakerReassign
+                  ? (newName) => onSpeakerReassign(segment.id, newName)
+                  : undefined
+              }
             />
           </div>
         )}

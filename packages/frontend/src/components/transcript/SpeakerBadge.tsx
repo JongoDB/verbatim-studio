@@ -17,9 +17,10 @@ interface SpeakerBadgeProps {
   speaker: Speaker;
   speakerIndex: number;
   onUpdate?: (speaker: Speaker) => void;
+  onReassign?: (newName: string) => void;
 }
 
-export function SpeakerBadge({ speaker, speakerIndex, onUpdate }: SpeakerBadgeProps) {
+export function SpeakerBadge({ speaker, speakerIndex, onUpdate, onReassign }: SpeakerBadgeProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [name, setName] = useState(speaker.speaker_name || '');
   const [isLoading, setIsLoading] = useState(false);
@@ -28,18 +29,32 @@ export function SpeakerBadge({ speaker, speakerIndex, onUpdate }: SpeakerBadgePr
   const displayName = speaker.speaker_name || speaker.speaker_label;
 
   const handleSave = async () => {
-    if (name === speaker.speaker_name) {
+    const trimmed = name.trim();
+    if (trimmed === (speaker.speaker_name || '') || trimmed === speaker.speaker_label) {
+      setIsEditing(false);
+      return;
+    }
+
+    if (!trimmed) {
+      setName(speaker.speaker_name || '');
       setIsEditing(false);
       return;
     }
 
     setIsLoading(true);
     try {
-      const updated = await api.speakers.update(speaker.id, {
-        speaker_name: name || null,
-      });
-      onUpdate?.(updated);
-      setIsEditing(false);
+      if (onReassign) {
+        // Per-segment reassignment: emit callback, let parent handle API call
+        onReassign(trimmed);
+        setIsEditing(false);
+      } else {
+        // Fallback: global rename via direct API call
+        const updated = await api.speakers.update(speaker.id, {
+          speaker_name: trimmed || null,
+        });
+        onUpdate?.(updated);
+        setIsEditing(false);
+      }
     } catch (error) {
       console.error('Failed to update speaker:', error);
     } finally {
@@ -65,7 +80,7 @@ export function SpeakerBadge({ speaker, speakerIndex, onUpdate }: SpeakerBadgePr
         onBlur={handleSave}
         onKeyDown={handleKeyDown}
         disabled={isLoading}
-        className="px-2 py-0.5 text-xs rounded border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 w-32"
+        className="px-2 py-0.5 text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 w-32"
         placeholder={speaker.speaker_label}
         autoFocus
       />
@@ -77,7 +92,7 @@ export function SpeakerBadge({ speaker, speakerIndex, onUpdate }: SpeakerBadgePr
       onClick={() => setIsEditing(true)}
       className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full cursor-pointer hover:opacity-80 transition-opacity"
       style={{ backgroundColor: `${color}20`, color }}
-      title="Click to rename speaker"
+      title="Click to reassign speaker"
     >
       {displayName}
     </button>

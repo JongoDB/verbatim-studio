@@ -108,6 +108,28 @@ export function TranscriptPage({ recordingId, onBack, initialSeekTime }: Transcr
     });
   }, []);
 
+  // Handle per-segment speaker reassignment
+  const handleSpeakerReassign = useCallback(async (segmentId: string, speakerName: string) => {
+    if (!transcript) return;
+    try {
+      const result = await api.speakers.reassignSegment(transcript.id, segmentId, speakerName);
+      // Update the segment in transcript state
+      setTranscript((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          segments: prev.segments.map((s) =>
+            s.id === result.segment.id ? result.segment : s
+          ),
+        };
+      });
+      // Replace entire speakers list (handles additions and orphan cleanup)
+      setSpeakers(result.speakers);
+    } catch (error) {
+      console.error('Failed to reassign segment speaker:', error);
+    }
+  }, [transcript]);
+
   // --- Selection & annotation state ---
   const [selectedSegmentIds, setSelectedSegmentIds] = useState<Set<string>>(new Set());
 
@@ -495,6 +517,7 @@ export function TranscriptPage({ recordingId, onBack, initialSeekTime }: Transcr
                 onToggleSelect={handleToggleSelect}
                 onHighlightChange={handleHighlightChange}
                 onCommentCountChange={handleCommentCountChange}
+                onSpeakerReassign={handleSpeakerReassign}
               />
             );
           })}

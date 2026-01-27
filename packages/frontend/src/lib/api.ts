@@ -505,6 +505,19 @@ class ApiClient {
           body: JSON.stringify({ target_speaker_id: targetSpeakerId }),
         },
       ),
+
+    reassignSegment: (transcriptId: string, segmentId: string, speakerName: string) =>
+      this.request<{ segment: Segment; speakers: Speaker[] }>(
+        '/api/speakers/reassign-segment',
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            transcript_id: transcriptId,
+            segment_id: segmentId,
+            speaker_name: speakerName,
+          }),
+        },
+      ),
   };
 
   // Comments
