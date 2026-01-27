@@ -304,7 +304,12 @@ async def handle_transcription(
             update(Recording).where(Recording.id == recording_id).values(status="processing")
         )
         await session.commit()
+
+        # Use extracted audio for video files, otherwise use original
         audio_path = recording.file_path
+        extracted_audio = Path(recording.file_path).parent / "audio.wav"
+        if extracted_audio.exists():
+            audio_path = str(extracted_audio)
 
     try:
         # Wrap progress for transcription phase (0-60%)
