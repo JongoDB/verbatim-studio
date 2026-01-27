@@ -33,6 +33,34 @@ class Project(Base):
     recordings: Mapped[list["Recording"]] = relationship(back_populates="project")
 
 
+class Tag(Base):
+    """Tag model for categorizing recordings."""
+
+    __tablename__ = "tags"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    name: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
+    color: Mapped[str | None] = mapped_column(String(7))  # "#FF5733"
+    created_at: Mapped[datetime] = mapped_column(default=func.now())
+
+    recordings: Mapped[list["Recording"]] = relationship(
+        secondary="recording_tags", back_populates="tags"
+    )
+
+
+class RecordingTag(Base):
+    """Junction table for recording-tag many-to-many relationship."""
+
+    __tablename__ = "recording_tags"
+
+    recording_id: Mapped[str] = mapped_column(
+        ForeignKey("recordings.id", ondelete="CASCADE"), primary_key=True
+    )
+    tag_id: Mapped[str] = mapped_column(
+        ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True
+    )
+
+
 class Recording(Base):
     """Recording model for audio/video files."""
 
@@ -54,6 +82,9 @@ class Recording(Base):
     project: Mapped[Project | None] = relationship(back_populates="recordings")
     transcript: Mapped["Transcript | None"] = relationship(
         back_populates="recording", uselist=False, cascade="all, delete-orphan"
+    )
+    tags: Mapped[list[Tag]] = relationship(
+        secondary="recording_tags", back_populates="recordings"
     )
 
 

@@ -13,8 +13,29 @@ export interface Recording {
   mime_type: string | null;
   metadata: Record<string, unknown>;
   status: 'pending' | 'processing' | 'completed' | 'failed';
+  tag_ids: string[];
   created_at: string;
   updated_at: string;
+}
+
+export interface Tag {
+  id: string;
+  name: string;
+  color: string | null;
+  created_at: string;
+}
+
+export interface TagListResponse {
+  items: Tag[];
+}
+
+export interface UniqueSpeaker {
+  name: string;
+  count: number;
+}
+
+export interface UniqueSpeakerListResponse {
+  items: UniqueSpeaker[];
 }
 
 export interface RecordingListResponse {
@@ -324,6 +345,10 @@ class ApiClient {
       search?: string;
       sortBy?: 'created_at' | 'title' | 'duration';
       sortOrder?: 'asc' | 'desc';
+      dateFrom?: string;
+      dateTo?: string;
+      tagIds?: string[];
+      speaker?: string;
     }) => {
       const params = new URLSearchParams();
       params.set('page', String(options?.page ?? 1));
@@ -333,6 +358,10 @@ class ApiClient {
       if (options?.search) params.set('search', options.search);
       if (options?.sortBy) params.set('sort_by', options.sortBy);
       if (options?.sortOrder) params.set('sort_order', options.sortOrder);
+      if (options?.dateFrom) params.set('date_from', options.dateFrom);
+      if (options?.dateTo) params.set('date_to', options.dateTo);
+      if (options?.tagIds?.length) params.set('tag_ids', options.tagIds.join(','));
+      if (options?.speaker) params.set('speaker', options.speaker);
       return this.request<RecordingListResponse>(`/api/recordings?${params.toString()}`);
     },
 
@@ -444,10 +473,42 @@ class ApiClient {
     byTranscript: (transcriptId: string) =>
       this.request<SpeakerListResponse>(`/api/speakers/by-transcript/${transcriptId}`),
 
+    unique: () => this.request<UniqueSpeakerListResponse>('/api/speakers/unique'),
+
     update: (speakerId: string, data: SpeakerUpdateRequest) =>
       this.request<Speaker>(`/api/speakers/${speakerId}`, {
         method: 'PATCH',
         body: JSON.stringify(data),
+      }),
+  };
+
+  // Tags
+  tags = {
+    list: () => this.request<TagListResponse>('/api/tags'),
+
+    create: (name: string, color?: string) =>
+      this.request<Tag>('/api/tags', {
+        method: 'POST',
+        body: JSON.stringify({ name, color }),
+      }),
+
+    delete: (tagId: string) =>
+      this.request<MessageResponse>(`/api/tags/${tagId}`, {
+        method: 'DELETE',
+      }),
+
+    forRecording: (recordingId: string) =>
+      this.request<TagListResponse>(`/api/tags/recordings/${recordingId}`),
+
+    assign: (recordingId: string, tagId: string) =>
+      this.request<MessageResponse>(`/api/tags/recordings/${recordingId}`, {
+        method: 'POST',
+        body: JSON.stringify({ tag_id: tagId }),
+      }),
+
+    remove: (recordingId: string, tagId: string) =>
+      this.request<MessageResponse>(`/api/tags/recordings/${recordingId}/${tagId}`, {
+        method: 'DELETE',
       }),
   };
 

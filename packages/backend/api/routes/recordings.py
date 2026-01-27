@@ -8,11 +8,12 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import distinct, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from persistence import get_db
-from persistence.models import Recording
+from persistence.models import Recording, RecordingTag, Speaker, Tag, Transcript
 from services.jobs import job_queue
 from services.storage import storage_service
 
@@ -64,6 +65,7 @@ class RecordingResponse(BaseModel):
     mime_type: str | None
     metadata: dict = Field(default_factory=dict)
     status: str
+    tag_ids: list[str] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
 
@@ -107,7 +109,7 @@ class TranscribeResponse(BaseModel):
     status: str
 
 
-def _recording_to_response(recording: Recording) -> RecordingResponse:
+def _recording_to_response(recording: Recording, tag_ids: list[str] | None = None) -> RecordingResponse:
     """Convert a Recording model to a response model."""
     return RecordingResponse(
         id=recording.id,
@@ -120,6 +122,7 @@ def _recording_to_response(recording: Recording) -> RecordingResponse:
         mime_type=recording.mime_type,
         metadata=recording.metadata_ or {},
         status=recording.status,
+        tag_ids=tag_ids if tag_ids is not None else [],
         created_at=recording.created_at,
         updated_at=recording.updated_at,
     )
@@ -135,6 +138,10 @@ async def list_recordings(
     search: Annotated[str | None, Query(description="Search by title or filename")] = None,
     sort_by: Annotated[str, Query(description="Sort field (created_at, title, duration)")] = "created_at",
     sort_order: Annotated[str, Query(description="Sort order (asc, desc)")] = "desc",
+    date_from: Annotated[str | None, Query(description="Filter from date (ISO 8601, e.g. 2024-01-01)")] = None,
+    date_to: Annotated[str | None, Query(description="Filter to date (ISO 8601, e.g. 2024-12-31)")] = None,
+    tag_ids: Annotated[str | None, Query(description="Comma-separated tag IDs to filter by")] = None,
+    speaker: Annotated[str | None, Query(description="Filter by speaker name")] = None,
 ) -> RecordingListResponse:
     """List all recordings with pagination and filtering.
 
@@ -147,6 +154,10 @@ async def list_recordings(
         search: Optional search string for title or filename.
         sort_by: Field to sort by (created_at, title, duration).
         sort_order: Sort direction (asc, desc).
+        date_from: Optional start date filter (inclusive).
+        date_to: Optional end date filter (inclusive).
+        tag_ids: Optional comma-separated tag IDs to filter by.
+        speaker: Optional speaker name to filter by.
 
     Returns:
         Paginated list of recordings.
@@ -169,6 +180,51 @@ async def list_recordings(
             or_(
                 Recording.title.ilike(search_term),
                 Recording.file_name.ilike(search_term),
+            )
+        )
+
+    # Date range filters
+    if date_from is not None:
+        try:
+            from_date = datetime.fromisoformat(date_from)
+            query = query.where(Recording.created_at >= from_date)
+        except ValueError:
+            pass  # Ignore invalid date format
+
+    if date_to is not None:
+        try:
+            # Set to end of day for inclusive range
+            to_date = datetime.fromisoformat(date_to).replace(hour=23, minute=59, second=59)
+            query = query.where(Recording.created_at <= to_date)
+        except ValueError:
+            pass  # Ignore invalid date format
+
+    # Tag filter — recordings must have ALL specified tags
+    if tag_ids is not None and tag_ids.strip():
+        tag_id_list = [t.strip() for t in tag_ids.split(",") if t.strip()]
+        if tag_id_list:
+            query = query.where(
+                Recording.id.in_(
+                    select(RecordingTag.recording_id)
+                    .where(RecordingTag.tag_id.in_(tag_id_list))
+                    .group_by(RecordingTag.recording_id)
+                    .having(func.count(distinct(RecordingTag.tag_id)) == len(tag_id_list))
+                )
+            )
+
+    # Speaker filter — recordings whose transcript contains this speaker
+    if speaker is not None and speaker.strip():
+        speaker_term = f"%{speaker.strip()}%"
+        query = query.where(
+            Recording.id.in_(
+                select(Transcript.recording_id)
+                .join(Speaker, Speaker.transcript_id == Transcript.id)
+                .where(
+                    or_(
+                        Speaker.speaker_name.ilike(speaker_term),
+                        Speaker.speaker_label.ilike(speaker_term),
+                    )
+                )
             )
         )
 
@@ -198,8 +254,20 @@ async def list_recordings(
     result = await db.execute(query)
     recordings = result.scalars().all()
 
+    # Batch-load tag IDs for all recordings
+    recording_ids = [r.id for r in recordings]
+    tag_map: dict[str, list[str]] = {rid: [] for rid in recording_ids}
+    if recording_ids:
+        tag_result = await db.execute(
+            select(RecordingTag.recording_id, RecordingTag.tag_id).where(
+                RecordingTag.recording_id.in_(recording_ids)
+            )
+        )
+        for row in tag_result:
+            tag_map[row.recording_id].append(row.tag_id)
+
     return RecordingListResponse(
-        items=[_recording_to_response(r) for r in recordings],
+        items=[_recording_to_response(r, tag_ids=tag_map.get(r.id, [])) for r in recordings],
         total=total,
         page=page,
         page_size=page_size,

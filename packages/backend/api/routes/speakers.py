@@ -4,7 +4,7 @@ import logging
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import select, update
+from sqlalchemy import distinct, func, select, update
 
 from persistence.database import async_session
 from persistence.models import Speaker, Transcript
@@ -35,6 +35,43 @@ class SpeakerListResponse(BaseModel):
     """Speaker list response model."""
 
     items: list[SpeakerResponse]
+
+
+class UniqueSpeakerResponse(BaseModel):
+    """Unique speaker name for filter dropdowns."""
+
+    name: str
+    count: int
+
+
+class UniqueSpeakerListResponse(BaseModel):
+    """List of unique speaker names."""
+
+    items: list[UniqueSpeakerResponse]
+
+
+@router.get("/unique", response_model=UniqueSpeakerListResponse)
+async def list_unique_speakers() -> UniqueSpeakerListResponse:
+    """List all unique speaker names across all recordings, with occurrence count."""
+    async with async_session() as session:
+        # Get unique speaker names (prefer speaker_name over speaker_label)
+        result = await session.execute(
+            select(
+                func.coalesce(Speaker.speaker_name, Speaker.speaker_label).label("name"),
+                func.count().label("count"),
+            )
+            .group_by("name")
+            .order_by(func.count().desc())
+        )
+        rows = result.all()
+
+        return UniqueSpeakerListResponse(
+            items=[
+                UniqueSpeakerResponse(name=row.name, count=row.count)
+                for row in rows
+                if row.name
+            ]
+        )
 
 
 @router.get("/by-transcript/{transcript_id}", response_model=SpeakerListResponse)
