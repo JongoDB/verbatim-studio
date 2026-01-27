@@ -1,5 +1,6 @@
 """FastAPI application entry point."""
 
+import subprocess
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -9,6 +10,23 @@ from api.routes import ai, archive, config, health, jobs, projects, recordings, 
 from core.config import settings
 from persistence import init_db
 from services.jobs import job_queue
+
+
+def _get_git_version() -> str:
+    """Read version from git tags at startup."""
+    try:
+        result = subprocess.run(
+            ["git", "describe", "--tags", "--always"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+    return "dev"
+
+
+APP_VERSION = _get_git_version()
 
 
 @asynccontextmanager
@@ -25,7 +43,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Verbatim Studio API",
     description="Privacy-first transcription backend",
-    version="0.1.0",
+    version=APP_VERSION,
     lifespan=lifespan,
 )
 
@@ -59,6 +77,6 @@ async def root():
     """Root endpoint."""
     return {
         "name": "Verbatim Studio API",
-        "version": "0.1.0",
+        "version": APP_VERSION,
         "mode": settings.MODE,
     }

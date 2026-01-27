@@ -10,9 +10,10 @@ import { useKeyboardShortcuts, KEYBOARD_SHORTCUTS } from '@/hooks/useKeyboardSho
 interface TranscriptPageProps {
   recordingId: string;
   onBack: () => void;
+  initialSeekTime?: number;
 }
 
-export function TranscriptPage({ recordingId, onBack }: TranscriptPageProps) {
+export function TranscriptPage({ recordingId, onBack, initialSeekTime }: TranscriptPageProps) {
   const [transcript, setTranscript] = useState<TranscriptWithSegments | null>(null);
   const [recording, setRecording] = useState<Recording | null>(null);
   const [speakers, setSpeakers] = useState<Speaker[]>([]);
@@ -53,6 +54,24 @@ export function TranscriptPage({ recordingId, onBack }: TranscriptPageProps) {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // Seek to initial time (from search result click) once data is loaded
+  const hasAppliedInitialSeek = useRef(false);
+  useEffect(() => {
+    if (
+      initialSeekTime !== undefined &&
+      !hasAppliedInitialSeek.current &&
+      !isLoading &&
+      transcript &&
+      audioRef.current
+    ) {
+      hasAppliedInitialSeek.current = true;
+      // Small delay to let the waveform initialize
+      setTimeout(() => {
+        audioRef.current?.seekTo(initialSeekTime);
+      }, 500);
+    }
+  }, [initialSeekTime, isLoading, transcript]);
 
   // Handle segment text/speaker updates
   const handleSegmentUpdate = (updated: Segment) => {

@@ -1,5 +1,6 @@
 """Recording file management endpoints."""
 
+import io
 import logging
 from datetime import datetime
 from pathlib import Path
@@ -20,6 +21,19 @@ from services.storage import storage_service
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/recordings", tags=["recordings"])
+
+
+def _extract_duration(content: bytes, filename: str) -> float | None:
+    """Extract audio/video duration in seconds using mutagen."""
+    try:
+        from mutagen import File as MutagenFile
+
+        audio = MutagenFile(io.BytesIO(content), filename=filename)
+        if audio is not None and audio.info is not None:
+            return round(audio.info.length, 2)
+    except Exception:
+        logger.debug("Could not extract duration from %s", filename)
+    return None
 
 # Allowed MIME types for audio/video uploads
 ALLOWED_MIME_TYPES = {
@@ -331,12 +345,16 @@ async def upload_recording(
     if not safe_filename or safe_filename in (".", ".."):
         safe_filename = "unknown"
 
+    # Extract audio duration
+    duration = _extract_duration(content, safe_filename)
+
     # Create recording record first to get ID
     recording = Recording(
         title=title or safe_filename or "Untitled Recording",
         file_path="",  # Will be updated after saving
         file_name=safe_filename,
         file_size=file_size,
+        duration_seconds=duration,
         mime_type=content_type,
         project_id=project_id,
         status="pending",

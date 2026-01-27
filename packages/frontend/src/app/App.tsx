@@ -5,13 +5,13 @@ import { TranscriptPage } from '@/pages/transcript/TranscriptPage';
 import { SearchBox } from '@/components/search/SearchBox';
 import { Dashboard } from '@/components/dashboard/Dashboard';
 import { SettingsPage } from '@/pages/settings/SettingsPage';
-import { APP_VERSION } from '@/version';
+import { APP_VERSION } from '@/version'; // static fallback
 
 type NavigationState =
   | { type: 'dashboard' }
   | { type: 'recordings' }
   | { type: 'settings' }
-  | { type: 'transcript'; recordingId: string };
+  | { type: 'transcript'; recordingId: string; initialSeekTime?: number };
 
 type Theme = 'light' | 'dark' | 'system';
 
@@ -62,8 +62,12 @@ export function App() {
   const currentTab = navigation.type === 'transcript' ? 'recordings' : navigation.type as 'dashboard' | 'recordings' | 'settings';
 
   const handleSearchResult = useCallback((result: GlobalSearchResult) => {
-    // Navigate to the recording's transcript
-    setNavigation({ type: 'transcript', recordingId: result.recording_id });
+    // Navigate to the recording's transcript, seeking to the segment time if available
+    setNavigation({
+      type: 'transcript',
+      recordingId: result.recording_id,
+      initialSeekTime: result.start_time ?? undefined,
+    });
   }, []);
 
   // Sync theme to document and localStorage
@@ -259,7 +263,7 @@ export function App() {
               )}
             </button>
             <span className="text-muted-foreground font-mono">
-              {APP_VERSION}
+              {apiInfo?.version || APP_VERSION}
             </span>
             {health && (
               <span
@@ -293,6 +297,7 @@ export function App() {
           <TranscriptPage
             recordingId={navigation.recordingId}
             onBack={handleBackToRecordings}
+            initialSeekTime={navigation.initialSeekTime}
           />
         )}
         {navigation.type === 'settings' && (
