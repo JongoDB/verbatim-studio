@@ -430,6 +430,7 @@ async def summarize_transcript(
             key_points=result.key_points,
             action_items=result.action_items,
             topics=result.topics,
+            named_entities=result.named_entities,
         )
     except Exception as e:
         logger.exception("Summarization failed")
