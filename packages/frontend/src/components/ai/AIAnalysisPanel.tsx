@@ -21,6 +21,7 @@ export function AIAnalysisPanel({ transcriptId }: AIAnalysisPanelProps) {
 
   // Summary state
   const [summary, setSummary] = useState<SummarizationResponse | null>(null);
+  const [temperature, setTemperature] = useState(0.3);
 
   // Ask state
   const [question, setQuestion] = useState('');
@@ -30,14 +31,14 @@ export function AIAnalysisPanel({ transcriptId }: AIAnalysisPanelProps) {
     setIsLoading(true);
     setError(null);
     try {
-      const result = await api.ai.summarize(transcriptId);
+      const result = await api.ai.summarize(transcriptId, temperature);
       setSummary(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to generate summary');
     } finally {
       setIsLoading(false);
     }
-  }, [transcriptId]);
+  }, [transcriptId, temperature]);
 
   const handleAsk = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
@@ -227,19 +228,34 @@ export function AIAnalysisPanel({ transcriptId }: AIAnalysisPanelProps) {
                   </div>
                 )}
 
-                <button
-                  onClick={handleSummarize}
-                  disabled={isLoading}
-                  className="inline-flex items-center gap-2 text-sm text-purple-600 dark:text-purple-400 hover:underline disabled:opacity-50"
-                >
-                  {isLoading && (
-                    <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                    </svg>
-                  )}
-                  {isLoading ? 'Regenerating...' : 'Regenerate'}
-                </button>
+                <div className="flex items-center justify-between pt-2 border-t border-gray-100 dark:border-gray-700">
+                  <button
+                    onClick={handleSummarize}
+                    disabled={isLoading}
+                    className="inline-flex items-center gap-2 text-sm text-purple-600 dark:text-purple-400 hover:underline disabled:opacity-50"
+                  >
+                    {isLoading && (
+                      <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      </svg>
+                    )}
+                    {isLoading ? 'Regenerating...' : 'Regenerate'}
+                  </button>
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-gray-500 dark:text-gray-400">Temperature</label>
+                    <input
+                      type="range"
+                      min="0"
+                      max="1"
+                      step="0.1"
+                      value={temperature}
+                      onChange={(e) => setTemperature(parseFloat(e.target.value))}
+                      className="w-20 h-1 accent-purple-600"
+                    />
+                    <span className="text-xs text-gray-500 dark:text-gray-400 w-6 text-right">{temperature.toFixed(1)}</span>
+                  </div>
+                </div>
               </div>
             )}
           </div>
