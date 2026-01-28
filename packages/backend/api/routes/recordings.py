@@ -107,8 +107,8 @@ ALLOWED_MIME_TYPES = {
     "video/x-matroska",
 }
 
-# Maximum file size (500 MB)
-MAX_FILE_SIZE = 500 * 1024 * 1024
+# Maximum file size (10 GB)
+MAX_FILE_SIZE = 10 * 1024 * 1024 * 1024
 
 
 # Pydantic models for responses

@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.formparsers import MultiPartParser
 
 from api.routes import ai, archive, config, health, jobs, projects, recordings, search, speakers, stats, tags, transcripts
 from api.routes.comments import comments_router, segment_comments_router
@@ -29,6 +30,9 @@ def _get_git_version() -> str:
 
 
 APP_VERSION = _get_git_version()
+
+# Allow uploads up to 10 GB (Starlette default is 1 GB)
+MultiPartParser.max_file_size = 10 * 1024 * 1024 * 1024
 
 
 @asynccontextmanager
