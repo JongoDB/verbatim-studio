@@ -15,6 +15,11 @@ from persistence.models import Job, Recording, Segment, Speaker, Transcript
 
 logger = logging.getLogger(__name__)
 
+
+class JobCancelled(Exception):
+    """Raised when a job is cancelled via cooperative cancellation."""
+
+
 # Type alias for job handlers
 # Handler receives (payload, progress_callback) and returns result dict
 ProgressCallback = Callable[[float], Awaitable[None]]
@@ -33,6 +38,7 @@ class JobQueue:
         self._executor = ThreadPoolExecutor(max_workers=max_workers)
         self._handlers: dict[str, JobHandler] = {}
         self._futures: dict[str, Future] = {}
+        self._cancelled_jobs: set[str] = set()
         logger.info("JobQueue initialized with max_workers=%d", max_workers)
 
     def register_handler(self, job_type: str, handler: JobHandler) -> None:
@@ -136,9 +142,11 @@ class JobQueue:
             if handler is None:
                 raise ValueError(f"No handler registered for job type: {job_type}")
 
-            # Create progress callback
+            # Create progress callback with cancellation check
             async def update_progress(progress: float) -> None:
-                """Update job progress in database."""
+                """Update job progress in database. Raises JobCancelled if requested."""
+                if job_id in self._cancelled_jobs:
+                    raise JobCancelled(f"Job {job_id} was cancelled")
                 async with async_session() as session:
                     await session.execute(
                         update(Job).where(Job.id == job_id).values(progress=progress)
@@ -163,6 +171,20 @@ class JobQueue:
                 await session.commit()
             logger.info("Job %s completed successfully", job_id)
 
+        except JobCancelled:
+            logger.info("Job %s cancelled by user", job_id)
+            async with async_session() as session:
+                await session.execute(
+                    update(Job)
+                    .where(Job.id == job_id)
+                    .values(
+                        status="cancelled",
+                        error="Cancelled by user",
+                        completed_at=datetime.now(UTC),
+                    )
+                )
+                await session.commit()
+
         except Exception as e:
             logger.exception("Job %s failed with error", job_id)
             # Mark job as failed
@@ -179,8 +201,9 @@ class JobQueue:
                 await session.commit()
 
         finally:
-            # Clean up future reference
+            # Clean up future reference and cancellation tracking
             self._futures.pop(job_id, None)
+            self._cancelled_jobs.discard(job_id)
 
     async def get_job(self, job_id: str) -> Job | None:
         """Get a job by ID.
@@ -196,15 +219,16 @@ class JobQueue:
             return result.scalar_one_or_none()
 
     async def cancel_job(self, job_id: str) -> bool:
-        """Cancel a queued job.
+        """Cancel a queued or running job.
 
-        Only jobs in 'queued' status can be cancelled.
+        Queued jobs are cancelled immediately. Running jobs are cancelled
+        cooperatively — the next progress callback will raise JobCancelled.
 
         Args:
             job_id: The job ID to cancel.
 
         Returns:
-            True if job was cancelled, False if not found or not cancellable.
+            True if job was cancelled (or cancellation requested), False if not found or not cancellable.
         """
         async with async_session() as session:
             result = await session.execute(select(Job).where(Job.id == job_id))
@@ -213,24 +237,29 @@ class JobQueue:
             if job is None:
                 return False
 
-            if job.status != "queued":
-                return False
+            if job.status == "queued":
+                # Immediate cancellation for queued jobs
+                await session.execute(
+                    update(Job)
+                    .where(Job.id == job_id)
+                    .values(status="cancelled", completed_at=datetime.now(UTC))
+                )
+                await session.commit()
 
-            # Update status to cancelled
-            await session.execute(
-                update(Job)
-                .where(Job.id == job_id)
-                .values(status="cancelled", completed_at=datetime.now(UTC))
-            )
-            await session.commit()
+                future = self._futures.pop(job_id, None)
+                if future is not None:
+                    future.cancel()
 
-            # Try to cancel the future if it exists
-            future = self._futures.pop(job_id, None)
-            if future is not None:
-                future.cancel()
+                logger.info("Job %s cancelled (was queued)", job_id)
+                return True
 
-            logger.info("Job %s cancelled", job_id)
-            return True
+            if job.status == "running":
+                # Cooperative cancellation for running jobs
+                self._cancelled_jobs.add(job_id)
+                logger.info("Job %s cancellation requested (running)", job_id)
+                return True
+
+            return False
 
     async def list_jobs(self, status: str | None = None, limit: int = 100) -> list[Job]:
         """List jobs with optional status filter.
@@ -449,6 +478,16 @@ async def handle_transcription(
             "language": detected_language,
             "speaker_count": len(speakers_found),
         }
+
+    except JobCancelled:
+        # Update recording status to cancelled
+        async with async_session() as session:
+            await session.execute(
+                update(Recording).where(Recording.id == recording_id).values(status="cancelled")
+            )
+            await session.commit()
+        logger.info("Transcription cancelled for recording %s", recording_id)
+        raise
 
     except Exception:
         # Update recording status to failed

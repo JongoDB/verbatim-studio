@@ -28,6 +28,7 @@ const STATUS_OPTIONS = [
   { value: 'processing', label: 'Processing' },
   { value: 'completed', label: 'Completed' },
   { value: 'failed', label: 'Failed' },
+  { value: 'cancelled', label: 'Cancelled' },
 ];
 
 const SORT_OPTIONS = [

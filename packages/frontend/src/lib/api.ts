@@ -12,7 +12,7 @@ export interface Recording {
   duration_seconds: number | null;
   mime_type: string | null;
   metadata: Record<string, unknown>;
-  status: 'pending' | 'processing' | 'completed' | 'failed';
+  status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
   tag_ids: string[];
   created_at: string;
   updated_at: string;
@@ -456,6 +456,16 @@ class ApiClient {
         { method: 'POST' }
       );
     },
+
+    cancel: (id: string) =>
+      this.request<MessageResponse>(`/api/recordings/${id}/cancel`, {
+        method: 'POST',
+      }),
+
+    retry: (id: string) =>
+      this.request<TranscribeResponse>(`/api/recordings/${id}/retry`, {
+        method: 'POST',
+      }),
 
     getAudioUrl: (id: string) => `${this.baseUrl}/api/recordings/${id}/audio`,
   };

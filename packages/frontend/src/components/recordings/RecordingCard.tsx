@@ -6,6 +6,9 @@ interface RecordingCardProps {
   onTranscribe: () => void;
   onDelete: () => void;
   onView: () => void;
+  onCancel?: () => void;
+  onRetry?: () => void;
+  progress?: number;
 }
 
 function formatFileSize(bytes: number | null): string {
@@ -28,7 +31,7 @@ function formatDate(dateString: string): string {
   });
 }
 
-const statusConfig = {
+const statusConfig: Record<string, { label: string; className: string }> = {
   pending: {
     label: 'Pending',
     className: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
@@ -45,13 +48,20 @@ const statusConfig = {
     label: 'Failed',
     className: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
   },
-} as const;
+  cancelled: {
+    label: 'Cancelled',
+    className: 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200',
+  },
+};
 
 export function RecordingCard({
   recording,
   onTranscribe,
   onDelete,
   onView,
+  onCancel,
+  onRetry,
+  progress,
 }: RecordingCardProps) {
   const status = statusConfig[recording.status] || statusConfig.pending;
 
@@ -79,6 +89,21 @@ export function RecordingCard({
         </span>
       </div>
 
+      {/* Progress bar for processing recordings */}
+      {recording.status === 'processing' && (
+        <div className="mt-3">
+          <div className="h-1.5 w-full rounded-full bg-gray-200 dark:bg-gray-700">
+            <div
+              className="h-1.5 rounded-full bg-blue-500 transition-all duration-500"
+              style={{ width: `${Math.max(progress ?? 0, 2)}%` }}
+            />
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {progress != null && progress > 0 ? `${Math.round(progress)}%` : 'Starting...'}
+          </p>
+        </div>
+      )}
+
       <div className="mt-3 flex items-center gap-4 text-xs text-muted-foreground">
         <span>{formatFileSize(recording.file_size)}</span>
         <span>{formatDate(recording.created_at)}</span>
@@ -93,12 +118,28 @@ export function RecordingCard({
             Transcribe
           </button>
         )}
+        {recording.status === 'processing' && onCancel && (
+          <button
+            onClick={onCancel}
+            className="inline-flex items-center justify-center rounded-md border border-orange-500/50 px-3 py-1.5 text-sm font-medium text-orange-600 dark:text-orange-400 hover:bg-orange-500/10 transition-colors"
+          >
+            Cancel
+          </button>
+        )}
         {recording.status === 'completed' && (
           <button
             onClick={onView}
             className="inline-flex items-center justify-center rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
           >
             View Transcript
+          </button>
+        )}
+        {(recording.status === 'failed' || recording.status === 'cancelled') && onRetry && (
+          <button
+            onClick={onRetry}
+            className="inline-flex items-center justify-center rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+          >
+            Retry
           </button>
         )}
         <button

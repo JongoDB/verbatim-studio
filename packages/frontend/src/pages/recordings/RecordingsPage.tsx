@@ -97,6 +97,7 @@ export function RecordingsPage({ onViewTranscript }: RecordingsPageProps) {
   const [transcribeDialogRecording, setTranscribeDialogRecording] = useState<Recording | null>(null);
   const [showRecorder, setShowRecorder] = useState(false);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [jobProgress, setJobProgress] = useState<Record<string, number>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadRecordings = useCallback(async () => {
@@ -130,6 +131,53 @@ export function RecordingsPage({ onViewTranscript }: RecordingsPageProps) {
     const interval = setInterval(loadRecordings, 5000);
     return () => clearInterval(interval);
   }, [loadRecordings]);
+
+  // Poll job progress for processing recordings
+  useEffect(() => {
+    const processingIds = recordings
+      .filter((r) => r.status === 'processing')
+      .map((r) => r.id);
+
+    if (processingIds.length === 0) {
+      setJobProgress({});
+      return;
+    }
+
+    let cancelled = false;
+
+    const pollProgress = async () => {
+      try {
+        const response = await api.jobs.list('running');
+        if (cancelled) return;
+        const progressMap: Record<string, number> = {};
+        for (const job of response.items) {
+          const recId = (job.payload as Record<string, unknown>)?.recording_id;
+          if (typeof recId === 'string' && processingIds.includes(recId)) {
+            progressMap[recId] = job.progress;
+          }
+        }
+        // Also check queued jobs (they have 0 progress but should show "Starting...")
+        const queuedResponse = await api.jobs.list('queued');
+        if (cancelled) return;
+        for (const job of queuedResponse.items) {
+          const recId = (job.payload as Record<string, unknown>)?.recording_id;
+          if (typeof recId === 'string' && processingIds.includes(recId) && !(recId in progressMap)) {
+            progressMap[recId] = 0;
+          }
+        }
+        setJobProgress(progressMap);
+      } catch {
+        // Ignore progress polling errors
+      }
+    };
+
+    pollProgress();
+    const interval = setInterval(pollProgress, 2000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [recordings]);
 
   // Sync filters to URL and localStorage
   useEffect(() => {
@@ -217,6 +265,30 @@ export function RecordingsPage({ onViewTranscript }: RecordingsPageProps) {
       }
     },
     []
+  );
+
+  const handleCancel = useCallback(
+    async (recordingId: string) => {
+      try {
+        await api.recordings.cancel(recordingId);
+        await loadRecordings();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to cancel transcription');
+      }
+    },
+    [loadRecordings]
+  );
+
+  const handleRetry = useCallback(
+    async (recordingId: string) => {
+      try {
+        await api.recordings.retry(recordingId);
+        await loadRecordings();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to retry transcription');
+      }
+    },
+    [loadRecordings]
   );
 
   const handleView = useCallback((recordingId: string) => {
@@ -391,6 +463,9 @@ export function RecordingsPage({ onViewTranscript }: RecordingsPageProps) {
               onTranscribe={() => handleOpenTranscribeDialog(recording)}
               onDelete={() => handleDelete(recording.id)}
               onView={() => handleView(recording.id)}
+              onCancel={() => handleCancel(recording.id)}
+              onRetry={() => handleRetry(recording.id)}
+              progress={jobProgress[recording.id]}
             />
           ))}
         </div>
@@ -403,6 +478,9 @@ export function RecordingsPage({ onViewTranscript }: RecordingsPageProps) {
               onTranscribe={() => handleOpenTranscribeDialog(recording)}
               onDelete={() => handleDelete(recording.id)}
               onView={() => handleView(recording.id)}
+              onCancel={() => handleCancel(recording.id)}
+              onRetry={() => handleRetry(recording.id)}
+              progress={jobProgress[recording.id]}
             />
           ))}
         </div>

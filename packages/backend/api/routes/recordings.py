@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from persistence import get_db
-from persistence.models import Recording, RecordingTag, Speaker, Tag, Transcript
+from persistence.models import Job, Recording, RecordingTag, Speaker, Tag, Transcript
 from services.jobs import job_queue
 from services.storage import storage_service
 
@@ -609,6 +609,142 @@ async def transcribe_recording(
     job_id = await job_queue.enqueue("transcribe", payload)
 
     logger.info("Enqueued transcription job %s for recording %s", job_id, recording_id)
+
+    return TranscribeResponse(
+        job_id=job_id,
+        status="queued",
+    )
+
+
+@router.post("/{recording_id}/cancel", response_model=MessageResponse)
+async def cancel_recording(
+    recording_id: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> MessageResponse:
+    """Cancel an in-progress transcription for a recording.
+
+    Args:
+        recording_id: The recording's unique ID.
+        db: Database session.
+
+    Returns:
+        Confirmation message.
+
+    Raises:
+        HTTPException: If recording not found or not processing.
+    """
+    result = await db.execute(select(Recording).where(Recording.id == recording_id))
+    recording = result.scalar_one_or_none()
+
+    if recording is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Recording not found: {recording_id}",
+        )
+
+    if recording.status != "processing":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Recording is not processing (status: {recording.status})",
+        )
+
+    # Find the active job for this recording
+    job_result = await db.execute(
+        select(Job)
+        .where(
+            Job.payload["recording_id"].as_string() == recording_id,
+            Job.status.in_(["queued", "running"]),
+        )
+        .order_by(Job.created_at.desc())
+        .limit(1)
+    )
+    job = job_result.scalar_one_or_none()
+
+    if job is None:
+        # No active job found — set recording to cancelled directly
+        recording.status = "cancelled"
+        await db.commit()
+        return MessageResponse(message="Recording cancelled (no active job found)", id=recording_id)
+
+    was_queued = job.status == "queued"
+    cancelled = await job_queue.cancel_job(job.id)
+
+    if not cancelled:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Could not cancel the job",
+        )
+
+    # For queued jobs, cancellation is immediate — update recording status now
+    if was_queued:
+        recording.status = "cancelled"
+        await db.commit()
+
+    # For running jobs, the cooperative cancellation in _run_job will update recording status
+
+    logger.info("Cancellation requested for recording %s (job %s)", recording_id, job.id)
+    return MessageResponse(message="Cancellation requested", id=recording_id)
+
+
+@router.post("/{recording_id}/retry", response_model=TranscribeResponse)
+async def retry_recording(
+    recording_id: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> TranscribeResponse:
+    """Retry a failed or cancelled transcription.
+
+    Creates a new transcription job with the same payload as the last attempt.
+
+    Args:
+        recording_id: The recording's unique ID.
+        db: Database session.
+
+    Returns:
+        New job ID and status.
+
+    Raises:
+        HTTPException: If recording not found or not in a retryable state.
+    """
+    result = await db.execute(select(Recording).where(Recording.id == recording_id))
+    recording = result.scalar_one_or_none()
+
+    if recording is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Recording not found: {recording_id}",
+        )
+
+    if recording.status not in ("failed", "cancelled"):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Recording is not in a retryable state (status: {recording.status})",
+        )
+
+    # Find the last job for this recording to reuse its payload
+    last_job_result = await db.execute(
+        select(Job)
+        .where(Job.payload["recording_id"].as_string() == recording_id)
+        .order_by(Job.created_at.desc())
+        .limit(1)
+    )
+    last_job = last_job_result.scalar_one_or_none()
+
+    # Build payload — reuse previous settings or fall back to defaults
+    payload: dict = {"recording_id": recording_id}
+    if last_job and last_job.payload:
+        if "language" in last_job.payload:
+            payload["language"] = last_job.payload["language"]
+        if "diarize" in last_job.payload:
+            payload["diarize"] = last_job.payload["diarize"]
+
+    # Reset recording status
+    recording.status = "pending"
+    await db.commit()
+
+    # Enqueue new job
+    job_id = await job_queue.enqueue("transcribe", payload)
+
+    logger.info("Retry enqueued job %s for recording %s", job_id, recording_id)
 
     return TranscribeResponse(
         job_id=job_id,
