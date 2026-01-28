@@ -3,7 +3,7 @@
 Implements ITranscriptionEngine for local transcription on Apple Silicon
 using MLX Whisper with MPS GPU acceleration.
 
-Note: MLX Whisper does NOT support speaker diarization.
+Speaker diarization is handled separately by DiarizationService (pyannote via whisperx).
 """
 
 import asyncio
@@ -202,7 +202,7 @@ class MlxWhisperTranscriptionEngine(ITranscriptionEngine):
                     start=seg.get("start", 0.0),
                     end=seg.get("end", 0.0),
                     text=seg.get("text", "").strip(),
-                    speaker=None,  # MLX Whisper doesn't support diarization
+                    speaker=None,  # Speaker assigned later by DiarizationService
                     words=words,
                     confidence=None,
                 )
@@ -261,5 +261,7 @@ class MlxWhisperTranscriptionEngine(ITranscriptionEngine):
             "model_repo": self._model_repo,
             "device": "mps",
             "model_loaded": True,  # MLX loads on demand
-            "supports_diarization": False,
+            # Diarization is handled separately by DiarizationService (pyannote via whisperx)
+            # MLX Whisper just needs to produce segments - diarization works independently
+            "supports_diarization": True,
         }

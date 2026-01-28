@@ -148,12 +148,6 @@ def _get_engine_caveats(engine: str, effective_engine: str, diarize: bool) -> li
     """Generate caveats/warnings for the current engine configuration."""
     caveats = []
 
-    # MLX Whisper doesn't support diarization
-    if effective_engine == "mlx-whisper" and diarize:
-        caveats.append(
-            "Speaker diarization is not supported with MLX Whisper and will be skipped."
-        )
-
     # User selected mlx-whisper but not on Apple Silicon
     if engine == "mlx-whisper" and not is_apple_silicon():
         caveats.append(

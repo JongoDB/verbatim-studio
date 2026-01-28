@@ -1,0 +1,9 @@
+Transcript: test_speech.wav
+==================================================
+Language: EN
+Word Count: 16
+
+--------------------------------------------------
+
+[0:00] Hello, this is a test recording for verbatim studio.
+[0:03] The transcription should capture this speech accurately.
