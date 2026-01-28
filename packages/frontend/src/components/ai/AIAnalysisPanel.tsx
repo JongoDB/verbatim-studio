@@ -1,11 +1,11 @@
 import { useState, useCallback, useEffect } from 'react';
-import { api, type SummarizationResponse, type AnalysisResponse, type AnalysisType, type AIChatResponse } from '@/lib/api';
+import { api, type SummarizationResponse, type AnalysisResponse, type AIChatResponse } from '@/lib/api';
 
 interface AIAnalysisPanelProps {
   transcriptId: string;
 }
 
-type TabType = 'summary' | 'analysis' | 'ask';
+type TabType = 'summary' | 'ask';
 
 export function AIAnalysisPanel({ transcriptId }: AIAnalysisPanelProps) {
   const [aiAvailable, setAiAvailable] = useState<boolean | null>(null); // null = loading
@@ -22,9 +22,8 @@ export function AIAnalysisPanel({ transcriptId }: AIAnalysisPanelProps) {
   // Summary state
   const [summary, setSummary] = useState<SummarizationResponse | null>(null);
 
-  // Analysis state
-  const [analysisType, setAnalysisType] = useState<AnalysisType>('topics');
-  const [analysis, setAnalysis] = useState<AnalysisResponse | null>(null);
+  // Entities state
+  const [entities, setEntities] = useState<AnalysisResponse | null>(null);
 
   // Ask state
   const [question, setQuestion] = useState('');
@@ -34,27 +33,18 @@ export function AIAnalysisPanel({ transcriptId }: AIAnalysisPanelProps) {
     setIsLoading(true);
     setError(null);
     try {
-      const result = await api.ai.summarize(transcriptId);
-      setSummary(result);
+      const [summaryResult, entitiesResult] = await Promise.all([
+        api.ai.summarize(transcriptId),
+        api.ai.analyze(transcriptId, 'entities'),
+      ]);
+      setSummary(summaryResult);
+      setEntities(entitiesResult);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to generate summary');
     } finally {
       setIsLoading(false);
     }
   }, [transcriptId]);
-
-  const handleAnalyze = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const result = await api.ai.analyze(transcriptId, analysisType);
-      setAnalysis(result);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to analyze transcript');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [transcriptId, analysisType]);
 
   const handleAsk = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
@@ -74,16 +64,7 @@ export function AIAnalysisPanel({ transcriptId }: AIAnalysisPanelProps) {
 
   const tabs: Array<{ id: TabType; label: string }> = [
     { id: 'summary', label: 'Summary' },
-    { id: 'analysis', label: 'Analysis' },
     { id: 'ask', label: 'Ask' },
-  ];
-
-  const analysisTypes: Array<{ value: AnalysisType; label: string }> = [
-    { value: 'topics', label: 'Topics' },
-    { value: 'sentiment', label: 'Sentiment' },
-    { value: 'entities', label: 'Entities' },
-    { value: 'questions', label: 'Questions' },
-    { value: 'action_items', label: 'Action Items' },
   ];
 
   return (
@@ -237,6 +218,17 @@ export function AIAnalysisPanel({ transcriptId }: AIAnalysisPanelProps) {
                   </div>
                 )}
 
+                {entities != null && !!entities.content.raw_analysis && (
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-2">Entities</h4>
+                    <p className="text-sm text-gray-600 dark:text-gray-300 whitespace-pre-wrap">
+                      {typeof entities.content.raw_analysis === 'string'
+                        ? entities.content.raw_analysis
+                        : JSON.stringify(entities.content, null, 2)}
+                    </p>
+                  </div>
+                )}
+
                 <button
                   onClick={handleSummarize}
                   disabled={isLoading}
@@ -244,44 +236,6 @@ export function AIAnalysisPanel({ transcriptId }: AIAnalysisPanelProps) {
                 >
                   Regenerate
                 </button>
-              </div>
-            )}
-          </div>
-        )}
-
-        {activeTab === 'analysis' && (
-          <div className="space-y-4">
-            <div className="flex items-center gap-2">
-              <select
-                value={analysisType}
-                onChange={(e) => setAnalysisType(e.target.value as AnalysisType)}
-                className="flex-1 px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
-              >
-                {analysisTypes.map((type) => (
-                  <option key={type.value} value={type.value}>
-                    {type.label}
-                  </option>
-                ))}
-              </select>
-              <button
-                onClick={handleAnalyze}
-                disabled={isLoading}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium disabled:opacity-50 transition-colors"
-              >
-                {isLoading ? 'Analyzing...' : 'Analyze'}
-              </button>
-            </div>
-
-            {analysis && (
-              <div className="p-4 rounded-lg bg-gray-50 dark:bg-gray-900">
-                <h4 className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-2 capitalize">
-                  {analysis.analysis_type} Analysis
-                </h4>
-                <pre className="text-sm text-gray-600 dark:text-gray-300 whitespace-pre-wrap">
-                  {typeof analysis.content.raw_analysis === 'string'
-                    ? analysis.content.raw_analysis
-                    : JSON.stringify(analysis.content, null, 2)}
-                </pre>
               </div>
             )}
           </div>
