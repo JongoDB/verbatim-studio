@@ -558,6 +558,8 @@ async def handle_embedding(
     Raises:
         ValueError: If transcript not found.
     """
+    import asyncio
+    from sqlalchemy.exc import OperationalError
     from services.embedding import embedding_service, embedding_to_bytes
 
     transcript_id = payload.get("transcript_id")
@@ -568,6 +570,9 @@ async def handle_embedding(
     if not embedding_service.is_available():
         logger.warning("Embedding service not available, skipping embed job")
         return {"segment_count": 0, "skipped": True}
+
+    # Small delay to avoid SQLite lock contention with transcription commit
+    await asyncio.sleep(2)
 
     # Load segments for this transcript
     async with async_session() as session:
@@ -593,27 +598,38 @@ async def handle_embedding(
     embeddings = await embedding_service.embed_texts(texts)
     await progress_callback(80)
 
-    # Store embeddings
-    async with async_session() as session:
-        for i, (seg_id, emb) in enumerate(zip(segment_ids, embeddings)):
-            # Check if embedding already exists (upsert)
-            existing = await session.get(SegmentEmbedding, seg_id)
-            if existing:
-                existing.embedding = embedding_to_bytes(emb)
-                existing.model_used = embedding_service._model_name
+    # Store embeddings with retry for database lock
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            async with async_session() as session:
+                for i, (seg_id, emb) in enumerate(zip(segment_ids, embeddings)):
+                    # Check if embedding already exists (upsert)
+                    existing = await session.get(SegmentEmbedding, seg_id)
+                    if existing:
+                        existing.embedding = embedding_to_bytes(emb)
+                        existing.model_used = embedding_service._model_name
+                    else:
+                        segment_embedding = SegmentEmbedding(
+                            segment_id=seg_id,
+                            embedding=embedding_to_bytes(emb),
+                            model_used=embedding_service._model_name,
+                        )
+                        session.add(segment_embedding)
+
+                    # Progress update every 10 segments
+                    if i % 10 == 0:
+                        await progress_callback(80 + (i / len(embeddings)) * 20)
+
+                await session.commit()
+                break  # Success, exit retry loop
+        except OperationalError as e:
+            if "database is locked" in str(e) and attempt < max_retries - 1:
+                logger.warning("Database locked, retrying in %d seconds (attempt %d/%d)",
+                             2 ** attempt, attempt + 1, max_retries)
+                await asyncio.sleep(2 ** attempt)  # Exponential backoff: 1, 2, 4 seconds
             else:
-                segment_embedding = SegmentEmbedding(
-                    segment_id=seg_id,
-                    embedding=embedding_to_bytes(emb),
-                    model_used=embedding_service._model_name,
-                )
-                session.add(segment_embedding)
-
-            # Progress update every 10 segments
-            if i % 10 == 0:
-                await progress_callback(80 + (i / len(embeddings)) * 20)
-
-        await session.commit()
+                raise
 
     await progress_callback(100)
 
