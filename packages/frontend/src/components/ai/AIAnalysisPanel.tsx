@@ -214,7 +214,7 @@ export function AIAnalysisPanel({ transcriptId }: AIAnalysisPanelProps) {
 
                 {summary.named_entities && summary.named_entities.length > 0 && (
                   <div>
-                    <h4 className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-2">People</h4>
+                    <h4 className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-2">Entities</h4>
                     <div className="flex flex-wrap gap-2">
                       {summary.named_entities.map((entity, i) => (
                         <span
