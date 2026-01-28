@@ -282,7 +282,7 @@ async def handle_transcription(
     Raises:
         ValueError: If recording not found or invalid.
     """
-    from core.transcription_settings import get_transcription_settings
+    from core.transcription_settings import detect_diarization_device, get_transcription_settings
     from services.diarization import DiarizationService
     from services.transcription import TranscriptionService
 
@@ -292,23 +292,27 @@ async def handle_transcription(
 
     # Read effective settings fresh for this job
     effective = await get_transcription_settings()
+    dia_device = detect_diarization_device()
     logger.info(
-        "Effective transcription settings: model=%s, device=%s, compute_type=%s, batch_size=%s, diarize=%s",
+        "Effective transcription settings: model=%s, device=%s, compute_type=%s, batch_size=%s, diarize=%s, dia_device=%s",
         effective["model"],
         effective["device"],
         effective["compute_type"],
         effective["batch_size"],
         effective["diarize"],
+        dia_device,
     )
 
     # Create services with effective settings
+    # Note: WhisperX (ctranslate2) only supports cpu/cuda, NOT mps
+    # Diarization (pyannote) supports cpu/cuda/mps
     tx_service = TranscriptionService(
         model_name=effective["model"],
         device=effective["device"],
         compute_type=effective["compute_type"],
     )
     dia_service = DiarizationService(
-        device=effective["device"],
+        device=dia_device,
         hf_token=effective.get("hf_token"),
     )
     diarize = diarize_requested and effective["diarize"]

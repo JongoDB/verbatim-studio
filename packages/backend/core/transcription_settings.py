@@ -23,7 +23,9 @@ DEFAULTS: dict[str, Any] = {
 
 VALID_MODELS = ["tiny", "base", "small", "medium", "large-v2", "large-v3"]
 
-VALID_DEVICES = ["cpu", "cuda", "mps"]
+# WhisperX (ctranslate2) only supports cpu and cuda.
+# MPS (Apple Silicon) is NOT supported by ctranslate2/faster-whisper.
+VALID_DEVICES = ["cpu", "cuda"]
 
 VALID_COMPUTE_TYPES = ["int8", "float16", "float32"]
 
@@ -57,7 +59,12 @@ _available_devices: list[str] | None = None
 
 
 def detect_available_devices() -> list[str]:
-    """Detect available compute devices. Result is cached."""
+    """Detect available compute devices for WhisperX transcription.
+
+    Only returns devices supported by ctranslate2/faster-whisper (cpu, cuda).
+    MPS is NOT supported by the transcription engine.
+    Result is cached.
+    """
     global _available_devices
     if _available_devices is not None:
         return _available_devices
@@ -68,14 +75,30 @@ def detect_available_devices() -> list[str]:
 
         if torch.cuda.is_available():
             devices.append("cuda")
-        if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-            devices.append("mps")
     except ImportError:
         pass
 
     _available_devices = devices
-    logger.info("Detected available devices: %s", devices)
+    logger.info("Detected available transcription devices: %s", devices)
     return devices
+
+
+def detect_diarization_device() -> str:
+    """Detect the best device for pyannote diarization.
+
+    Pyannote supports cpu, cuda, and mps (Apple Silicon).
+    Returns the best available device.
+    """
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            return "cuda"
+        if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+            return "mps"
+    except ImportError:
+        pass
+    return "cpu"
 
 
 async def get_transcription_settings() -> dict[str, Any]:
