@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, Float, ForeignKey, Integer, String, Text, func
+from sqlalchemy import JSON, Boolean, Float, ForeignKey, Integer, LargeBinary, String, Text, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -213,3 +213,20 @@ class Setting(Base):
     key: Mapped[str] = mapped_column(String(100), primary_key=True)
     value: Mapped[dict] = mapped_column(JSON, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(default=func.now(), onupdate=func.now())
+
+
+class SegmentEmbedding(Base):
+    """Embedding vector for a transcript segment."""
+
+    __tablename__ = "segment_embeddings"
+
+    segment_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("segments.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    embedding: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    model_used: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(default=func.now())
+
+    segment: Mapped["Segment"] = relationship()
