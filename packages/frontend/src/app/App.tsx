@@ -5,6 +5,7 @@ import { TranscriptPage } from '@/pages/transcript/TranscriptPage';
 import { SearchBox } from '@/components/search/SearchBox';
 import { Dashboard } from '@/components/dashboard/Dashboard';
 import { SettingsPage } from '@/pages/settings/SettingsPage';
+import { Sidebar } from '@/components/layout/Sidebar';
 import { APP_VERSION } from '@/version'; // static fallback
 
 type NavigationState =
@@ -193,117 +194,53 @@ export function App() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b bg-card">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-6">
-            <div className="flex-shrink-0">
-              <h1 className="text-xl font-bold text-foreground">Verbatim Studio</h1>
-              <p className="text-sm text-muted-foreground">
-                Privacy-first transcription for professionals
-              </p>
-            </div>
-            {/* Navigation Tabs */}
-            <nav className="flex items-center gap-1">
-              <button
-                onClick={handleNavigateToDashboard}
-                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                  currentTab === 'dashboard'
-                    ? 'bg-muted text-foreground'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
-                }`}
-              >
-                Dashboard
-              </button>
-              <button
-                onClick={handleNavigateToRecordings}
-                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                  currentTab === 'recordings'
-                    ? 'bg-muted text-foreground'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
-                }`}
-              >
-                Recordings
-              </button>
-              <button
-                onClick={handleNavigateToSettings}
-                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                  currentTab === 'settings'
-                    ? 'bg-muted text-foreground'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
-                }`}
-              >
-                Settings
-              </button>
-            </nav>
-          </div>
+    <div className="min-h-screen bg-background flex">
+      {/* Sidebar */}
+      <Sidebar
+        currentTab={currentTab}
+        onNavigate={(tab) => {
+          if (tab === 'dashboard') handleNavigateToDashboard();
+          else if (tab === 'recordings') handleNavigateToRecordings();
+          else if (tab === 'settings') handleNavigateToSettings();
+        }}
+        theme={theme}
+        onCycleTheme={cycleTheme}
+        version={apiInfo?.version || APP_VERSION}
+        health={health}
+      />
+
+      {/* Content Area */}
+      <div className="flex-1 flex flex-col min-h-screen overflow-hidden">
+        {/* Content header with search */}
+        <header className="h-14 border-b border-border bg-card flex items-center px-4 md:px-6 gap-4 shrink-0">
+          <div className="w-8 md:hidden" />
           <div className="flex-1 max-w-md">
             <SearchBox onResultClick={handleSearchResult} />
           </div>
-          <div className="flex items-center gap-4 text-sm flex-shrink-0">
-            {/* Theme Toggle */}
-            <button
-              onClick={cycleTheme}
-              className="p-2 rounded-lg hover:bg-muted transition-colors"
-              title={`Theme: ${theme} (click to change)`}
-            >
-              {theme === 'light' ? (
-                <svg className="w-5 h-5 text-amber-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-                </svg>
-              ) : theme === 'dark' ? (
-                <svg className="w-5 h-5 text-blue-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-                </svg>
-              ) : (
-                <svg className="w-5 h-5 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                </svg>
-              )}
-            </button>
-            <span className="text-muted-foreground font-mono">
-              {apiInfo?.version || APP_VERSION}
-            </span>
-            {health && (
-              <span
-                className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                  health.status === 'ready'
-                    ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
-                    : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
-                }`}
-              >
-                <span
-                  className={`h-1.5 w-1.5 rounded-full ${
-                    health.status === 'ready' ? 'bg-green-500' : 'bg-yellow-500'
-                  }`}
-                />
-                {health.status === 'ready' ? 'Connected' : 'Connecting'}
-              </span>
+        </header>
+
+        {/* Main Content */}
+        <main className="flex-1 overflow-y-auto">
+          <div className="container mx-auto px-4 py-8">
+            {navigation.type === 'dashboard' && (
+              <Dashboard onNavigateToRecordings={handleNavigateToRecordings} />
+            )}
+            {navigation.type === 'recordings' && (
+              <RecordingsPage onViewTranscript={handleViewTranscript} />
+            )}
+            {navigation.type === 'transcript' && (
+              <TranscriptPage
+                recordingId={navigation.recordingId}
+                onBack={handleBackToRecordings}
+                initialSeekTime={navigation.initialSeekTime}
+              />
+            )}
+            {navigation.type === 'settings' && (
+              <SettingsPage theme={theme} onThemeChange={setTheme} />
             )}
           </div>
-        </div>
-      </header>
-
-      {/* Main Content */}
-      <main className="container mx-auto px-4 py-8">
-        {navigation.type === 'dashboard' && (
-          <Dashboard onNavigateToRecordings={handleNavigateToRecordings} />
-        )}
-        {navigation.type === 'recordings' && (
-          <RecordingsPage onViewTranscript={handleViewTranscript} />
-        )}
-        {navigation.type === 'transcript' && (
-          <TranscriptPage
-            recordingId={navigation.recordingId}
-            onBack={handleBackToRecordings}
-            initialSeekTime={navigation.initialSeekTime}
-          />
-        )}
-        {navigation.type === 'settings' && (
-          <SettingsPage theme={theme} onThemeChange={setTheme} />
-        )}
-      </main>
+        </main>
+      </div>
     </div>
   );
 }
