@@ -33,21 +33,21 @@ class AdapterConfig:
     # Transcription engine selection
     transcription_engine: str = "auto"  # auto, whisperx, mlx-whisper
     transcription_model: str = "base"
-    transcription_device: str = "cpu"
-    transcription_compute_type: str = "int8"
+    transcription_device: str = "auto"  # auto, cpu, cuda, mps
+    transcription_compute_type: str = "auto"  # auto, int8, float16, float32
 
     # External WhisperX
     whisperx_external_url: str | None = None
     whisperx_api_key: str | None = None
 
     # Diarization
-    diarization_device: str = "cpu"
+    diarization_device: str = "auto"  # auto, cpu, cuda, mps
     hf_token: str | None = None
 
     # AI
     ai_model_path: str | None = None
     ai_n_ctx: int = 4096
-    ai_n_gpu_layers: int = 0
+    ai_n_gpu_layers: int | None = None  # None = auto-detect
 
 
 class AdapterFactory:
@@ -161,16 +161,30 @@ class AdapterFactory:
         # Default: WhisperX
         from adapters.transcription.whisperx import WhisperXTranscriptionEngine
 
+        # Resolve auto-detect for device and compute type
+        device = self._config.transcription_device
+        if device == "auto":
+            from core.transcription_settings import detect_whisperx_device
+            device = detect_whisperx_device()
+            logger.info("Auto-detected WhisperX device: %s", device)
+
+        compute_type = self._config.transcription_compute_type
+        if compute_type == "auto":
+            from core.transcription_settings import detect_compute_type
+            compute_type = detect_compute_type(device)
+            logger.info("Auto-detected compute type: %s", compute_type)
+
         logger.info(
-            "Creating local WhisperX transcription engine (model=%s, device=%s)",
+            "Creating local WhisperX transcription engine (model=%s, device=%s, compute_type=%s)",
             self._config.transcription_model,
-            self._config.transcription_device,
+            device,
+            compute_type,
         )
 
         return WhisperXTranscriptionEngine(
             model_size=self._config.transcription_model,
-            device=self._config.transcription_device,
-            compute_type=self._config.transcription_compute_type,
+            device=device,
+            compute_type=compute_type,
         )
 
     def create_diarization_engine(self) -> "IDiarizationEngine":
@@ -184,13 +198,19 @@ class AdapterFactory:
         """
         from adapters.diarization.pyannote import PyannoteDiarizationEngine
 
+        device = self._config.diarization_device
+        if device == "auto":
+            from core.transcription_settings import detect_diarization_device
+            device = detect_diarization_device()
+            logger.info("Auto-detected diarization device: %s", device)
+
         logger.info(
             "Creating Pyannote diarization engine (device=%s)",
-            self._config.diarization_device,
+            device,
         )
 
         return PyannoteDiarizationEngine(
-            device=self._config.diarization_device,
+            device=device,
             hf_token=self._config.hf_token,
         )
 
@@ -206,12 +226,18 @@ class AdapterFactory:
         if self.is_basic:
             from adapters.ai.llama_cpp import LlamaCppAIService
 
+            gpu_layers = self._config.ai_n_gpu_layers
+            if gpu_layers is None:
+                from core.transcription_settings import detect_llm_gpu_layers
+                gpu_layers = detect_llm_gpu_layers()
+                logger.info("Auto-detected LLM GPU layers: %d", gpu_layers)
+
             logger.info("Creating llama.cpp AI service for basic tier")
 
             return LlamaCppAIService(
                 model_path=self._config.ai_model_path,
                 n_ctx=self._config.ai_n_ctx,
-                n_gpu_layers=self._config.ai_n_gpu_layers,
+                n_gpu_layers=gpu_layers,
             )
         else:
             # Enterprise tier - Ollama (future)
@@ -260,6 +286,9 @@ def create_factory_from_settings(settings: Settings) -> AdapterFactory:
         transcription_compute_type=settings.WHISPERX_COMPUTE_TYPE,
         whisperx_external_url=settings.WHISPERX_EXTERNAL_URL,
         whisperx_api_key=settings.WHISPERX_API_KEY,
+        # Diarization settings
+        diarization_device=settings.DIARIZATION_DEVICE,
+        hf_token=settings.HF_TOKEN,
         # AI settings
         ai_model_path=settings.AI_MODEL_PATH,
         ai_n_ctx=settings.AI_N_CTX,
@@ -310,14 +339,27 @@ def create_transcription_engine_from_settings(settings_dict: dict) -> "ITranscri
     # Default: WhisperX
     from adapters.transcription.whisperx import WhisperXTranscriptionEngine
 
+    device = settings_dict.get("device", "auto")
+    if device == "auto":
+        from core.transcription_settings import detect_whisperx_device
+        device = detect_whisperx_device()
+        logger.info("Auto-detected WhisperX device: %s", device)
+
+    compute_type = settings_dict.get("compute_type", "auto")
+    if compute_type == "auto":
+        from core.transcription_settings import detect_compute_type
+        compute_type = detect_compute_type(device)
+        logger.info("Auto-detected compute type: %s", compute_type)
+
     logger.info(
-        "Creating WhisperX transcription engine (model=%s, device=%s)",
+        "Creating WhisperX transcription engine (model=%s, device=%s, compute_type=%s)",
         settings_dict.get("model", "base"),
-        settings_dict.get("device", "cpu"),
+        device,
+        compute_type,
     )
 
     return WhisperXTranscriptionEngine(
         model_size=settings_dict.get("model", "base"),
-        device=settings_dict.get("device", "cpu"),
-        compute_type=settings_dict.get("compute_type", "int8"),
+        device=device,
+        compute_type=compute_type,
     )

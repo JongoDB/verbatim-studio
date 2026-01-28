@@ -31,14 +31,17 @@ class Settings(BaseSettings):
     # AI settings (llama.cpp)
     AI_MODEL_PATH: str | None = None  # Path to GGUF model file
     AI_N_CTX: int = 4096  # Context window size
-    AI_N_GPU_LAYERS: int = 0  # Number of layers to offload to GPU (0 = CPU only)
+    AI_N_GPU_LAYERS: int | None = None  # GPU layers to offload (None = auto-detect, 0 = CPU, -1 = all)
 
     # WhisperX settings
     WHISPERX_EXTERNAL_URL: str | None = None  # URL for external WhisperX service (None = local)
     WHISPERX_API_KEY: str | None = None  # Optional API key for external service
     WHISPERX_MODEL: str = "base"  # Model size: tiny, base, small, medium, large-v2, large-v3
-    WHISPERX_DEVICE: str = "cpu"  # Device: cpu, cuda, mps
-    WHISPERX_COMPUTE_TYPE: str = "int8"  # Compute type: int8, float16, float32
+    WHISPERX_DEVICE: str = "auto"  # Device: auto, cpu, cuda, mps
+    WHISPERX_COMPUTE_TYPE: str = "auto"  # Compute type: auto, int8, float16, float32
+
+    # Diarization settings
+    DIARIZATION_DEVICE: str = "auto"  # Device: auto, cpu, cuda, mps
 
     # HuggingFace token for pyannote speaker diarization
     HF_TOKEN: str | None = None

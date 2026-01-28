@@ -198,6 +198,57 @@ def detect_diarization_device() -> str:
     return "cpu"
 
 
+def detect_whisperx_device() -> str:
+    """Detect the best device for WhisperX transcription.
+
+    WhisperX (ctranslate2) supports cpu and cuda only.
+    MPS is handled by engine auto-detect selecting mlx-whisper instead.
+    """
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            return "cuda"
+    except ImportError:
+        pass
+    return "cpu"
+
+
+def detect_compute_type(device: str) -> str:
+    """Detect the optimal compute type for a given device.
+
+    Args:
+        device: Compute device (cpu, cuda)
+
+    Returns:
+        Optimal compute type: float16 for cuda, int8 for cpu.
+    """
+    if device == "cuda":
+        return "float16"
+    return "int8"
+
+
+def detect_llm_gpu_layers() -> int:
+    """Detect optimal GPU layer offload for llama.cpp.
+
+    Returns:
+        -1 (all layers on GPU) for Apple Silicon or CUDA systems,
+        0 (CPU only) otherwise.
+    """
+    if is_apple_silicon():
+        logger.info("Apple Silicon detected — defaulting to full GPU offload for llama.cpp")
+        return -1
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            logger.info("CUDA detected — defaulting to full GPU offload for llama.cpp")
+            return -1
+    except ImportError:
+        pass
+    return 0
+
+
 async def get_transcription_settings() -> dict[str, Any]:
     """Get effective transcription settings.
 
@@ -209,9 +260,9 @@ async def get_transcription_settings() -> dict[str, Any]:
     # Layer 2: env var overrides
     if env_settings.WHISPERX_MODEL != "base":
         effective["model"] = env_settings.WHISPERX_MODEL
-    if env_settings.WHISPERX_DEVICE != "cpu":
+    if env_settings.WHISPERX_DEVICE != "auto":
         effective["device"] = env_settings.WHISPERX_DEVICE
-    if env_settings.WHISPERX_COMPUTE_TYPE != "int8":
+    if env_settings.WHISPERX_COMPUTE_TYPE != "auto":
         effective["compute_type"] = env_settings.WHISPERX_COMPUTE_TYPE
     if env_settings.HF_TOKEN:
         effective["hf_token"] = env_settings.HF_TOKEN
