@@ -599,12 +599,12 @@ async def handle_embedding(
     await progress_callback(80)
 
     # Store embeddings with retry for database lock
+    # NOTE: Don't update progress inside the session to avoid concurrent DB writes
     max_retries = 3
     for attempt in range(max_retries):
         try:
             async with async_session() as session:
-                for i, (seg_id, emb) in enumerate(zip(segment_ids, embeddings)):
-                    # Check if embedding already exists (upsert)
+                for seg_id, emb in zip(segment_ids, embeddings):
                     existing = await session.get(SegmentEmbedding, seg_id)
                     if existing:
                         existing.embedding = embedding_to_bytes(emb)
@@ -616,18 +616,13 @@ async def handle_embedding(
                             model_used=embedding_service._model_name,
                         )
                         session.add(segment_embedding)
-
-                    # Progress update every 10 segments
-                    if i % 10 == 0:
-                        await progress_callback(80 + (i / len(embeddings)) * 20)
-
                 await session.commit()
-                break  # Success, exit retry loop
+                break  # Success
         except OperationalError as e:
             if "database is locked" in str(e) and attempt < max_retries - 1:
                 logger.warning("Database locked, retrying in %d seconds (attempt %d/%d)",
                              2 ** attempt, attempt + 1, max_retries)
-                await asyncio.sleep(2 ** attempt)  # Exponential backoff: 1, 2, 4 seconds
+                await asyncio.sleep(2 ** attempt)
             else:
                 raise
 
