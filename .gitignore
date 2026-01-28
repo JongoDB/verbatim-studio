@@ -46,3 +46,4 @@ models/
 *.bin
 *.gguf
 *.pt
+.worktrees/
