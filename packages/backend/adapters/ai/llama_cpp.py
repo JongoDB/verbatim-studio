@@ -164,8 +164,9 @@ class LlamaCppAIService(IAIService):
 Analyze the following transcript and provide:
 1. A concise summary (2-3 paragraphs)
 2. Key points discussed
-3. Any action items mentioned
+3. Any action items mentioned (omit this section if there are none)
 4. Main topics covered
+5. Named entities — people mentioned or who spoke in the transcript
 
 Format your response as:
 SUMMARY:
@@ -184,6 +185,11 @@ ACTION ITEMS:
 TOPICS:
 - [Topic 1]
 - [Topic 2]
+...
+
+NAMED ENTITIES:
+- [Person 1]
+- [Person 2]
 ..."""
 
         messages = [
@@ -199,6 +205,7 @@ TOPICS:
         key_points = []
         action_items = []
         topics = []
+        named_entities = []
 
         current_section = None
         for line in content.split("\n"):
@@ -212,6 +219,8 @@ TOPICS:
                 current_section = "action_items"
             elif line.upper().startswith("TOPICS:"):
                 current_section = "topics"
+            elif line.upper().startswith("NAMED ENTITIES:"):
+                current_section = "named_entities"
             elif line.startswith("- "):
                 item = line[2:].strip()
                 if current_section == "key_points":
@@ -220,6 +229,8 @@ TOPICS:
                     action_items.append(item)
                 elif current_section == "topics":
                     topics.append(item)
+                elif current_section == "named_entities":
+                    named_entities.append(item)
             elif current_section == "summary" and line:
                 summary += " " + line
 
@@ -228,6 +239,7 @@ TOPICS:
             key_points=key_points if key_points else None,
             action_items=action_items if action_items else None,
             topics=topics if topics else None,
+            named_entities=named_entities if named_entities else None,
         )
 
     async def analyze_transcript(

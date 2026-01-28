@@ -268,6 +268,7 @@ export interface SummarizationResponse {
   key_points: string[] | null;
   action_items: string[] | null;
   topics: string[] | null;
+  named_entities: string[] | null;
 }
 
 export interface AnalysisResponse {

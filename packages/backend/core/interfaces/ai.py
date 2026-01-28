@@ -56,6 +56,7 @@ class SummarizationResult:
     key_points: list[str] | None = None
     action_items: list[str] | None = None
     topics: list[str] | None = None
+    named_entities: list[str] | None = None
 
 
 @dataclass

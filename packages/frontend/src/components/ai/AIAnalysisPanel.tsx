@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import { api, type SummarizationResponse, type AnalysisResponse, type AIChatResponse } from '@/lib/api';
+import { api, type SummarizationResponse, type AIChatResponse } from '@/lib/api';
 
 interface AIAnalysisPanelProps {
   transcriptId: string;
@@ -22,9 +22,6 @@ export function AIAnalysisPanel({ transcriptId }: AIAnalysisPanelProps) {
   // Summary state
   const [summary, setSummary] = useState<SummarizationResponse | null>(null);
 
-  // Entities state
-  const [entities, setEntities] = useState<AnalysisResponse | null>(null);
-
   // Ask state
   const [question, setQuestion] = useState('');
   const [answer, setAnswer] = useState<AIChatResponse | null>(null);
@@ -33,12 +30,8 @@ export function AIAnalysisPanel({ transcriptId }: AIAnalysisPanelProps) {
     setIsLoading(true);
     setError(null);
     try {
-      const [summaryResult, entitiesResult] = await Promise.all([
-        api.ai.summarize(transcriptId),
-        api.ai.analyze(transcriptId, 'entities'),
-      ]);
-      setSummary(summaryResult);
-      setEntities(entitiesResult);
+      const result = await api.ai.summarize(transcriptId);
+      setSummary(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to generate summary');
     } finally {
@@ -218,14 +211,19 @@ export function AIAnalysisPanel({ transcriptId }: AIAnalysisPanelProps) {
                   </div>
                 )}
 
-                {entities != null && !!entities.content.raw_analysis && (
+                {summary.named_entities && summary.named_entities.length > 0 && (
                   <div>
-                    <h4 className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-2">Entities</h4>
-                    <p className="text-sm text-gray-600 dark:text-gray-300 whitespace-pre-wrap">
-                      {typeof entities.content.raw_analysis === 'string'
-                        ? entities.content.raw_analysis
-                        : JSON.stringify(entities.content, null, 2)}
-                    </p>
+                    <h4 className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-2">People</h4>
+                    <div className="flex flex-wrap gap-2">
+                      {summary.named_entities.map((entity, i) => (
+                        <span
+                          key={i}
+                          className="px-2 py-1 text-xs rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300"
+                        >
+                          {entity}
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 )}
 

@@ -97,6 +97,7 @@ class SummarizationResponse(BaseModel):
     key_points: list[str] | None
     action_items: list[str] | None
     topics: list[str] | None
+    named_entities: list[str] | None
 
 
 class AnalysisResponse(BaseModel):
