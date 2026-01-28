@@ -190,6 +190,7 @@ export interface GlobalSearchResult {
   start_time: number | null;
   end_time: number | null;
   created_at: string;
+  match_type?: 'keyword' | 'semantic' | null;
 }
 
 export interface GlobalSearchResponse {
@@ -714,8 +715,10 @@ class ApiClient {
       return this.request<SearchResponse>(`/api/search/segments?${params.toString()}`);
     },
 
-    global: (query: string, limit = 20) => {
-      const params = new URLSearchParams({ q: query, limit: String(limit) });
+    global: (query: string, options?: { limit?: number; semantic?: boolean }) => {
+      const params = new URLSearchParams({ q: query });
+      if (options?.limit) params.set('limit', options.limit.toString());
+      if (options?.semantic !== undefined) params.set('semantic', options.semantic.toString());
       return this.request<GlobalSearchResponse>(`/api/search/global?${params.toString()}`);
     },
   };
