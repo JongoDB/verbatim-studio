@@ -6,6 +6,7 @@ import { RecordingListItem } from '@/components/recordings/RecordingListItem';
 import { RecordingFilters, type FilterState, type ViewMode } from '@/components/recordings/RecordingFilters';
 import { TranscribeDialog } from '@/components/recordings/TranscribeDialog';
 import { AudioRecorder } from '@/components/recordings/AudioRecorder';
+import { RecordingSetupPanel, type RecordingSettings } from '@/components/recordings/RecordingSetupPanel';
 import { ProjectSelector } from '@/components/projects/ProjectSelector';
 
 interface RecordingsPageProps {
@@ -95,7 +96,8 @@ export function RecordingsPage({ onViewTranscript }: RecordingsPageProps) {
   const [filters, setFilters] = useState<FilterState>(loadSavedFilters);
   const [viewMode, setViewMode] = useState<ViewMode>(loadSavedViewMode);
   const [transcribeDialogRecording, setTranscribeDialogRecording] = useState<Recording | null>(null);
-  const [showRecorder, setShowRecorder] = useState(false);
+  const [recordingPhase, setRecordingPhase] = useState<'none' | 'setup' | 'recording'>('none');
+  const [recordingSettings, setRecordingSettings] = useState<RecordingSettings | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [jobProgress, setJobProgress] = useState<Record<string, number>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -297,25 +299,36 @@ export function RecordingsPage({ onViewTranscript }: RecordingsPageProps) {
 
   const handleRecordingComplete = useCallback(
     async (blob: Blob, filename: string) => {
-      setShowRecorder(false);
+      setRecordingPhase('none');
       setIsUploading(true);
       setError(null);
 
       try {
         const file = new File([blob], filename, { type: blob.type });
-        await api.recordings.upload(file);
+        const meta = recordingSettings?.metadata;
+        await api.recordings.upload(file, {
+          title: meta?.title || undefined,
+          description: meta?.description || undefined,
+          tags: meta?.tags?.length ? meta.tags : undefined,
+          participants: meta?.participants?.length ? meta.participants : undefined,
+          location: meta?.location || undefined,
+          recordedDate: meta?.recordedDate || undefined,
+          quality: recordingSettings?.quality,
+        });
         await loadRecordings();
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to upload recording');
       } finally {
         setIsUploading(false);
+        setRecordingSettings(null);
       }
     },
-    [loadRecordings]
+    [loadRecordings, recordingSettings]
   );
 
   const handleRecordingCancel = useCallback(() => {
-    setShowRecorder(false);
+    setRecordingPhase('none');
+    setRecordingSettings(null);
   }, []);
 
   const handleFiltersChange = useCallback((newFilters: FilterState) => {
@@ -359,15 +372,25 @@ export function RecordingsPage({ onViewTranscript }: RecordingsPageProps) {
       <div className="grid gap-4 md:grid-cols-2">
         <UploadDropzone onUpload={handleUpload} isUploading={isUploading} />
 
-        {/* Record Button or Recorder */}
-        {showRecorder ? (
+        {/* Record Button, Setup Panel, or Recorder */}
+        {recordingPhase === 'recording' ? (
           <AudioRecorder
             onRecordingComplete={handleRecordingComplete}
+            onCancel={handleRecordingCancel}
+            audioBitsPerSecond={recordingSettings?.audioBitsPerSecond}
+            autoStart
+          />
+        ) : recordingPhase === 'setup' ? (
+          <RecordingSetupPanel
+            onStartRecording={(settings) => {
+              setRecordingSettings(settings);
+              setRecordingPhase('recording');
+            }}
             onCancel={handleRecordingCancel}
           />
         ) : (
           <button
-            onClick={() => setShowRecorder(true)}
+            onClick={() => setRecordingPhase('setup')}
             disabled={isUploading}
             className="flex flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/50 p-8 hover:border-red-400 hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >

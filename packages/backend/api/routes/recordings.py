@@ -7,7 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import distinct, func, select
@@ -339,16 +339,28 @@ async def list_recordings(
 async def upload_recording(
     db: Annotated[AsyncSession, Depends(get_db)],
     file: Annotated[UploadFile, File(description="Audio or video file to upload")],
-    title: Annotated[str | None, Query(description="Recording title")] = None,
-    project_id: Annotated[str | None, Query(description="Project ID to associate with")] = None,
+    title: Annotated[str | None, Form(description="Recording title")] = None,
+    project_id: Annotated[str | None, Form(description="Project ID to associate with")] = None,
+    description: Annotated[str | None, Form(description="Recording description")] = None,
+    tags: Annotated[str | None, Form(description="Comma-separated tag names")] = None,
+    participants: Annotated[str | None, Form(description="Comma-separated participant names")] = None,
+    location: Annotated[str | None, Form(description="Recording location")] = None,
+    recorded_date: Annotated[str | None, Form(description="Actual recording date (ISO 8601)")] = None,
+    quality: Annotated[str | None, Form(description="Recording quality preset used")] = None,
 ) -> RecordingCreateResponse:
-    """Upload an audio or video file.
+    """Upload an audio or video file with optional metadata.
 
     Args:
         db: Database session.
         file: The uploaded file.
         title: Optional title for the recording.
         project_id: Optional project ID.
+        description: Optional description.
+        tags: Optional comma-separated tag names (created if new).
+        participants: Optional comma-separated participant names.
+        location: Optional recording location.
+        recorded_date: Optional recording date (ISO 8601).
+        quality: Optional quality preset used (low/medium/high/lossless).
 
     Returns:
         Created recording details.
@@ -394,6 +406,19 @@ async def upload_recording(
     # Extract audio duration
     duration = _extract_duration(content, safe_filename)
 
+    # Build metadata dict from form fields
+    metadata: dict = {}
+    if description:
+        metadata["description"] = description
+    if participants:
+        metadata["participants"] = [p.strip() for p in participants.split(",") if p.strip()]
+    if location:
+        metadata["location"] = location
+    if recorded_date:
+        metadata["recorded_date"] = recorded_date
+    if quality:
+        metadata["quality"] = quality
+
     # Create recording record first to get ID
     recording = Recording(
         title=title or safe_filename or "Untitled Recording",
@@ -402,11 +427,31 @@ async def upload_recording(
         file_size=file_size,
         duration_seconds=duration,
         mime_type=content_type,
+        metadata_=metadata,
         project_id=project_id,
         status="pending",
     )
     db.add(recording)
     await db.flush()  # Get the ID without committing
+
+    # Create or find tags and assign to recording
+    if tags:
+        tag_names = [t.strip() for t in tags.split(",") if t.strip()]
+        seen: set[str] = set()
+        for tag_name in tag_names:
+            lower_name = tag_name.lower()
+            if lower_name in seen:
+                continue
+            seen.add(lower_name)
+            result = await db.execute(
+                select(Tag).where(func.lower(Tag.name) == lower_name)
+            )
+            tag = result.scalar_one_or_none()
+            if tag is None:
+                tag = Tag(name=tag_name)
+                db.add(tag)
+                await db.flush()
+            db.add(RecordingTag(recording_id=recording.id, tag_id=tag.id))
 
     # Save file to storage
     try:

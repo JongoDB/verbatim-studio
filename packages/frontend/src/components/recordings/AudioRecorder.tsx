@@ -3,11 +3,13 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 interface AudioRecorderProps {
   onRecordingComplete: (blob: Blob, filename: string) => void;
   onCancel?: () => void;
+  audioBitsPerSecond?: number;
+  autoStart?: boolean;
 }
 
 type RecordingState = 'idle' | 'recording' | 'paused' | 'stopped';
 
-export function AudioRecorder({ onRecordingComplete, onCancel }: AudioRecorderProps) {
+export function AudioRecorder({ onRecordingComplete, onCancel, audioBitsPerSecond, autoStart }: AudioRecorderProps) {
   const [state, setState] = useState<RecordingState>('idle');
   const [duration, setDuration] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -83,7 +85,10 @@ export function AudioRecorder({ onRecordingComplete, onCancel }: AudioRecorderPr
         : 'audio/mp4';
 
       // Create MediaRecorder
-      const mediaRecorder = new MediaRecorder(stream, { mimeType });
+      const mediaRecorder = new MediaRecorder(stream, {
+        mimeType,
+        ...(audioBitsPerSecond ? { audioBitsPerSecond } : {}),
+      });
       mediaRecorderRef.current = mediaRecorder;
 
       mediaRecorder.ondataavailable = (event) => {
@@ -120,6 +125,16 @@ export function AudioRecorder({ onRecordingComplete, onCancel }: AudioRecorderPr
       }
     }
   };
+
+  // Auto-start recording when mounted with autoStart prop
+  const autoStartedRef = useRef(false);
+  useEffect(() => {
+    if (autoStart && !autoStartedRef.current) {
+      autoStartedRef.current = true;
+      startRecording();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoStart]);
 
   const pauseRecording = () => {
     if (mediaRecorderRef.current && state === 'recording') {

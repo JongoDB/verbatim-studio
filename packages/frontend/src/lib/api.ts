@@ -299,6 +299,26 @@ export interface ExportOptions {
   includeTimestamps?: boolean;
 }
 
+// Quality presets for recording
+export const QUALITY_PRESETS = {
+  low: { label: 'Low', bitrate: 64000, tagline: 'Meetings, drafts', sizeMbPerMin: 0.5 },
+  medium: { label: 'Medium', bitrate: 128000, tagline: 'General use', sizeMbPerMin: 1.0 },
+  high: { label: 'High', bitrate: 192000, tagline: 'Interviews', sizeMbPerMin: 1.4 },
+  lossless: { label: 'Lossless', bitrate: 320000, tagline: 'Archival, legal', sizeMbPerMin: 2.4 },
+} as const;
+
+export type QualityPreset = keyof typeof QUALITY_PRESETS;
+
+export interface RecordingUploadOptions {
+  title?: string;
+  description?: string;
+  tags?: string[];
+  participants?: string[];
+  location?: string;
+  recordedDate?: string;
+  quality?: string;
+}
+
 // Config Types
 export interface WhisperXStatus {
   mode: 'local' | 'external';
@@ -415,22 +435,21 @@ class ApiClient {
 
     get: (id: string) => this.request<Recording>(`/api/recordings/${id}`),
 
-    upload: async (file: File, title?: string): Promise<RecordingCreateResponse> => {
+    upload: async (file: File, options?: RecordingUploadOptions): Promise<RecordingCreateResponse> => {
       const formData = new FormData();
       formData.append('file', file);
 
-      const queryParams = new URLSearchParams();
-      if (title) {
-        queryParams.set('title', title);
-      }
+      if (options?.title) formData.append('title', options.title);
+      if (options?.description) formData.append('description', options.description);
+      if (options?.tags?.length) formData.append('tags', options.tags.join(','));
+      if (options?.participants?.length) formData.append('participants', options.participants.join(','));
+      if (options?.location) formData.append('location', options.location);
+      if (options?.recordedDate) formData.append('recorded_date', options.recordedDate);
+      if (options?.quality) formData.append('quality', options.quality);
 
-      const queryString = queryParams.toString();
-      const url = `${this.baseUrl}/api/recordings/upload${queryString ? `?${queryString}` : ''}`;
-
-      const response = await fetch(url, {
+      const response = await fetch(`${this.baseUrl}/api/recordings/upload`, {
         method: 'POST',
         body: formData,
-        // Note: Don't set Content-Type header - browser will set it with boundary for multipart
       });
 
       if (!response.ok) {
