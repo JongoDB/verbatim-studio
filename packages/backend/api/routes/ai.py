@@ -422,7 +422,7 @@ async def summarize_transcript(
     transcript_text = await get_transcript_text(db, transcript_id)
 
     try:
-        options = ChatOptions(temperature=temperature, max_tokens=1024)
+        options = ChatOptions(temperature=temperature, max_tokens=2048)
         result = await ai_service.summarize_transcript(transcript_text, options)
 
         return SummarizationResponse(

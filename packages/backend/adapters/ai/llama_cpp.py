@@ -6,6 +6,7 @@ Uses create_chat_completion() for correct chat template handling.
 
 import asyncio
 import logging
+import re
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
@@ -208,21 +209,26 @@ NAMED ENTITIES:
         named_entities = []
 
         current_section = None
+        list_sections = ("key_points", "action_items", "topics", "named_entities")
         for line in content.split("\n"):
             line = line.strip()
-            if line.upper().startswith("SUMMARY:"):
+            upper = line.upper()
+            if upper.startswith("SUMMARY:"):
                 current_section = "summary"
                 summary = line[8:].strip()
-            elif line.upper().startswith("KEY POINTS:"):
+            elif upper.startswith("KEY POINTS:") or upper.startswith("KEY_POINTS:"):
                 current_section = "key_points"
-            elif line.upper().startswith("ACTION ITEMS:"):
+            elif upper.startswith("ACTION ITEMS:") or upper.startswith("ACTION_ITEMS:"):
                 current_section = "action_items"
-            elif line.upper().startswith("TOPICS:"):
+            elif upper.startswith("TOPICS:"):
                 current_section = "topics"
-            elif line.upper().startswith("NAMED ENTITIES:"):
+            elif upper.startswith("NAMED ENTITIES:") or upper.startswith("NAMED_ENTITIES:") or upper.startswith("PEOPLE:"):
                 current_section = "named_entities"
-            elif line.startswith("- "):
-                item = line[2:].strip()
+            elif current_section in list_sections and line:
+                # Strip common list prefixes: "- ", "* ", "• ", "1. ", "1) "
+                item = re.sub(r'^(?:[-*•]\s*|\d+[.)]\s*)', '', line).strip()
+                if not item:
+                    continue
                 if current_section == "key_points":
                     key_points.append(item)
                 elif current_section == "action_items":
