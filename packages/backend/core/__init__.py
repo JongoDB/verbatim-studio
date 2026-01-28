@@ -7,7 +7,13 @@ This module provides the foundation for the adapter pattern architecture:
 """
 
 from .config import Settings, settings
-from .factory import AdapterConfig, AdapterFactory, create_factory_from_settings, get_factory
+from .factory import (
+    AdapterConfig,
+    AdapterFactory,
+    create_factory_from_settings,
+    create_transcription_engine_from_settings,
+    get_factory,
+)
 
 __all__ = [
     # Configuration
@@ -17,5 +23,6 @@ __all__ = [
     "AdapterConfig",
     "AdapterFactory",
     "create_factory_from_settings",
+    "create_transcription_engine_from_settings",
     "get_factory",
 ]

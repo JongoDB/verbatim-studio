@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { api, type ArchiveInfo, type TranscriptionSettings } from '@/lib/api';
+import { api, type ArchiveInfo, type TranscriptionSettings, type AIModel, type AIModelDownloadEvent } from '@/lib/api';
 
 interface SettingsPageProps {
   theme: 'light' | 'dark' | 'system';
@@ -89,14 +89,23 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
   const [showHfToken, setShowHfToken] = useState(false);
   const [hfTokenInput, setHfTokenInput] = useState('');
 
+  // AI / LLM model state
+  const [aiModels, setAiModels] = useState<AIModel[]>([]);
+  const [aiDownloading, setAiDownloading] = useState<string | null>(null);
+  const [aiDownloadedBytes, setAiDownloadedBytes] = useState(0);
+  const [aiTotalBytes, setAiTotalBytes] = useState(0);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const downloadAbortRef = useRef<{ abort: () => void } | null>(null);
+
   const defaultLanguage = settings.defaultLanguage || '';
   const defaultPlaybackSpeed = settings.defaultPlaybackSpeed || 1;
   const autoTranscribe = settings.autoTranscribe ?? false;
 
-  // Load archive info, config status, and transcription settings
+  // Load archive info, config status, transcription settings, and AI models
   useEffect(() => {
     api.archive.info().then(setArchiveInfo).catch(console.error);
     api.config.getTranscription().then(setTxSettings).catch(console.error);
+    api.ai.listModels().then((r) => setAiModels(r.models)).catch(console.error);
   }, []);
 
   const handleExport = useCallback(async () => {
@@ -203,6 +212,58 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
       setTxSaving(false);
     }
   }, [hfTokenInput]);
+
+  const refreshAiModels = useCallback(() => {
+    api.ai.listModels().then((r) => setAiModels(r.models)).catch(console.error);
+  }, []);
+
+  const handleDownloadModel = useCallback((modelId: string) => {
+    setAiDownloading(modelId);
+    setAiDownloadedBytes(0);
+    setAiTotalBytes(0);
+    setAiError(null);
+
+    const handle = api.ai.downloadModel(modelId, (event: AIModelDownloadEvent) => {
+      if (event.status === 'progress') {
+        setAiDownloadedBytes(event.downloaded_bytes || 0);
+        setAiTotalBytes(event.total_bytes || 0);
+      } else if (event.status === 'complete' || event.status === 'activated') {
+        setAiDownloading(null);
+        setAiDownloadedBytes(0);
+        setAiTotalBytes(0);
+        refreshAiModels();
+      } else if (event.status === 'error') {
+        setAiError(event.error || 'Download failed');
+        setAiDownloading(null);
+      }
+    });
+
+    downloadAbortRef.current = handle;
+  }, [refreshAiModels]);
+
+  const handleActivateModel = useCallback(async (modelId: string) => {
+    try {
+      await api.ai.activateModel(modelId);
+      refreshAiModels();
+    } catch (err) {
+      setAiError(err instanceof Error ? err.message : 'Activation failed');
+    }
+  }, [refreshAiModels]);
+
+  const handleDeleteModel = useCallback(async (modelId: string) => {
+    try {
+      await api.ai.deleteModel(modelId);
+      refreshAiModels();
+    } catch (err) {
+      setAiError(err instanceof Error ? err.message : 'Delete failed');
+    }
+  }, [refreshAiModels]);
+
+  const formatBytes = (bytes: number): string => {
+    if (bytes >= 1_073_741_824) return `${(bytes / 1_073_741_824).toFixed(2)} GB`;
+    if (bytes >= 1_048_576) return `${(bytes / 1_048_576).toFixed(0)} MB`;
+    return `${(bytes / 1024).toFixed(0)} KB`;
+  };
 
   const updateSetting = (key: string, value: unknown) => {
     const newSettings = { ...settings, [key]: value };
@@ -316,18 +377,20 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
         </div>
       </div>
 
-      {/* WhisperX Configuration */}
+      {/* Transcription Engine Configuration */}
       {txSettings && (
         <div className="mt-6 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
           <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">WhisperX Engine</h2>
+              <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Transcription Engine</h2>
               <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                txSettings.mode === 'external'
-                  ? 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300'
-                  : 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
+                txSettings.effective_engine === 'mlx-whisper'
+                  ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300'
+                  : txSettings.mode === 'external'
+                    ? 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300'
+                    : 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
               }`}>
-                {txSettings.mode === 'external' ? 'External Service' : 'Local Processing'}
+                {txSettings.mode === 'external' ? 'External Service' : txSettings.effective_engine === 'mlx-whisper' ? 'MLX Whisper (Apple Silicon)' : 'WhisperX'}
               </span>
             </div>
             {txSaved && (
@@ -349,6 +412,50 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
             )}
           </div>
           <div className="px-5 py-4 space-y-5">
+            {/* Engine Selection */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Engine</label>
+              <select
+                value={txSettings.engine}
+                onChange={(e) => updateTxSetting('engine', e.target.value)}
+                disabled={txSaving}
+                className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 py-2 px-3 text-sm text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50"
+              >
+                <option value="auto">Auto (Recommended)</option>
+                {txSettings.available_engines.includes('whisperx') && (
+                  <option value="whisperx">WhisperX (CPU/CUDA)</option>
+                )}
+                {txSettings.available_engines.includes('mlx-whisper') && (
+                  <option value="mlx-whisper">MLX Whisper (Apple Silicon GPU)</option>
+                )}
+              </select>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {txSettings.engine === 'auto'
+                  ? `Auto-detected: ${txSettings.effective_engine === 'mlx-whisper' ? 'MLX Whisper' : 'WhisperX'}`
+                  : txSettings.effective_engine === 'mlx-whisper'
+                    ? 'MLX Whisper uses Apple Silicon GPU for fast transcription'
+                    : 'WhisperX uses CPU or NVIDIA GPU'}
+              </p>
+            </div>
+
+            {/* Engine Caveats */}
+            {txSettings.engine_caveats.length > 0 && (
+              <div className="space-y-2">
+                {txSettings.engine_caveats.map((caveat, idx) => (
+                  <div
+                    key={idx}
+                    className={`p-3 rounded-lg text-sm ${
+                      caveat.includes('not supported') || caveat.includes('requires')
+                        ? 'bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-400'
+                        : 'bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-400'
+                    }`}
+                  >
+                    {caveat}
+                  </div>
+                ))}
+              </div>
+            )}
+
             {/* Presets */}
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Presets</label>
@@ -540,6 +647,138 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
           </div>
         </div>
       )}
+
+      {/* AI / Language Model Section */}
+      <div className="mt-6 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+        <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">AI / Language Model</h2>
+            {aiModels.some((m) => m.active) ? (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300">
+                <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                Ready ({aiModels.find((m) => m.active)?.label})
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400">
+                <span className="w-1.5 h-1.5 rounded-full bg-gray-400" />
+                No model downloaded
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div className="px-5 py-4 space-y-4">
+          {aiError && (
+            <div className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-sm text-red-600 dark:text-red-400">
+              {aiError}
+              <button onClick={() => setAiError(null)} className="ml-2 underline">Dismiss</button>
+            </div>
+          )}
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Available Models</label>
+            <div className="space-y-3">
+              {aiModels.map((model) => (
+                <div
+                  key={model.id}
+                  className={`p-4 rounded-lg border transition-all ${
+                    model.active
+                      ? 'border-green-300 dark:border-green-700 bg-green-50/50 dark:bg-green-900/10'
+                      : 'border-gray-200 dark:border-gray-600'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{model.label}</span>
+                        {model.is_default && (
+                          <span className="px-1.5 py-0.5 text-xs rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">
+                            Recommended
+                          </span>
+                        )}
+                        {model.active && (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs rounded bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300">
+                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                            </svg>
+                            Active
+                          </span>
+                        )}
+                      </div>
+                      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{model.description}</p>
+                      <p className="mt-0.5 text-xs text-gray-400 dark:text-gray-500">{formatBytes(model.size_bytes)}</p>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      {!model.downloaded && aiDownloading !== model.id && (
+                        <button
+                          onClick={() => handleDownloadModel(model.id)}
+                          className="px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+                        >
+                          Download
+                        </button>
+                      )}
+
+                      {model.downloaded && !model.active && aiDownloading !== model.id && (
+                        <button
+                          onClick={() => handleActivateModel(model.id)}
+                          className="px-3 py-1.5 text-xs font-medium rounded-lg bg-green-600 text-white hover:bg-green-700 transition-colors"
+                        >
+                          Activate
+                        </button>
+                      )}
+
+                      {model.downloaded && aiDownloading !== model.id && (
+                        <button
+                          onClick={() => handleDeleteModel(model.id)}
+                          className="px-3 py-1.5 text-xs font-medium rounded-lg border border-red-300 dark:border-red-700 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                        >
+                          Delete
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Download progress bar */}
+                    {aiDownloading === model.id && (
+                      <div className="mt-3">
+                        <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
+                          <span>Downloading...</span>
+                          <span>
+                            {aiTotalBytes > 0
+                              ? `${formatBytes(aiDownloadedBytes)} / ${formatBytes(aiTotalBytes)}`
+                              : 'Starting...'}
+                          </span>
+                        </div>
+                        <div className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-blue-600 rounded-full transition-all duration-300"
+                            style={{ width: aiTotalBytes > 0 ? `${Math.min(100, (aiDownloadedBytes / aiTotalBytes) * 100)}%` : '0%' }}
+                          />
+                        </div>
+                        {aiTotalBytes > 0 && (
+                          <div className="text-right text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                            {Math.round((aiDownloadedBytes / aiTotalBytes) * 100)}%
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+
+              {aiModels.length === 0 && (
+                <p className="text-sm text-gray-500 dark:text-gray-400 py-2">
+                  Loading model catalog...
+                </p>
+              )}
+            </div>
+          </div>
+
+          <p className="text-xs text-gray-500 dark:text-gray-400 border-t border-gray-200 dark:border-gray-700 pt-3">
+            Models are downloaded from HuggingFace and stored locally. All AI processing happens on your machine.
+          </p>
+        </div>
+      </div>
 
       {/* Playback Section */}
       <div className="mt-6 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">

@@ -1,9 +1,10 @@
 """Llama.cpp AI service adapter.
 
 Implements IAIService for local LLM inference using llama-cpp-python.
-This is a stub implementation for the basic tier.
+Uses create_chat_completion() for correct chat template handling.
 """
 
+import asyncio
 import logging
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -35,18 +36,9 @@ class LlamaCppAIService(IAIService):
         n_ctx: int = 4096,
         n_gpu_layers: int = 0,
     ):
-        """Initialize the Llama.cpp AI service.
-
-        Args:
-            model_path: Path to the GGUF model file
-            n_ctx: Context window size
-            n_gpu_layers: Number of layers to offload to GPU (0 = CPU only)
-        """
         self._model_path = model_path
         self._n_ctx = n_ctx
         self._n_gpu_layers = n_gpu_layers
-
-        # Lazy-loaded model
         self._llm = None
         self._available: bool | None = None
 
@@ -85,39 +77,26 @@ class LlamaCppAIService(IAIService):
 
         logger.info("Llama.cpp model loaded successfully")
 
-    def _format_messages(self, messages: list[ChatMessage]) -> str:
-        """Format chat messages into a prompt string."""
-        formatted = ""
-        for msg in messages:
-            if msg.role == "system":
-                formatted += f"<|system|>\n{msg.content}\n"
-            elif msg.role == "user":
-                formatted += f"<|user|>\n{msg.content}\n"
-            elif msg.role == "assistant":
-                formatted += f"<|assistant|>\n{msg.content}\n"
-        formatted += "<|assistant|>\n"
-        return formatted
-
     async def chat(
         self,
         messages: list[ChatMessage],
         options: ChatOptions | None = None,
     ) -> ChatResponse:
-        """Send a chat completion request."""
+        """Send a chat completion request using create_chat_completion."""
         options = options or ChatOptions()
         self._ensure_loaded()
 
-        prompt = self._format_messages(messages)
+        msgs = [{"role": m.role, "content": m.content} for m in messages]
 
-        result = self._llm(
-            prompt,
+        result = await asyncio.to_thread(
+            self._llm.create_chat_completion,
+            messages=msgs,
             max_tokens=options.max_tokens or 512,
             temperature=options.temperature,
             top_p=options.top_p,
-            stop=options.stop or ["<|user|>", "<|system|>"],
         )
 
-        content = result["choices"][0]["text"]
+        content = result["choices"][0]["message"]["content"]
         usage = result.get("usage", {})
 
         return ChatResponse(
@@ -140,17 +119,32 @@ class LlamaCppAIService(IAIService):
         options = options or ChatOptions()
         self._ensure_loaded()
 
-        prompt = self._format_messages(messages)
+        msgs = [{"role": m.role, "content": m.content} for m in messages]
 
-        for chunk in self._llm(
-            prompt,
+        # Create the streaming generator in a thread-safe way
+        stream = await asyncio.to_thread(
+            self._llm.create_chat_completion,
+            messages=msgs,
             max_tokens=options.max_tokens or 512,
             temperature=options.temperature,
             top_p=options.top_p,
-            stop=options.stop or ["<|user|>", "<|system|>"],
             stream=True,
-        ):
-            content = chunk["choices"][0].get("text", "")
+        )
+
+        # Iterate over the synchronous generator using to_thread for each chunk
+        def _next_chunk(iterator):
+            try:
+                return next(iterator)
+            except StopIteration:
+                return None
+
+        while True:
+            chunk = await asyncio.to_thread(_next_chunk, stream)
+            if chunk is None:
+                break
+
+            delta = chunk["choices"][0].get("delta", {})
+            content = delta.get("content", "")
             finish_reason = chunk["choices"][0].get("finish_reason")
 
             yield ChatStreamChunk(

@@ -30,6 +30,10 @@ ml = [
 ]
 ai = [
     "llama-cpp-python>=0.2.0",
+    "huggingface-hub>=0.20.0",
+]
+mlx = [
+    "mlx-whisper>=0.4.0",
 ]
 export = [
     "python-docx>=1.0.0",

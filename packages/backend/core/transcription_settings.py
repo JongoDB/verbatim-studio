@@ -1,6 +1,8 @@
 """Transcription settings helper with DB persistence and fallback chain."""
 
 import logging
+import platform
+import sys
 from typing import Any
 
 from sqlalchemy import select
@@ -13,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 # Hardcoded defaults (last resort in fallback chain)
 DEFAULTS: dict[str, Any] = {
+    "engine": "auto",  # auto, whisperx, mlx-whisper
     "model": "base",
     "device": "cpu",
     "compute_type": "int8",
@@ -21,15 +24,102 @@ DEFAULTS: dict[str, Any] = {
     "hf_token": None,
 }
 
+VALID_ENGINES = ["auto", "whisperx", "mlx-whisper"]
+
 VALID_MODELS = ["tiny", "base", "small", "medium", "large-v2", "large-v3"]
 
-# WhisperX (ctranslate2) only supports cpu and cuda.
-# MPS (Apple Silicon) is NOT supported by ctranslate2/faster-whisper.
-VALID_DEVICES = ["cpu", "cuda"]
+# Device support depends on engine:
+# - WhisperX (ctranslate2): cpu, cuda only
+# - MLX Whisper: mps only (Apple Silicon)
+VALID_DEVICES = ["cpu", "cuda", "mps"]
 
 VALID_COMPUTE_TYPES = ["int8", "float16", "float32"]
 
 VALID_BATCH_SIZES = [1, 2, 4, 8, 16, 32, 64]
+
+
+def is_apple_silicon() -> bool:
+    """Check if running on Apple Silicon Mac."""
+    return sys.platform == "darwin" and platform.machine() == "arm64"
+
+
+def is_mlx_whisper_available() -> bool:
+    """Check if mlx-whisper is importable."""
+    try:
+        import mlx_whisper
+        return True
+    except ImportError:
+        return False
+
+
+def detect_optimal_engine() -> str:
+    """Auto-detect the best transcription engine for this system.
+
+    Returns:
+        Engine identifier: 'mlx-whisper' for Apple Silicon with mlx installed,
+        otherwise 'whisperx'.
+    """
+    if is_apple_silicon() and is_mlx_whisper_available():
+        return "mlx-whisper"
+    return "whisperx"
+
+
+def get_engine_for_device(device: str) -> str:
+    """Map device to required engine.
+
+    Args:
+        device: Compute device (cpu, cuda, mps)
+
+    Returns:
+        Engine that supports the given device.
+    """
+    if device == "mps":
+        return "mlx-whisper"
+    return "whisperx"
+
+
+def get_devices_for_engine(engine: str) -> list[str]:
+    """Get supported devices for a specific engine.
+
+    Args:
+        engine: Engine identifier (whisperx, mlx-whisper)
+
+    Returns:
+        List of device identifiers supported by the engine.
+    """
+    if engine == "mlx-whisper":
+        return ["mps"]
+    # whisperx supports cpu and cuda
+    devices = ["cpu"]
+    try:
+        import torch
+        if torch.cuda.is_available():
+            devices.append("cuda")
+    except ImportError:
+        pass
+    return devices
+
+
+def get_available_engines() -> list[str]:
+    """Get list of available engines on this system.
+
+    Returns:
+        List of engine identifiers that are available.
+    """
+    engines = []
+    # WhisperX is always potentially available (just needs install)
+    try:
+        import whisperx
+        engines.append("whisperx")
+    except ImportError:
+        pass
+
+    # MLX Whisper only on Apple Silicon
+    if is_apple_silicon() and is_mlx_whisper_available():
+        engines.append("mlx-whisper")
+
+    return engines
+
 
 PRESETS: dict[str, dict[str, Any]] = {
     "fast": {
@@ -59,10 +149,13 @@ _available_devices: list[str] | None = None
 
 
 def detect_available_devices() -> list[str]:
-    """Detect available compute devices for WhisperX transcription.
+    """Detect available compute devices for transcription.
 
-    Only returns devices supported by ctranslate2/faster-whisper (cpu, cuda).
-    MPS is NOT supported by the transcription engine.
+    Returns devices based on available engines:
+    - cpu: Always available (WhisperX)
+    - cuda: Available if NVIDIA GPU + torch (WhisperX)
+    - mps: Available if Apple Silicon + mlx-whisper (MLX Whisper)
+
     Result is cached.
     """
     global _available_devices
@@ -77,6 +170,10 @@ def detect_available_devices() -> list[str]:
             devices.append("cuda")
     except ImportError:
         pass
+
+    # MPS is only available with mlx-whisper on Apple Silicon
+    if is_apple_silicon() and is_mlx_whisper_available():
+        devices.append("mps")
 
     _available_devices = devices
     logger.info("Detected available transcription devices: %s", devices)

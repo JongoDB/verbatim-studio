@@ -276,6 +276,33 @@ export interface AnalysisResponse {
 
 export type AnalysisType = 'sentiment' | 'topics' | 'entities' | 'questions' | 'action_items';
 
+// AI Model Management Types
+export interface AIModel {
+  id: string;
+  label: string;
+  description: string;
+  repo: string;
+  filename: string;
+  size_bytes: number;
+  is_default: boolean;
+  downloaded: boolean;
+  active: boolean;
+  download_path: string | null;
+}
+
+export interface AIModelListResponse {
+  models: AIModel[];
+}
+
+export interface AIModelDownloadEvent {
+  status: 'starting' | 'progress' | 'complete' | 'activated' | 'error';
+  model_id?: string;
+  path?: string;
+  error?: string;
+  downloaded_bytes?: number;
+  total_bytes?: number;
+}
+
 // Archive Types
 export interface ArchiveInfo {
   version: string;
@@ -347,6 +374,13 @@ export interface PresetInfo {
 }
 
 export interface TranscriptionSettings {
+  // Engine selection
+  engine: string;
+  effective_engine: string;
+  available_engines: string[];
+  engine_caveats: string[];
+
+  // Settings
   model: string;
   device: string;
   compute_type: string;
@@ -364,6 +398,7 @@ export interface TranscriptionSettings {
 }
 
 export interface TranscriptionSettingsUpdate {
+  engine?: string;
   model?: string;
   device?: string;
   compute_type?: string;
@@ -757,6 +792,64 @@ class ApiClient {
         { method: 'POST' }
       );
     },
+
+    listModels: () => this.request<AIModelListResponse>('/api/ai/models'),
+
+    downloadModel: (modelId: string, onEvent: (event: AIModelDownloadEvent) => void): { abort: () => void } => {
+      const abortController = new AbortController();
+
+      fetch(`${this.baseUrl}/api/ai/models/${modelId}/download`, {
+        method: 'POST',
+        signal: abortController.signal,
+      }).then(async (response) => {
+        if (!response.ok) {
+          onEvent({ status: 'error', error: `HTTP ${response.status}` });
+          return;
+        }
+        const reader = response.body?.getReader();
+        if (!reader) return;
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const event = JSON.parse(line.slice(6)) as AIModelDownloadEvent;
+                onEvent(event);
+              } catch {
+                // skip malformed lines
+              }
+            }
+          }
+        }
+      }).catch((err) => {
+        if (err.name !== 'AbortError') {
+          onEvent({ status: 'error', error: err.message });
+        }
+      });
+
+      return { abort: () => abortController.abort() };
+    },
+
+    activateModel: (modelId: string) =>
+      this.request<{ status: string; model_id: string; path: string }>(
+        `/api/ai/models/${modelId}/activate`,
+        { method: 'POST' }
+      ),
+
+    deleteModel: (modelId: string) =>
+      this.request<{ status: string; model_id: string }>(
+        `/api/ai/models/${modelId}`,
+        { method: 'DELETE' }
+      ),
   };
 
   // Projects

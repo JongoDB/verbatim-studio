@@ -30,7 +30,8 @@ class AdapterConfig:
     # Database
     database_url: str
 
-    # Transcription (local WhisperX)
+    # Transcription engine selection
+    transcription_engine: str = "auto"  # auto, whisperx, mlx-whisper
     transcription_model: str = "base"
     transcription_device: str = "cpu"
     transcription_compute_type: str = "int8"
@@ -115,8 +116,10 @@ class AdapterFactory:
     def create_transcription_engine(self) -> "ITranscriptionEngine":
         """Create a transcription engine.
 
-        If WHISPERX_EXTERNAL_URL is configured, uses external service.
-        Otherwise uses local WhisperX.
+        Engine selection priority:
+        1. If WHISPERX_EXTERNAL_URL is configured, uses external service.
+        2. If engine is "auto", auto-detect based on hardware.
+        3. Otherwise use the specified engine.
 
         Returns:
             Transcription engine instance
@@ -135,7 +138,27 @@ class AdapterFactory:
                 api_key=self._config.whisperx_api_key,
             )
 
-        # Fall back to local WhisperX
+        # Resolve engine selection
+        engine = self._config.transcription_engine
+        if engine == "auto":
+            from core.transcription_settings import detect_optimal_engine
+            engine = detect_optimal_engine()
+            logger.info("Auto-detected transcription engine: %s", engine)
+
+        # Create engine based on selection
+        if engine == "mlx-whisper":
+            from adapters.transcription.mlx_whisper import MlxWhisperTranscriptionEngine
+
+            logger.info(
+                "Creating MLX Whisper transcription engine (model=%s)",
+                self._config.transcription_model,
+            )
+
+            return MlxWhisperTranscriptionEngine(
+                model_size=self._config.transcription_model,
+            )
+
+        # Default: WhisperX
         from adapters.transcription.whisperx import WhisperXTranscriptionEngine
 
         logger.info(
@@ -251,3 +274,50 @@ def get_factory() -> AdapterFactory:
     """Get the adapter factory using global settings."""
     from .config import settings
     return create_factory_from_settings(settings)
+
+
+def create_transcription_engine_from_settings(settings_dict: dict) -> "ITranscriptionEngine":
+    """Create a transcription engine from runtime settings.
+
+    This is useful for creating an engine based on DB-persisted settings
+    rather than environment variables.
+
+    Args:
+        settings_dict: Settings dict with engine, model, device, compute_type.
+
+    Returns:
+        Configured transcription engine.
+    """
+    engine = settings_dict.get("engine", "auto")
+
+    if engine == "auto":
+        from core.transcription_settings import detect_optimal_engine
+        engine = detect_optimal_engine()
+        logger.info("Auto-detected transcription engine: %s", engine)
+
+    if engine == "mlx-whisper":
+        from adapters.transcription.mlx_whisper import MlxWhisperTranscriptionEngine
+
+        logger.info(
+            "Creating MLX Whisper transcription engine (model=%s)",
+            settings_dict.get("model", "base"),
+        )
+
+        return MlxWhisperTranscriptionEngine(
+            model_size=settings_dict.get("model", "base"),
+        )
+
+    # Default: WhisperX
+    from adapters.transcription.whisperx import WhisperXTranscriptionEngine
+
+    logger.info(
+        "Creating WhisperX transcription engine (model=%s, device=%s)",
+        settings_dict.get("model", "base"),
+        settings_dict.get("device", "cpu"),
+    )
+
+    return WhisperXTranscriptionEngine(
+        model_size=settings_dict.get("model", "base"),
+        device=settings_dict.get("device", "cpu"),
+        compute_type=settings_dict.get("compute_type", "int8"),
+    )

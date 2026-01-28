@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { api, type SummarizationResponse, type AnalysisResponse, type AnalysisType, type AIChatResponse } from '@/lib/api';
 
 interface AIAnalysisPanelProps {
@@ -8,9 +8,16 @@ interface AIAnalysisPanelProps {
 type TabType = 'summary' | 'analysis' | 'ask';
 
 export function AIAnalysisPanel({ transcriptId }: AIAnalysisPanelProps) {
+  const [aiAvailable, setAiAvailable] = useState<boolean | null>(null); // null = loading
   const [activeTab, setActiveTab] = useState<TabType>('summary');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    api.ai.status()
+      .then((s) => setAiAvailable(s.available && s.model_loaded))
+      .catch(() => setAiAvailable(false));
+  }, []);
 
   // Summary state
   const [summary, setSummary] = useState<SummarizationResponse | null>(null);
@@ -106,7 +113,37 @@ export function AIAnalysisPanel({ transcriptId }: AIAnalysisPanelProps) {
         </div>
       </div>
 
-      {/* Tabs */}
+      {/* No-model state */}
+      {aiAvailable === false && (
+        <div className="p-6 text-center">
+          <svg className="w-10 h-10 mx-auto text-gray-300 dark:text-gray-600 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+          </svg>
+          <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">No AI model configured</p>
+          <p className="text-xs text-gray-500 dark:text-gray-500 mb-3">
+            Download a language model in Settings to enable AI-powered analysis.
+          </p>
+          <a
+            href="/settings"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-purple-600 text-white hover:bg-purple-700 transition-colors"
+          >
+            Go to Settings
+          </a>
+        </div>
+      )}
+
+      {aiAvailable === null && (
+        <div className="p-6 text-center">
+          <svg className="w-5 h-5 mx-auto animate-spin text-gray-400" viewBox="0 0 24 24" fill="none">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+          </svg>
+          <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">Checking AI availability...</p>
+        </div>
+      )}
+
+      {/* Tabs + Content (hidden when AI unavailable) */}
+      {aiAvailable && <>
       <div className="flex border-b border-gray-200 dark:border-gray-700">
         {tabs.map((tab) => (
           <button
@@ -123,7 +160,6 @@ export function AIAnalysisPanel({ transcriptId }: AIAnalysisPanelProps) {
         ))}
       </div>
 
-      {/* Content */}
       <div className="p-4">
         {error && (
           <div className="mb-4 p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-sm text-red-600 dark:text-red-400">
@@ -298,6 +334,7 @@ export function AIAnalysisPanel({ transcriptId }: AIAnalysisPanelProps) {
           </div>
         )}
       </div>
+      </>}
     </div>
   );
 }

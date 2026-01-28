@@ -1,6 +1,9 @@
 """AI analysis endpoints."""
 
+import asyncio
+import json
 import logging
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -9,13 +12,47 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.config import settings
 from core.factory import get_factory
 from core.interfaces import ChatMessage, ChatOptions
+from core.model_catalog import MODEL_CATALOG
 from persistence.database import get_db
 from persistence.models import Transcript, Segment
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/ai", tags=["ai"])
+
+# ── Active model tracking ──────────────────────────────────────────────
+
+def _active_model_path() -> Path:
+    """Path to the JSON file tracking which model is active."""
+    return settings.MODELS_DIR / "active_model.json"
+
+
+def _read_active_model() -> str | None:
+    """Read the currently active model ID from disk."""
+    p = _active_model_path()
+    if p.exists():
+        try:
+            data = json.loads(p.read_text())
+            return data.get("model_id")
+        except (json.JSONDecodeError, OSError):
+            pass
+    return None
+
+
+def _write_active_model(model_id: str) -> None:
+    """Persist the active model ID."""
+    settings.ensure_directories()
+    _active_model_path().write_text(json.dumps({"model_id": model_id}))
+
+
+def _model_file_path(model_id: str) -> Path | None:
+    """Return the local file path for a catalog model, or None if not in catalog."""
+    entry = MODEL_CATALOG.get(model_id)
+    if not entry:
+        return None
+    return settings.MODELS_DIR / entry["filename"]
 
 
 class ChatRequest(BaseModel):
@@ -58,6 +95,167 @@ class AIStatusResponse(BaseModel):
     model_loaded: bool
     model_path: str | None
     models: list[dict]
+
+
+class AIModelInfo(BaseModel):
+    """Info about a catalog model."""
+
+    id: str
+    label: str
+    description: str
+    repo: str
+    filename: str
+    size_bytes: int
+    is_default: bool
+    downloaded: bool
+    active: bool
+    download_path: str | None
+
+
+class AIModelListResponse(BaseModel):
+    """Response listing all catalog models."""
+
+    models: list[AIModelInfo]
+
+
+# ── Model management endpoints ─────────────────────────────────────────
+
+@router.get("/models", response_model=AIModelListResponse)
+async def list_models() -> AIModelListResponse:
+    """Return the model catalog merged with download/active status."""
+    active_id = _read_active_model()
+    items: list[AIModelInfo] = []
+
+    for model_id, entry in MODEL_CATALOG.items():
+        file_path = _model_file_path(model_id)
+        downloaded = file_path is not None and file_path.exists()
+        items.append(AIModelInfo(
+            id=model_id,
+            label=entry["label"],
+            description=entry["description"],
+            repo=entry["repo"],
+            filename=entry["filename"],
+            size_bytes=entry["size_bytes"],
+            is_default=entry.get("default", False),
+            downloaded=downloaded,
+            active=(model_id == active_id),
+            download_path=str(file_path) if downloaded else None,
+        ))
+
+    return AIModelListResponse(models=items)
+
+
+# Track in-progress downloads so we don't start duplicates
+_download_tasks: dict[str, asyncio.Task] = {}
+
+
+@router.post("/models/{model_id}/download")
+async def download_model(model_id: str) -> StreamingResponse:
+    """Download a model from HuggingFace, streaming byte-level progress via SSE."""
+    entry = MODEL_CATALOG.get(model_id)
+    if not entry:
+        raise HTTPException(status_code=404, detail="Model not in catalog")
+
+    file_path = _model_file_path(model_id)
+    if file_path and file_path.exists():
+        raise HTTPException(status_code=409, detail="Model already downloaded")
+
+    settings.ensure_directories()
+
+    async def _stream_progress():
+        import httpx
+
+        try:
+            from huggingface_hub import hf_hub_url
+
+            url = hf_hub_url(repo_id=entry["repo"], filename=entry["filename"])
+        except ImportError:
+            yield f"data: {json.dumps({'status': 'error', 'error': 'huggingface-hub is not installed. Install with: pip install huggingface-hub'})}\n\n"
+            return
+
+        yield f"data: {json.dumps({'status': 'starting', 'model_id': model_id})}\n\n"
+
+        total_bytes = entry["size_bytes"]
+        dest = settings.MODELS_DIR / entry["filename"]
+        tmp_dest = dest.with_suffix(".part")
+
+        try:
+            downloaded = 0
+            last_pct = -1
+            async with httpx.AsyncClient(follow_redirects=True, timeout=None) as client:
+                async with client.stream("GET", url) as resp:
+                    resp.raise_for_status()
+                    content_length = resp.headers.get("content-length")
+                    if content_length:
+                        total_bytes = int(content_length)
+
+                    with open(tmp_dest, "wb") as f:
+                        async for chunk in resp.aiter_bytes(chunk_size=256 * 1024):
+                            f.write(chunk)
+                            downloaded += len(chunk)
+                            pct = int(downloaded * 100 / total_bytes) if total_bytes else 0
+                            # Emit progress every 1%
+                            if pct != last_pct:
+                                last_pct = pct
+                                yield f"data: {json.dumps({'status': 'progress', 'model_id': model_id, 'downloaded_bytes': downloaded, 'total_bytes': total_bytes})}\n\n"
+
+            # Rename .part → final filename
+            tmp_dest.rename(dest)
+
+            yield f"data: {json.dumps({'status': 'complete', 'model_id': model_id, 'path': str(dest)})}\n\n"
+
+            # Auto-activate if no model is currently active
+            if _read_active_model() is None:
+                _write_active_model(model_id)
+                settings.AI_MODEL_PATH = str(dest)
+                yield f"data: {json.dumps({'status': 'activated', 'model_id': model_id})}\n\n"
+
+        except Exception as exc:
+            logger.exception("Model download failed")
+            # Clean up partial file
+            if tmp_dest.exists():
+                tmp_dest.unlink()
+            yield f"data: {json.dumps({'status': 'error', 'error': str(exc)})}\n\n"
+
+    return StreamingResponse(_stream_progress(), media_type="text/event-stream")
+
+
+@router.post("/models/{model_id}/activate")
+async def activate_model(model_id: str):
+    """Set a downloaded model as the active model."""
+    entry = MODEL_CATALOG.get(model_id)
+    if not entry:
+        raise HTTPException(status_code=404, detail="Model not in catalog")
+
+    file_path = _model_file_path(model_id)
+    if file_path is None or not file_path.exists():
+        raise HTTPException(status_code=400, detail="Model is not downloaded")
+
+    _write_active_model(model_id)
+    settings.AI_MODEL_PATH = str(file_path)
+
+    return {"status": "activated", "model_id": model_id, "path": str(file_path)}
+
+
+@router.delete("/models/{model_id}")
+async def delete_model(model_id: str):
+    """Delete a downloaded model file. If it's the active model, deactivate first."""
+    entry = MODEL_CATALOG.get(model_id)
+    if not entry:
+        raise HTTPException(status_code=404, detail="Model not in catalog")
+
+    file_path = _model_file_path(model_id)
+    if file_path is None or not file_path.exists():
+        raise HTTPException(status_code=404, detail="Model file not found")
+
+    # If this is the active model, clear the active state
+    active_id = _read_active_model()
+    if model_id == active_id:
+        _active_model_path().unlink(missing_ok=True)
+        settings.AI_MODEL_PATH = None
+
+    file_path.unlink()
+    return {"status": "deleted", "model_id": model_id}
 
 
 async def get_transcript_text(db: AsyncSession, transcript_id: str) -> str:

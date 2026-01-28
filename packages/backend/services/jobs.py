@@ -311,9 +311,10 @@ async def handle_transcription(
     Raises:
         ValueError: If recording not found or invalid.
     """
+    from core.factory import create_transcription_engine_from_settings
+    from core.interfaces import TranscriptionOptions, TranscriptionProgress, TranscriptionResult
     from core.transcription_settings import detect_diarization_device, get_transcription_settings
     from services.diarization import DiarizationService
-    from services.transcription import TranscriptionService
 
     recording_id = payload.get("recording_id")
     language = payload.get("language")
@@ -323,7 +324,8 @@ async def handle_transcription(
     effective = await get_transcription_settings()
     dia_device = detect_diarization_device()
     logger.info(
-        "Effective transcription settings: model=%s, device=%s, compute_type=%s, batch_size=%s, diarize=%s, dia_device=%s",
+        "Effective transcription settings: engine=%s, model=%s, device=%s, compute_type=%s, batch_size=%s, diarize=%s, dia_device=%s",
+        effective.get("engine", "auto"),
         effective["model"],
         effective["device"],
         effective["compute_type"],
@@ -332,19 +334,26 @@ async def handle_transcription(
         dia_device,
     )
 
-    # Create services with effective settings
-    # Note: WhisperX (ctranslate2) only supports cpu/cuda, NOT mps
-    # Diarization (pyannote) supports cpu/cuda/mps
-    tx_service = TranscriptionService(
-        model_name=effective["model"],
-        device=effective["device"],
-        compute_type=effective["compute_type"],
-    )
+    # Create transcription engine based on settings
+    tx_engine = create_transcription_engine_from_settings(effective)
+
+    # Check if engine supports diarization
+    engine_info = await tx_engine.get_engine_info()
+    supports_diarization = engine_info.get("supports_diarization", True)
+    if not supports_diarization:
+        logger.info(
+            "Skipping diarization - not supported by %s",
+            engine_info.get("name", "unknown engine"),
+        )
+
+    # Create diarization service
     dia_service = DiarizationService(
         device=dia_device,
         hf_token=effective.get("hf_token"),
     )
-    diarize = diarize_requested and effective["diarize"]
+
+    # Determine if we should run diarization
+    diarize = diarize_requested and effective["diarize"] and supports_diarization
 
     if not recording_id:
         raise ValueError("Missing recording_id in payload")
@@ -370,20 +379,40 @@ async def handle_transcription(
             audio_path = str(extracted_audio)
 
     try:
-        # Wrap progress for transcription phase (0-60%)
-        async def transcription_progress(p: float) -> None:
-            await progress_callback(p * 0.6)
-
-        # Run transcription
-        transcription_result = await tx_service.transcribe(
-            audio_path=audio_path,
+        # Run transcription with streaming progress
+        options = TranscriptionOptions(
             language=language,
+            model_size=effective["model"],
+            compute_type=effective["compute_type"],
             batch_size=effective["batch_size"],
-            progress_callback=transcription_progress,
         )
 
-        detected_language = transcription_result["language"]
-        segments_data = transcription_result["segments"]
+        transcription_result: TranscriptionResult | None = None
+        async for item in tx_engine.transcribe_stream(audio_path, options):
+            if isinstance(item, TranscriptionProgress):
+                # Map engine progress (0-1) to job progress (0-60%)
+                await progress_callback(item.progress * 60)
+            elif isinstance(item, TranscriptionResult):
+                transcription_result = item
+
+        if transcription_result is None:
+            raise ValueError("Transcription did not produce a result")
+
+        detected_language = transcription_result.language
+        # Convert segments to dict format for diarization service
+        segments_data = [
+            {
+                "start": seg.start,
+                "end": seg.end,
+                "text": seg.text,
+                "confidence": seg.confidence,
+                "words": [
+                    {"word": w.word, "start": w.start, "end": w.end, "score": w.confidence}
+                    for w in seg.words
+                ] if seg.words else [],
+            }
+            for seg in transcription_result.segments
+        ]
         speakers_found: list[str] = []
 
         # Run diarization if enabled
@@ -426,7 +455,7 @@ async def handle_transcription(
             transcript = Transcript(
                 recording_id=recording_id,
                 language=detected_language,
-                model_used=f"whisperx-{effective['model']}",
+                model_used=transcription_result.model_used or f"{engine_info.get('name', 'unknown')}-{effective['model']}",
                 word_count=word_count,
             )
             session.add(transcript)

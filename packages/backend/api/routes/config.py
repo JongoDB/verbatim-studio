@@ -12,9 +12,15 @@ from core.transcription_settings import (
     VALID_BATCH_SIZES,
     VALID_COMPUTE_TYPES,
     VALID_DEVICES,
+    VALID_ENGINES,
     VALID_MODELS,
     detect_available_devices,
+    detect_optimal_engine,
+    get_available_engines,
+    get_devices_for_engine,
     get_transcription_settings,
+    is_apple_silicon,
+    is_mlx_whisper_available,
     save_transcription_settings,
 )
 
@@ -89,6 +95,12 @@ class PresetInfo(BaseModel):
 class TranscriptionSettingsResponse(BaseModel):
     """Effective transcription settings + capabilities."""
 
+    # Engine selection
+    engine: str  # Current setting: auto, whisperx, mlx-whisper
+    effective_engine: str  # Resolved engine after auto-detection
+    available_engines: list[str]  # What's actually available on this system
+    engine_caveats: list[str]  # Warnings to display in UI
+
     # Effective values
     model: str
     device: str
@@ -115,6 +127,7 @@ class TranscriptionSettingsResponse(BaseModel):
 class TranscriptionSettingsUpdate(BaseModel):
     """Partial update for transcription settings."""
 
+    engine: str | None = None
     model: str | None = None
     device: str | None = None
     compute_type: str | None = None
@@ -131,9 +144,58 @@ def _mask_token(token: str | None) -> str | None:
     return "****" + token[-4:]
 
 
+def _get_engine_caveats(engine: str, effective_engine: str, diarize: bool) -> list[str]:
+    """Generate caveats/warnings for the current engine configuration."""
+    caveats = []
+
+    # MLX Whisper doesn't support diarization
+    if effective_engine == "mlx-whisper" and diarize:
+        caveats.append(
+            "Speaker diarization is not supported with MLX Whisper and will be skipped."
+        )
+
+    # User selected mlx-whisper but not on Apple Silicon
+    if engine == "mlx-whisper" and not is_apple_silicon():
+        caveats.append(
+            "MLX Whisper requires Apple Silicon. Will fall back to WhisperX."
+        )
+
+    # User selected whisperx but mlx-whisper is available (tip)
+    if (
+        effective_engine == "whisperx"
+        and is_apple_silicon()
+        and is_mlx_whisper_available()
+    ):
+        caveats.append(
+            "Tip: MLX Whisper provides faster GPU-accelerated transcription on Apple Silicon."
+        )
+
+    return caveats
+
+
 def _build_response(effective: dict[str, Any]) -> TranscriptionSettingsResponse:
     hf_token = effective.get("hf_token")
+
+    # Resolve engine
+    engine = effective.get("engine", "auto")
+    if engine == "auto":
+        effective_engine = detect_optimal_engine()
+    else:
+        effective_engine = engine
+
+    # Get available engines and caveats
+    available_engines = get_available_engines()
+    engine_caveats = _get_engine_caveats(engine, effective_engine, effective["diarize"])
+
+    # Get available devices based on effective engine
+    # This helps the UI show only relevant device options
+    available_devices = detect_available_devices()
+
     return TranscriptionSettingsResponse(
+        engine=engine,
+        effective_engine=effective_engine,
+        available_engines=available_engines,
+        engine_caveats=engine_caveats,
         model=effective["model"],
         device=effective["device"],
         compute_type=effective["compute_type"],
@@ -144,7 +206,7 @@ def _build_response(effective: dict[str, Any]) -> TranscriptionSettingsResponse:
         mode="external" if settings.WHISPERX_EXTERNAL_URL else "local",
         external_url=settings.WHISPERX_EXTERNAL_URL,
         available_models=VALID_MODELS,
-        available_devices=detect_available_devices(),
+        available_devices=available_devices,
         available_compute_types=VALID_COMPUTE_TYPES,
         available_batch_sizes=VALID_BATCH_SIZES,
         presets={k: PresetInfo(**v) for k, v in PRESETS.items()},
@@ -164,6 +226,13 @@ async def update_transcription_config(
 ) -> TranscriptionSettingsResponse:
     """Update transcription settings. Only provided fields are changed."""
     updates: dict[str, Any] = {}
+
+    if body.engine is not None:
+        if body.engine not in VALID_ENGINES:
+            raise HTTPException(
+                400, f"Invalid engine: {body.engine}. Must be one of: {VALID_ENGINES}"
+            )
+        updates["engine"] = body.engine
 
     if body.model is not None:
         if body.model not in VALID_MODELS:
