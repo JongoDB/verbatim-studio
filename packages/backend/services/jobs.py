@@ -490,6 +490,15 @@ async def handle_transcription(
 
             transcript_id = transcript.id
 
+        # Auto-queue embedding job if service is available
+        from services.embedding import embedding_service
+        if embedding_service.is_available():
+            try:
+                await job_queue.enqueue("embed", {"transcript_id": transcript_id})
+                logger.info("Queued embedding job for transcript %s", transcript_id)
+            except Exception as e:
+                logger.warning("Failed to queue embedding job: %s", e)
+
         await progress_callback(100)
 
         logger.info(
