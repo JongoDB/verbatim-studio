@@ -11,7 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from persistence import get_db
-from persistence.models import Recording, Segment, Transcript
+from persistence.models import Recording, Segment, SegmentEmbedding, Transcript
+from services.embedding import bytes_to_embedding, embedding_service
 
 logger = logging.getLogger(__name__)
 
@@ -143,6 +144,99 @@ async def search_segments(
     )
 
 
+async def _semantic_search(
+    db: AsyncSession,
+    query_embedding: list[float],
+    limit: int,
+    exclude_ids: set[str],
+) -> list["GlobalSearchResult"]:
+    """Perform semantic search using embeddings.
+
+    Args:
+        db: Database session.
+        query_embedding: The embedded query vector.
+        limit: Maximum results.
+        exclude_ids: Segment IDs to exclude (already found by keyword).
+
+    Returns:
+        List of semantic search results.
+    """
+    # Get all embeddings (for small datasets, in-memory similarity is fast enough)
+    # For larger datasets, use sqlite-vec virtual table
+    query = (
+        select(
+            SegmentEmbedding,
+            Segment,
+            Transcript.recording_id,
+            Recording.title.label("recording_title"),
+            Recording.created_at.label("recording_created_at"),
+        )
+        .join(Segment, SegmentEmbedding.segment_id == Segment.id)
+        .join(Transcript, Segment.transcript_id == Transcript.id)
+        .join(Recording, Transcript.recording_id == Recording.id)
+    )
+
+    result = await db.execute(query)
+    rows = result.all()
+
+    if not rows:
+        return []
+
+    # Calculate cosine similarity for each
+    import math
+
+    def cosine_similarity(a: list[float], b: list[float]) -> float:
+        dot = sum(x * y for x, y in zip(a, b))
+        norm_a = math.sqrt(sum(x * x for x in a))
+        norm_b = math.sqrt(sum(x * x for x in b))
+        if norm_a == 0 or norm_b == 0:
+            return 0.0
+        return dot / (norm_a * norm_b)
+
+    # Score all embeddings
+    scored = []
+    for row in rows:
+        seg_emb = row[0]
+        segment = row[1]
+        rec_id = row[2]
+        rec_title = row[3]
+        rec_created = row[4]
+
+        if segment.id in exclude_ids:
+            continue
+
+        emb = bytes_to_embedding(seg_emb.embedding)
+        score = cosine_similarity(query_embedding, emb)
+        scored.append((score, segment, rec_id, rec_title, rec_created))
+
+    # Sort by score descending, take top N
+    scored.sort(key=lambda x: x[0], reverse=True)
+    top_results = scored[:limit]
+
+    # Convert to GlobalSearchResult
+    results = []
+    for score, segment, rec_id, rec_title, rec_created in top_results:
+        # Only include if similarity is above threshold
+        if score < 0.3:
+            continue
+        results.append(
+            GlobalSearchResult(
+                type="segment",
+                id=segment.id,
+                title=None,
+                text=segment.text,
+                recording_id=rec_id,
+                recording_title=rec_title,
+                start_time=segment.start_time,
+                end_time=segment.end_time,
+                created_at=rec_created,
+                match_type="semantic",
+            )
+        )
+
+    return results
+
+
 class GlobalSearchResult(BaseModel):
     """A result from global search."""
 
@@ -251,6 +345,18 @@ async def global_search(
                 match_type="keyword",
             )
         )
+
+    # Semantic search (if enabled and available)
+    if semantic and embedding_service.is_available():
+        try:
+            seen_ids = {r.id for r in results}
+            query_embedding = await embedding_service.embed_query(q)
+            semantic_results = await _semantic_search(
+                db, query_embedding, limit - len(results), seen_ids
+            )
+            results.extend(semantic_results)
+        except Exception as e:
+            logger.warning("Semantic search failed: %s", e)
 
     return GlobalSearchResponse(
         query=q,
