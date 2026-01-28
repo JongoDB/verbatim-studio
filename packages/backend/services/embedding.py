@@ -2,9 +2,35 @@
 
 import asyncio
 import logging
+import struct
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+
+def embedding_to_bytes(embedding: list[float]) -> bytes:
+    """Convert embedding list to bytes for storage.
+
+    Args:
+        embedding: List of floats (typically 768 dimensions).
+
+    Returns:
+        Packed bytes (4 bytes per float, little-endian).
+    """
+    return struct.pack(f"<{len(embedding)}f", *embedding)
+
+
+def bytes_to_embedding(data: bytes) -> list[float]:
+    """Convert stored bytes back to embedding list.
+
+    Args:
+        data: Packed bytes from embedding_to_bytes.
+
+    Returns:
+        List of floats.
+    """
+    count = len(data) // 4  # 4 bytes per float
+    return list(struct.unpack(f"<{count}f", data))
 
 
 class EmbeddingService:
