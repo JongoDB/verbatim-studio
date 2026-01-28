@@ -30,7 +30,7 @@ class Settings(BaseSettings):
 
     # AI settings (llama.cpp)
     AI_MODEL_PATH: str | None = None  # Path to GGUF model file
-    AI_N_CTX: int = 4096  # Context window size
+    AI_N_CTX: int = 8192  # Context window size
     AI_N_GPU_LAYERS: int | None = None  # GPU layers to offload (None = auto-detect, 0 = CPU, -1 = all)
 
     # WhisperX settings

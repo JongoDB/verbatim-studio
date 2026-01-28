@@ -193,6 +193,21 @@ NAMED ENTITIES:
 - [Person 2]
 ..."""
 
+        # Truncate transcript to fit within context window.
+        # Reserve tokens for: system prompt (~200), user prefix (~10), response (max_tokens).
+        max_tokens = options.max_tokens or 2048
+        reserved = 300 + max_tokens
+        available_tokens = self._n_ctx - reserved
+        # Rough estimate: 1 token ≈ 4 characters
+        max_chars = available_tokens * 4
+        if len(transcript_text) > max_chars:
+            transcript_text = transcript_text[:max_chars]
+            logger.info(
+                "Transcript truncated to %d chars to fit context window (%d tokens)",
+                max_chars,
+                self._n_ctx,
+            )
+
         messages = [
             ChatMessage(role="system", content=system_prompt),
             ChatMessage(role="user", content=f"Please summarize this transcript:\n\n{transcript_text}"),
