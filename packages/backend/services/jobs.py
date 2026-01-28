@@ -282,12 +282,36 @@ async def handle_transcription(
     Raises:
         ValueError: If recording not found or invalid.
     """
-    from services.diarization import diarization_service
-    from services.transcription import transcription_service
+    from core.transcription_settings import get_transcription_settings
+    from services.diarization import DiarizationService
+    from services.transcription import TranscriptionService
 
     recording_id = payload.get("recording_id")
     language = payload.get("language")
-    diarize = payload.get("diarize", True)  # Default to enabled
+    diarize_requested = payload.get("diarize", True)  # Default to enabled
+
+    # Read effective settings fresh for this job
+    effective = await get_transcription_settings()
+    logger.info(
+        "Effective transcription settings: model=%s, device=%s, compute_type=%s, batch_size=%s, diarize=%s",
+        effective["model"],
+        effective["device"],
+        effective["compute_type"],
+        effective["batch_size"],
+        effective["diarize"],
+    )
+
+    # Create services with effective settings
+    tx_service = TranscriptionService(
+        model_name=effective["model"],
+        device=effective["device"],
+        compute_type=effective["compute_type"],
+    )
+    dia_service = DiarizationService(
+        device=effective["device"],
+        hf_token=effective.get("hf_token"),
+    )
+    diarize = diarize_requested and effective["diarize"]
 
     if not recording_id:
         raise ValueError("Missing recording_id in payload")
@@ -318,9 +342,10 @@ async def handle_transcription(
             await progress_callback(p * 0.6)
 
         # Run transcription
-        transcription_result = await transcription_service.transcribe(
+        transcription_result = await tx_service.transcribe(
             audio_path=audio_path,
             language=language,
+            batch_size=effective["batch_size"],
             progress_callback=transcription_progress,
         )
 
@@ -336,7 +361,7 @@ async def handle_transcription(
 
             try:
                 logger.info("Starting diarization for %s with %d segments", audio_path, len(segments_data))
-                diarization_result = await diarization_service.diarize(
+                diarization_result = await dia_service.diarize(
                     audio_path=audio_path,
                     segments=segments_data,
                     progress_callback=diarization_progress,
@@ -368,7 +393,7 @@ async def handle_transcription(
             transcript = Transcript(
                 recording_id=recording_id,
                 language=detected_language,
-                model_used=f"whisperx-{transcription_service.model_name}",
+                model_used=f"whisperx-{effective['model']}",
                 word_count=word_count,
             )
             session.add(transcript)

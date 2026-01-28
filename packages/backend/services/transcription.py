@@ -44,7 +44,11 @@ class TranscriptionService:
     """Service for transcribing audio using WhisperX.
 
     Uses lazy loading to avoid import errors when WhisperX is not installed.
+    Caches loaded models to avoid expensive reloads when settings haven't changed.
     """
+
+    # Class-level model cache keyed by (model_name, device, compute_type)
+    _model_cache: dict[tuple[str, str, str], Any] = {}
 
     def __init__(
         self,
@@ -71,6 +75,8 @@ class TranscriptionService:
     def _ensure_loaded(self) -> None:
         """Ensure WhisperX is loaded and model is ready.
 
+        Uses class-level cache to reuse models across service instances.
+
         Raises:
             ImportError: If WhisperX is not installed.
         """
@@ -86,25 +92,35 @@ class TranscriptionService:
 
         self._whisperx = whisperx
 
-        logger.info(
-            "Loading WhisperX model: %s (device=%s, compute_type=%s)",
-            self.model_name,
-            self.device,
-            self.compute_type,
-        )
-
-        self._model = whisperx.load_model(
-            self.model_name,
-            self.device,
-            compute_type=self.compute_type,
-        )
-
-        logger.info("WhisperX model loaded successfully")
+        cache_key = (self.model_name, self.device, self.compute_type)
+        if cache_key in TranscriptionService._model_cache:
+            logger.info(
+                "Reusing cached WhisperX model: %s (device=%s, compute_type=%s)",
+                self.model_name,
+                self.device,
+                self.compute_type,
+            )
+            self._model = TranscriptionService._model_cache[cache_key]
+        else:
+            logger.info(
+                "Loading WhisperX model: %s (device=%s, compute_type=%s)",
+                self.model_name,
+                self.device,
+                self.compute_type,
+            )
+            self._model = whisperx.load_model(
+                self.model_name,
+                self.device,
+                compute_type=self.compute_type,
+            )
+            TranscriptionService._model_cache[cache_key] = self._model
+            logger.info("WhisperX model loaded and cached successfully")
 
     async def transcribe(
         self,
         audio_path: str | Path,
         language: str | None = None,
+        batch_size: int = 16,
         progress_callback: ProgressCallback | None = None,
     ) -> dict[str, Any]:
         """Transcribe an audio file.
@@ -112,6 +128,7 @@ class TranscriptionService:
         Args:
             audio_path: Path to the audio file.
             language: Optional language code (e.g., 'en', 'es'). If None, auto-detect.
+            batch_size: Batch size for transcription inference.
             progress_callback: Optional async callback for progress updates.
 
         Returns:
@@ -146,7 +163,7 @@ class TranscriptionService:
 
         # Transcribe
         logger.info("Starting transcription...")
-        result = self._model.transcribe(audio, batch_size=16, language=language)
+        result = self._model.transcribe(audio, batch_size=batch_size, language=language)
 
         detected_language = result.get("language", language or "en")
         logger.info("Transcription complete. Detected language: %s", detected_language)

@@ -320,6 +320,38 @@ export interface ConfigStatus {
   ai: AIConfigStatus;
 }
 
+export interface PresetInfo {
+  model: string;
+  compute_type: string;
+  batch_size: number;
+}
+
+export interface TranscriptionSettings {
+  model: string;
+  device: string;
+  compute_type: string;
+  batch_size: number;
+  diarize: boolean;
+  hf_token_set: boolean;
+  hf_token_masked: string | null;
+  mode: 'local' | 'external';
+  external_url: string | null;
+  available_models: string[];
+  available_devices: string[];
+  available_compute_types: string[];
+  available_batch_sizes: number[];
+  presets: Record<string, PresetInfo>;
+}
+
+export interface TranscriptionSettingsUpdate {
+  model?: string;
+  device?: string;
+  compute_type?: string;
+  batch_size?: number;
+  diarize?: boolean;
+  hf_token?: string;
+}
+
 class ApiClient {
   private baseUrl: string;
 
@@ -740,6 +772,15 @@ class ApiClient {
   // Config
   config = {
     status: () => this.request<ConfigStatus>('/api/config/status'),
+
+    getTranscription: () =>
+      this.request<TranscriptionSettings>('/api/config/transcription'),
+
+    updateTranscription: (data: TranscriptionSettingsUpdate) =>
+      this.request<TranscriptionSettings>('/api/config/transcription', {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      }),
   };
 }
 
