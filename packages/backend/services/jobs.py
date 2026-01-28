@@ -11,7 +11,7 @@ from typing import Any
 from sqlalchemy import select, update
 
 from persistence.database import async_session
-from persistence.models import Job, Recording, Segment, Speaker, Transcript
+from persistence.models import Job, Recording, Segment, SegmentEmbedding, Speaker, Transcript
 
 logger = logging.getLogger(__name__)
 
@@ -531,3 +531,91 @@ async def handle_transcription(
 
 # Register the transcription handler
 job_queue.register_handler("transcribe", handle_transcription)
+
+
+async def handle_embedding(
+    payload: dict[str, Any], progress_callback: ProgressCallback
+) -> dict[str, Any]:
+    """Generate embeddings for all segments in a transcript.
+
+    Args:
+        payload: Job payload with:
+            - transcript_id: Required transcript ID
+        progress_callback: Callback to report progress.
+
+    Returns:
+        Result dictionary with segment_count.
+
+    Raises:
+        ValueError: If transcript not found.
+    """
+    from services.embedding import embedding_service, embedding_to_bytes
+
+    transcript_id = payload.get("transcript_id")
+    if not transcript_id:
+        raise ValueError("Missing transcript_id in payload")
+
+    # Check if embeddings are available
+    if not embedding_service.is_available():
+        logger.warning("Embedding service not available, skipping embed job")
+        return {"segment_count": 0, "skipped": True}
+
+    # Load segments for this transcript
+    async with async_session() as session:
+        result = await session.execute(
+            select(Segment)
+            .where(Segment.transcript_id == transcript_id)
+            .order_by(Segment.segment_index)
+        )
+        segments = result.scalars().all()
+
+        if not segments:
+            logger.warning("No segments found for transcript %s", transcript_id)
+            return {"segment_count": 0}
+
+        logger.info("Generating embeddings for %d segments", len(segments))
+
+        # Extract texts
+        texts = [seg.text for seg in segments]
+        segment_ids = [seg.id for seg in segments]
+
+    # Generate embeddings in batch
+    await progress_callback(10)
+    embeddings = await embedding_service.embed_texts(texts)
+    await progress_callback(80)
+
+    # Store embeddings
+    async with async_session() as session:
+        for i, (seg_id, emb) in enumerate(zip(segment_ids, embeddings)):
+            # Check if embedding already exists (upsert)
+            existing = await session.get(SegmentEmbedding, seg_id)
+            if existing:
+                existing.embedding = embedding_to_bytes(emb)
+                existing.model_used = embedding_service._model_name
+            else:
+                segment_embedding = SegmentEmbedding(
+                    segment_id=seg_id,
+                    embedding=embedding_to_bytes(emb),
+                    model_used=embedding_service._model_name,
+                )
+                session.add(segment_embedding)
+
+            # Progress update every 10 segments
+            if i % 10 == 0:
+                await progress_callback(80 + (i / len(embeddings)) * 20)
+
+        await session.commit()
+
+    await progress_callback(100)
+
+    logger.info(
+        "Embeddings complete for transcript %s: %d segments",
+        transcript_id,
+        len(segments),
+    )
+
+    return {"segment_count": len(segments), "transcript_id": transcript_id}
+
+
+# Register the embedding handler
+job_queue.register_handler("embed", handle_embedding)
