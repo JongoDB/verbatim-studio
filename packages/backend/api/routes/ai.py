@@ -55,6 +55,25 @@ def _model_file_path(model_id: str) -> Path | None:
     return settings.MODELS_DIR / entry["filename"]
 
 
+def _ensure_active_model_loaded() -> None:
+    """Ensure settings.AI_MODEL_PATH is set from the active model if available.
+
+    This bridges the gap between the persisted active_model.json and the
+    runtime settings used by the AI service factory.
+    """
+    if settings.AI_MODEL_PATH:
+        return  # Already configured (e.g., via env var)
+
+    active_id = _read_active_model()
+    if not active_id:
+        return
+
+    file_path = _model_file_path(active_id)
+    if file_path and file_path.exists():
+        settings.AI_MODEL_PATH = str(file_path)
+        logger.info("Loaded active AI model from disk: %s", file_path.name)
+
+
 class ChatRequest(BaseModel):
     """Request model for chat."""
 
@@ -284,6 +303,7 @@ async def get_transcript_text(db: AsyncSession, transcript_id: str) -> str:
 @router.get("/status", response_model=AIStatusResponse)
 async def get_ai_status() -> AIStatusResponse:
     """Get AI service status and available models."""
+    _ensure_active_model_loaded()
     factory = get_factory()
     ai_service = factory.create_ai_service()
 
@@ -303,6 +323,7 @@ async def get_ai_status() -> AIStatusResponse:
 @router.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest) -> ChatResponse:
     """Send a chat message to the AI."""
+    _ensure_active_model_loaded()
     factory = get_factory()
     ai_service = factory.create_ai_service()
 
@@ -339,6 +360,7 @@ async def chat(request: ChatRequest) -> ChatResponse:
 @router.post("/chat/stream")
 async def chat_stream(request: ChatRequest) -> StreamingResponse:
     """Send a streaming chat message to the AI."""
+    _ensure_active_model_loaded()
     factory = get_factory()
     ai_service = factory.create_ai_service()
 
@@ -381,6 +403,7 @@ async def summarize_transcript(
     temperature: Annotated[float, Query(ge=0, le=2)] = 0.3,
 ) -> SummarizationResponse:
     """Generate a summary of a transcript."""
+    _ensure_active_model_loaded()
     factory = get_factory()
     ai_service = factory.create_ai_service()
 
@@ -423,6 +446,7 @@ async def analyze_transcript(
     temperature: Annotated[float, Query(ge=0, le=2)] = 0.3,
 ) -> AnalysisResponse:
     """Perform analysis on a transcript."""
+    _ensure_active_model_loaded()
     factory = get_factory()
     ai_service = factory.create_ai_service()
 
@@ -467,6 +491,7 @@ async def ask_about_transcript(
     temperature: Annotated[float, Query(ge=0, le=2)] = 0.5,
 ) -> ChatResponse:
     """Ask a question about a specific transcript."""
+    _ensure_active_model_loaded()
     factory = get_factory()
     ai_service = factory.create_ai_service()
 

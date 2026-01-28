@@ -15,7 +15,7 @@ export function AIAnalysisPanel({ transcriptId }: AIAnalysisPanelProps) {
 
   useEffect(() => {
     api.ai.status()
-      .then((s) => setAiAvailable(s.available && s.model_loaded))
+      .then((s) => setAiAvailable(s.available))
       .catch(() => setAiAvailable(false));
   }, []);
 
