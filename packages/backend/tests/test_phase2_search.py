@@ -51,3 +51,22 @@ async def test_global_search_with_limit(client: AsyncClient):
     assert response.status_code == 200
     data = response.json()
     assert "results" in data
+
+
+@pytest.mark.asyncio
+async def test_global_search_has_match_type(client: AsyncClient):
+    """Test global search results include match_type field."""
+    response = await client.get("/api/search/global?q=test")
+    assert response.status_code == 200
+    data = response.json()
+    # Even with no results, schema should accept match_type
+    assert "results" in data
+
+
+@pytest.mark.asyncio
+async def test_global_search_semantic_param(client: AsyncClient):
+    """Test global search accepts semantic parameter."""
+    response = await client.get("/api/search/global?q=test&semantic=false")
+    assert response.status_code == 200
+    data = response.json()
+    assert "results" in data

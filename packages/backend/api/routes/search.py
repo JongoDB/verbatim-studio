@@ -155,6 +155,7 @@ class GlobalSearchResult(BaseModel):
     start_time: float | None
     end_time: float | None
     created_at: datetime
+    match_type: str | None = None  # "keyword" or "semantic"
 
 
 class GlobalSearchResponse(BaseModel):
@@ -170,6 +171,7 @@ async def global_search(
     db: Annotated[AsyncSession, Depends(get_db)],
     q: Annotated[str, Query(min_length=1, description="Search query")],
     limit: Annotated[int, Query(ge=1, le=50, description="Maximum results")] = 20,
+    semantic: Annotated[bool, Query(description="Include semantic search results")] = True,
 ) -> GlobalSearchResponse:
     """Search across recordings and segments.
 
@@ -208,6 +210,7 @@ async def global_search(
                 start_time=None,
                 end_time=None,
                 created_at=rec.created_at,
+                match_type="keyword",
             )
         )
 
@@ -245,6 +248,7 @@ async def global_search(
                 start_time=segment.start_time,
                 end_time=segment.end_time,
                 created_at=rec_created,
+                match_type="keyword",
             )
         )
 
