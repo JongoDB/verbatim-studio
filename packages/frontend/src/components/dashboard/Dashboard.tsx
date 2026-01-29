@@ -302,7 +302,13 @@ export function Dashboard({ onNavigateToRecordings, onNavigateToProjects, onView
                 return (
                   <button
                     key={recording.id}
-                    onClick={() => onViewRecording?.(recording.id)}
+                    onClick={() => {
+                      if (recording.status === 'completed') {
+                        onViewRecording?.(recording.id);
+                      } else {
+                        onNavigateToRecordings?.();
+                      }
+                    }}
                     className="w-full flex items-center gap-3 p-2 -mx-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors text-left"
                   >
                     <svg className="w-4 h-4 shrink-0 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
