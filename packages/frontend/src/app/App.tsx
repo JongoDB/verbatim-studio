@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api, type ApiInfo, type HealthStatus, type GlobalSearchResult } from '@/lib/api';
 import { RecordingsPage } from '@/pages/recordings/RecordingsPage';
 import { TranscriptPage } from '@/pages/transcript/TranscriptPage';
+import { SearchPage } from '@/pages/search/SearchPage';
 import { SearchBox } from '@/components/search/SearchBox';
 import { Dashboard } from '@/components/dashboard/Dashboard';
 import { SettingsPage } from '@/pages/settings/SettingsPage';
@@ -11,6 +12,7 @@ import { APP_VERSION } from '@/version'; // static fallback
 type NavigationState =
   | { type: 'dashboard' }
   | { type: 'recordings' }
+  | { type: 'search' }
   | { type: 'settings' }
   | { type: 'transcript'; recordingId: string; initialSeekTime?: number };
 
@@ -56,6 +58,10 @@ export function App() {
     setNavigation({ type: 'settings' });
   }, []);
 
+  const handleNavigateToSearch = useCallback(() => {
+    setNavigation({ type: 'search' });
+  }, []);
+
   const handleBackToRecordings = useCallback(() => {
     setNavigation({ type: 'recordings' });
   }, []);
@@ -65,7 +71,7 @@ export function App() {
     setNavigation({ type: 'recordings' });
   }, []);
 
-  const currentTab = navigation.type === 'transcript' ? 'recordings' : navigation.type as 'dashboard' | 'recordings' | 'settings';
+  const currentTab = navigation.type === 'transcript' ? 'recordings' : navigation.type as 'dashboard' | 'recordings' | 'search' | 'settings';
 
   const handleSearchResult = useCallback((result: GlobalSearchResult) => {
     // Navigate to the recording's transcript, seeking to the segment time if available
@@ -206,6 +212,7 @@ export function App() {
         onNavigate={(tab) => {
           if (tab === 'dashboard') handleNavigateToDashboard();
           else if (tab === 'recordings') handleNavigateToRecordings();
+          else if (tab === 'search') handleNavigateToSearch();
           else if (tab === 'settings') handleNavigateToSettings();
         }}
         theme={theme}
@@ -236,6 +243,9 @@ export function App() {
             )}
             {navigation.type === 'recordings' && (
               <RecordingsPage onViewTranscript={handleViewTranscript} />
+            )}
+            {navigation.type === 'search' && (
+              <SearchPage onResultClick={handleSearchResult} />
             )}
             {navigation.type === 'transcript' && (
               <TranscriptPage
