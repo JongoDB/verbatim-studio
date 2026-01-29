@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from persistence.database import get_db
-from persistence.models import Recording, Transcript, Segment
+from persistence.models import Recording, Transcript, Segment, Project, Job
 
 router = APIRouter(prefix="/stats", tags=["stats"])
 
@@ -31,11 +31,28 @@ class TranscriptionStats(BaseModel):
     languages: dict[str, int]
 
 
+class ProjectStats(BaseModel):
+    """Statistics about projects."""
+
+    total_projects: int
+    last_updated: str | None  # ISO timestamp of most recently updated project
+
+
+class ProcessingStats(BaseModel):
+    """Statistics about processing jobs."""
+
+    active_count: int  # queued + running jobs
+    queued_count: int
+    running_count: int
+
+
 class DashboardStats(BaseModel):
     """Combined dashboard statistics."""
 
     recordings: RecordingStats
     transcriptions: TranscriptionStats
+    projects: ProjectStats
+    processing: ProcessingStats
 
 
 @router.get("", response_model=DashboardStats)
@@ -87,6 +104,31 @@ async def get_stats(
     )
     language_counts = {row.language: row.count for row in language_result.all()}
 
+    # Project stats
+    project_result = await db.execute(
+        select(
+            func.count(Project.id).label("total"),
+            func.max(Project.updated_at).label("last_updated"),
+        )
+    )
+    project_row = project_result.one()
+    last_updated_str = (
+        project_row.last_updated.isoformat() if project_row.last_updated else None
+    )
+
+    # Processing stats (queued + running jobs)
+    job_status_result = await db.execute(
+        select(
+            Job.status,
+            func.count(Job.id).label("count"),
+        )
+        .where(Job.status.in_(["queued", "running"]))
+        .group_by(Job.status)
+    )
+    job_counts = {row.status: row.count for row in job_status_result.all()}
+    queued_count = job_counts.get("queued", 0)
+    running_count = job_counts.get("running", 0)
+
     return DashboardStats(
         recordings=RecordingStats(
             total_recordings=recording_row.total or 0,
@@ -99,5 +141,14 @@ async def get_stats(
             total_segments=segment_count,
             total_words=transcript_row.total_words or 0,
             languages=language_counts,
+        ),
+        projects=ProjectStats(
+            total_projects=project_row.total or 0,
+            last_updated=last_updated_str,
+        ),
+        processing=ProcessingStats(
+            active_count=queued_count + running_count,
+            queued_count=queued_count,
+            running_count=running_count,
         ),
     )

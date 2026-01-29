@@ -60,6 +60,11 @@ export function App() {
     setNavigation({ type: 'recordings' });
   }, []);
 
+  // Navigate to projects - TODO: add dedicated projects page (#64)
+  const handleNavigateToProjects = useCallback(() => {
+    setNavigation({ type: 'recordings' });
+  }, []);
+
   const currentTab = navigation.type === 'transcript' ? 'recordings' : navigation.type as 'dashboard' | 'recordings' | 'settings';
 
   const handleSearchResult = useCallback((result: GlobalSearchResult) => {
@@ -223,7 +228,11 @@ export function App() {
         <main className="flex-1 overflow-y-auto">
           <div className="container mx-auto px-4 py-8">
             {navigation.type === 'dashboard' && (
-              <Dashboard onNavigateToRecordings={handleNavigateToRecordings} />
+              <Dashboard
+                onNavigateToRecordings={handleNavigateToRecordings}
+                onNavigateToProjects={handleNavigateToProjects}
+                onViewRecording={handleViewTranscript}
+              />
             )}
             {navigation.type === 'recordings' && (
               <RecordingsPage onViewTranscript={handleViewTranscript} />

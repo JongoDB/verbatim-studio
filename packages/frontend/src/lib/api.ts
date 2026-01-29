@@ -213,9 +213,22 @@ export interface TranscriptionStats {
   languages: Record<string, number>;
 }
 
+export interface ProjectStats {
+  total_projects: number;
+  last_updated: string | null;
+}
+
+export interface ProcessingStats {
+  active_count: number;
+  queued_count: number;
+  running_count: number;
+}
+
 export interface DashboardStats {
   recordings: RecordingStats;
   transcriptions: TranscriptionStats;
+  projects: ProjectStats;
+  processing: ProcessingStats;
 }
 
 export interface Project {
