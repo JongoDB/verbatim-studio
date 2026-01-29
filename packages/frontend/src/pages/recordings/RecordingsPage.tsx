@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, type Recording } from '@/lib/api';
 import { UploadDropzone } from '@/components/recordings/UploadDropzone';
 import { RecordingCard } from '@/components/recordings/RecordingCard';
-import { RecordingListItem } from '@/components/recordings/RecordingListItem';
+import { RecordingsTable } from '@/components/recordings/RecordingsTable';
 import { RecordingFilters, type FilterState, type ViewMode } from '@/components/recordings/RecordingFilters';
 import { TranscribeDialog } from '@/components/recordings/TranscribeDialog';
 import { AudioRecorder } from '@/components/recordings/AudioRecorder';
@@ -339,6 +339,13 @@ export function RecordingsPage({ onViewTranscript }: RecordingsPageProps) {
     setViewMode(mode);
   }, []);
 
+  const handleSortChange = useCallback(
+    (sortBy: 'created_at' | 'title' | 'duration', sortOrder: 'asc' | 'desc') => {
+      setFilters(prev => ({ ...prev, sortBy, sortOrder }));
+    },
+    []
+  );
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -493,20 +500,18 @@ export function RecordingsPage({ onViewTranscript }: RecordingsPageProps) {
           ))}
         </div>
       ) : (
-        <div className="flex flex-col gap-2">
-          {recordings.map((recording) => (
-            <RecordingListItem
-              key={recording.id}
-              recording={recording}
-              onTranscribe={() => handleOpenTranscribeDialog(recording)}
-              onDelete={() => handleDelete(recording.id)}
-              onView={() => handleView(recording.id)}
-              onCancel={() => handleCancel(recording.id)}
-              onRetry={() => handleRetry(recording.id)}
-              progress={jobProgress[recording.id]}
-            />
-          ))}
-        </div>
+        <RecordingsTable
+          recordings={recordings}
+          sortBy={filters.sortBy}
+          sortOrder={filters.sortOrder}
+          onSortChange={handleSortChange}
+          onTranscribe={handleOpenTranscribeDialog}
+          onDelete={(id) => handleDelete(id)}
+          onView={(id) => handleView(id)}
+          onCancel={(id) => handleCancel(id)}
+          onRetry={(id) => handleRetry(id)}
+          jobProgress={jobProgress}
+        />
       )}
 
       {/* Transcribe Dialog */}
