@@ -3,8 +3,8 @@ import { useCallback, useEffect, useState } from 'react';
 type Theme = 'light' | 'dark' | 'system';
 
 interface SidebarProps {
-  currentTab: 'dashboard' | 'recordings' | 'search' | 'settings';
-  onNavigate: (tab: 'dashboard' | 'recordings' | 'search' | 'settings') => void;
+  currentTab: 'dashboard' | 'recordings' | 'live' | 'search' | 'settings';
+  onNavigate: (tab: 'dashboard' | 'recordings' | 'live' | 'search' | 'settings') => void;
   theme: Theme;
   onCycleTheme: () => void;
   version: string;
@@ -27,6 +27,16 @@ const NAV_ITEMS = [
     icon: (
       <svg className="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
         <path strokeLinecap="round" strokeLinejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+      </svg>
+    ),
+  },
+  {
+    key: 'live' as const,
+    label: 'Live',
+    badge: 'BETA',
+    icon: (
+      <svg className="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M5.636 18.364a9 9 0 010-12.728m12.728 0a9 9 0 010 12.728m-9.9-2.829a5 5 0 010-7.07m7.072 0a5 5 0 010 7.07M13 12a1 1 0 11-2 0 1 1 0 012 0z" />
       </svg>
     ),
   },
@@ -72,7 +82,7 @@ export function Sidebar({ currentTab, onNavigate, theme, onCycleTheme, version, 
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  const handleNavigate = useCallback((tab: 'dashboard' | 'recordings' | 'search' | 'settings') => {
+  const handleNavigate = useCallback((tab: 'dashboard' | 'recordings' | 'live' | 'search' | 'settings') => {
     onNavigate(tab);
     setMobileOpen(false);
   }, [onNavigate]);
@@ -173,6 +183,11 @@ export function Sidebar({ currentTab, onNavigate, theme, onCycleTheme, version, 
                 <span className={`overflow-hidden whitespace-nowrap transition-all duration-300 ${collapsed ? 'md:w-0 md:opacity-0' : 'md:w-auto md:opacity-100'}`}>
                   {item.label}
                 </span>
+                {'badge' in item && item.badge && (
+                  <span className={`ml-1.5 px-1.5 py-0.5 text-[10px] font-semibold rounded bg-primary/10 text-primary overflow-hidden whitespace-nowrap transition-all duration-300 ${collapsed ? 'md:w-0 md:opacity-0 md:hidden' : 'md:w-auto md:opacity-100'}`}>
+                    {item.badge}
+                  </span>
+                )}
                 {/* Tooltip when collapsed (desktop only) */}
                 {collapsed && (
                   <span className="hidden md:block absolute left-full ml-2 px-2 py-1 rounded-md bg-foreground text-background text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-200 z-50">
