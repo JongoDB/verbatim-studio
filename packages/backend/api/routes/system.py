@@ -3,16 +3,30 @@
 import os
 import platform
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from api.main import APP_VERSION
 from core.config import settings
-from persistence.database import async_session_maker
-from sqlalchemy import func, select, text
+from persistence.database import async_session
+from sqlalchemy import text
+
+
+def _get_git_version() -> str:
+    """Read version from git tags."""
+    try:
+        result = subprocess.run(
+            ["git", "describe", "--tags", "--always"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+    return "dev"
 
 router = APIRouter(prefix="/system", tags=["system"])
 
@@ -150,7 +164,7 @@ async def get_system_info() -> SystemInfo:
     )
 
     # Content counts from database
-    async with async_session_maker() as session:
+    async with async_session() as session:
         # Count recordings
         result = await session.execute(text("SELECT COUNT(*) FROM recordings"))
         recordings_count = result.scalar() or 0
@@ -174,7 +188,7 @@ async def get_system_info() -> SystemInfo:
     platform_system = platform.system()
 
     return SystemInfo(
-        app_version=APP_VERSION,
+        app_version=_get_git_version(),
         python_version=sys.version.split()[0],
         platform=platform_system,
         platform_version=platform_info,
