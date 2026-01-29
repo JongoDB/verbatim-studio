@@ -143,6 +143,11 @@ export function LiveTranscriptionPage({ onNavigateToRecordings: _onNavigateToRec
   }, [connectionState]);
 
   const disconnect = useCallback(() => {
+    isRecordingRef.current = false;
+    if (chunkIntervalRef.current) {
+      clearInterval(chunkIntervalRef.current);
+      chunkIntervalRef.current = null;
+    }
     if (mediaRecorderRef.current?.state === 'recording') {
       mediaRecorderRef.current.stop();
     }
@@ -151,7 +156,7 @@ export function LiveTranscriptionPage({ onNavigateToRecordings: _onNavigateToRec
       streamRef.current = null;
     }
     if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: 'stop' }));
+      wsRef.current.send(JSON.stringify({ type: 'disconnect' }));
       wsRef.current.close();
     }
     if (timerRef.current) {
@@ -248,17 +253,32 @@ export function LiveTranscriptionPage({ onNavigateToRecordings: _onNavigateToRec
       timerRef.current = null;
     }
 
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: 'stop' }));
-    }
+    // Wait for final chunk to be transcribed before ending session
+    // This ensures nothing is cut off
+    setTimeout(() => {
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({ type: 'stop' }));
+      }
+    }, CHUNK_INTERVAL_MS + 1000); // Wait chunk interval + processing time
+
     setConnectionState('connected');
   }, []);
 
-  const clearTranscript = useCallback(() => {
+  const clearTranscript = useCallback(async () => {
+    // Discard session on server if exists
+    if (sessionId) {
+      try {
+        await fetch(`http://127.0.0.1:8000/api/live/session/${sessionId}`, {
+          method: 'DELETE',
+        });
+      } catch {
+        // Ignore errors - session might already be gone
+      }
+    }
     setSegments([]);
     setSessionId(null);
     setDuration(0);
-  }, []);
+  }, [sessionId]);
 
   const downloadTranscript = useCallback(() => {
     const text = segments.map(s => s.text).join('\n\n');

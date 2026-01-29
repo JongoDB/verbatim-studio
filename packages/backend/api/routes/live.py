@@ -143,6 +143,13 @@ async def live_transcribe(websocket: WebSocket):
                             len(session.segments),
                             session.total_duration,
                         )
+                        # Keep session in memory for saving, but allow new session
+                        session = None
+                        chunk_index = 0
+                    # Don't break - keep connection open for new sessions
+
+                elif msg_type == "disconnect":
+                    # Explicit disconnect request
                     break
 
                 elif msg_type == "ping":
