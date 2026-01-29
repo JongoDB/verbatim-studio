@@ -489,6 +489,65 @@ async def upload_recording(
     )
 
 
+class RecordingUpdateRequest(BaseModel):
+    """Request model for updating a recording."""
+
+    title: str | None = None
+    project_id: str | None = Field(default=None, description="Set to a project ID, or empty string to unassign")
+
+
+@router.patch("/{recording_id}", response_model=RecordingResponse)
+async def update_recording(
+    recording_id: str,
+    body: RecordingUpdateRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> RecordingResponse:
+    """Update a recording's title and/or project assignment.
+
+    Args:
+        recording_id: The recording's unique ID.
+        body: Fields to update.
+        db: Database session.
+
+    Returns:
+        Updated recording details.
+
+    Raises:
+        HTTPException: If recording not found or title is empty.
+    """
+    result = await db.execute(select(Recording).where(Recording.id == recording_id))
+    recording = result.scalar_one_or_none()
+
+    if recording is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Recording not found: {recording_id}",
+        )
+
+    if body.title is not None:
+        stripped = body.title.strip()
+        if not stripped:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Title cannot be empty",
+            )
+        recording.title = stripped
+
+    if body.project_id is not None:
+        recording.project_id = body.project_id if body.project_id != "" else None
+
+    await db.commit()
+    await db.refresh(recording)
+
+    # Load tag IDs
+    tag_result = await db.execute(
+        select(RecordingTag.tag_id).where(RecordingTag.recording_id == recording_id)
+    )
+    tag_ids = [row[0] for row in tag_result]
+
+    return _recording_to_response(recording, tag_ids=tag_ids)
+
+
 @router.get("/{recording_id}", response_model=RecordingResponse)
 async def get_recording(
     recording_id: str,

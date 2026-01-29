@@ -501,6 +501,17 @@ class ApiClient {
         method: 'DELETE',
       }),
 
+    update: (id: string, data: { title?: string; project_id?: string | null }) =>
+      this.request<Recording>(`/api/recordings/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(
+          Object.fromEntries(
+            Object.entries(data).filter(([, v]) => v !== undefined).map(([k, v]) => [k, v === null ? '' : v])
+          )
+        ),
+      }),
+
     transcribe: (id: string, language?: string) => {
       const queryParams = new URLSearchParams();
       if (language) {

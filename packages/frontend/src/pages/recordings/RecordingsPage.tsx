@@ -5,6 +5,7 @@ import { RecordingCard } from '@/components/recordings/RecordingCard';
 import { RecordingsTable } from '@/components/recordings/RecordingsTable';
 import { RecordingFilters, type FilterState, type ViewMode } from '@/components/recordings/RecordingFilters';
 import { TranscribeDialog } from '@/components/recordings/TranscribeDialog';
+import { EditRecordingDialog } from '@/components/recordings/EditRecordingDialog';
 import { AudioRecorder } from '@/components/recordings/AudioRecorder';
 import { RecordingSetupPanel, type RecordingSettings } from '@/components/recordings/RecordingSetupPanel';
 import { ProjectSelector } from '@/components/projects/ProjectSelector';
@@ -96,6 +97,7 @@ export function RecordingsPage({ onViewTranscript }: RecordingsPageProps) {
   const [filters, setFilters] = useState<FilterState>(loadSavedFilters);
   const [viewMode, setViewMode] = useState<ViewMode>(loadSavedViewMode);
   const [transcribeDialogRecording, setTranscribeDialogRecording] = useState<Recording | null>(null);
+  const [editDialogRecording, setEditDialogRecording] = useState<Recording | null>(null);
   const [recordingPhase, setRecordingPhase] = useState<'none' | 'setup' | 'recording'>('none');
   const [recordingSettings, setRecordingSettings] = useState<RecordingSettings | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
@@ -346,6 +348,14 @@ export function RecordingsPage({ onViewTranscript }: RecordingsPageProps) {
     []
   );
 
+  const handleEdit = useCallback((recording: Recording) => {
+    setEditDialogRecording(recording);
+  }, []);
+
+  const handleEditSaved = useCallback(() => {
+    loadRecordings();
+  }, [loadRecordings]);
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -495,6 +505,7 @@ export function RecordingsPage({ onViewTranscript }: RecordingsPageProps) {
               onView={() => handleView(recording.id)}
               onCancel={() => handleCancel(recording.id)}
               onRetry={() => handleRetry(recording.id)}
+              onEdit={() => handleEdit(recording)}
               progress={jobProgress[recording.id]}
             />
           ))}
@@ -510,6 +521,7 @@ export function RecordingsPage({ onViewTranscript }: RecordingsPageProps) {
           onView={(id) => handleView(id)}
           onCancel={(id) => handleCancel(id)}
           onRetry={(id) => handleRetry(id)}
+          onEdit={handleEdit}
           jobProgress={jobProgress}
         />
       )}
@@ -520,6 +532,14 @@ export function RecordingsPage({ onViewTranscript }: RecordingsPageProps) {
         onClose={handleCloseTranscribeDialog}
         onTranscribe={handleTranscribe}
         recordingTitle={transcribeDialogRecording?.title ?? ''}
+      />
+
+      {/* Edit Recording Dialog */}
+      <EditRecordingDialog
+        isOpen={editDialogRecording !== null}
+        recording={editDialogRecording}
+        onClose={() => setEditDialogRecording(null)}
+        onSaved={handleEditSaved}
       />
     </div>
   );
