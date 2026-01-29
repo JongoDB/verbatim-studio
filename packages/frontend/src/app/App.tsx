@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, type ApiInfo, type HealthStatus, type GlobalSearchResult } from '@/lib/api';
 import { RecordingsPage } from '@/pages/recordings/RecordingsPage';
+import { ProjectsPage } from '@/pages/projects/ProjectsPage';
 import { TranscriptPage } from '@/pages/transcript/TranscriptPage';
 import { SearchPage } from '@/pages/search/SearchPage';
 import { LiveTranscriptionPage } from '@/pages/live/LiveTranscriptionPage';
@@ -13,6 +14,7 @@ import { APP_VERSION } from '@/version'; // static fallback
 type NavigationState =
   | { type: 'dashboard' }
   | { type: 'recordings' }
+  | { type: 'projects' }
   | { type: 'live' }
   | { type: 'search' }
   | { type: 'settings' }
@@ -72,12 +74,11 @@ export function App() {
     setNavigation({ type: 'recordings' });
   }, []);
 
-  // Navigate to projects - TODO: add dedicated projects page (#64)
   const handleNavigateToProjects = useCallback(() => {
-    setNavigation({ type: 'recordings' });
+    setNavigation({ type: 'projects' });
   }, []);
 
-  const currentTab = navigation.type === 'transcript' ? 'recordings' : navigation.type as 'dashboard' | 'recordings' | 'live' | 'search' | 'settings';
+  const currentTab = navigation.type === 'transcript' ? 'recordings' : navigation.type as 'dashboard' | 'recordings' | 'projects' | 'live' | 'search' | 'settings';
 
   const handleSearchResult = useCallback((result: GlobalSearchResult) => {
     // Navigate to the recording's transcript, seeking to the segment time if available
@@ -218,6 +219,7 @@ export function App() {
         onNavigate={(tab) => {
           if (tab === 'dashboard') handleNavigateToDashboard();
           else if (tab === 'recordings') handleNavigateToRecordings();
+          else if (tab === 'projects') handleNavigateToProjects();
           else if (tab === 'live') handleNavigateToLive();
           else if (tab === 'search') handleNavigateToSearch();
           else if (tab === 'settings') handleNavigateToSettings();
@@ -250,6 +252,9 @@ export function App() {
             )}
             {navigation.type === 'recordings' && (
               <RecordingsPage onViewTranscript={handleViewTranscript} />
+            )}
+            {navigation.type === 'projects' && (
+              <ProjectsPage />
             )}
             {navigation.type === 'live' && (
               <LiveTranscriptionPage

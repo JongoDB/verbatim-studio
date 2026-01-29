@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.formparsers import MultiPartParser
 
-from api.routes import ai, archive, config, health, jobs, live, projects, recordings, search, speakers, stats, system, tags, transcripts
+from api.routes import ai, archive, config, health, jobs, live, project_types, projects, recording_templates, recordings, search, speakers, stats, system, tags, transcripts
 from api.routes.comments import comments_router, segment_comments_router
 from api.routes.highlights import segment_highlights_router, transcript_highlights_router
 from core.config import settings
@@ -72,6 +72,8 @@ app.include_router(speakers.router, prefix="/api")
 app.include_router(search.router, prefix="/api")
 app.include_router(stats.router, prefix="/api")
 app.include_router(projects.router, prefix="/api")
+app.include_router(project_types.router, prefix="/api")
+app.include_router(recording_templates.router, prefix="/api")
 app.include_router(ai.router, prefix="/api")
 app.include_router(archive.router, prefix="/api")
 app.include_router(config.router, prefix="/api")

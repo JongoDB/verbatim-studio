@@ -10,6 +10,7 @@ import { BulkActionBar } from '@/components/recordings/BulkActionBar';
 import { AudioRecorder } from '@/components/recordings/AudioRecorder';
 import { RecordingSetupPanel, type RecordingSettings } from '@/components/recordings/RecordingSetupPanel';
 import { ProjectSelector } from '@/components/projects/ProjectSelector';
+import { RecordingTemplateManager } from '@/components/recordings/RecordingTemplateManager';
 
 interface RecordingsPageProps {
   onViewTranscript: (recordingId: string) => void;
@@ -104,6 +105,7 @@ export function RecordingsPage({ onViewTranscript }: RecordingsPageProps) {
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [jobProgress, setJobProgress] = useState<Record<string, number>>({});
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [templateManagerOpen, setTemplateManagerOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadRecordings = useCallback(async () => {
@@ -536,6 +538,15 @@ export function RecordingsPage({ onViewTranscript }: RecordingsPageProps) {
             </svg>
             Import Files
           </button>
+          <button
+            onClick={() => setTemplateManagerOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+          >
+            <svg className="h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            Templates
+          </button>
         </div>
         <RecordingFilters
           filters={filters}
@@ -613,6 +624,12 @@ export function RecordingsPage({ onViewTranscript }: RecordingsPageProps) {
         onDelete={handleBulkDelete}
         onAssignProject={handleBulkAssignProject}
         onClearSelection={handleClearSelection}
+      />
+
+      {/* Recording Template Manager */}
+      <RecordingTemplateManager
+        open={templateManagerOpen}
+        onOpenChange={setTemplateManagerOpen}
       />
     </div>
   );

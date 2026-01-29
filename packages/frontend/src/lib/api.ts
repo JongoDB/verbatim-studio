@@ -2,9 +2,19 @@
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
 
 // Interfaces matching backend response models
+export interface RecordingTemplateInfo {
+  id: string;
+  name: string;
+  description: string | null;
+  metadata_schema: MetadataField[];
+  is_system: boolean;
+}
+
 export interface Recording {
   id: string;
   project_id: string | null;
+  template_id: string | null;
+  template: RecordingTemplateInfo | null;
   title: string;
   file_path: string;
   file_name: string;
@@ -231,10 +241,20 @@ export interface DashboardStats {
   processing: ProcessingStats;
 }
 
+export interface ProjectTypeInfo {
+  id: string;
+  name: string;
+  description: string | null;
+  metadata_schema: MetadataField[];
+  is_system: boolean;
+}
+
 export interface Project {
   id: string;
   name: string;
   description: string | null;
+  project_type: ProjectTypeInfo | null;
+  metadata: Record<string, unknown>;
   recording_count: number;
   created_at: string;
   updated_at: string;
@@ -248,11 +268,81 @@ export interface ProjectListResponse {
 export interface ProjectCreateRequest {
   name: string;
   description?: string | null;
+  project_type_id?: string | null;
+  metadata?: Record<string, unknown>;
 }
 
 export interface ProjectUpdateRequest {
   name?: string;
   description?: string | null;
+  project_type_id?: string | null;
+  metadata?: Record<string, unknown>;
+}
+
+// Project Type and Recording Template Types
+export interface MetadataField {
+  name: string;
+  label: string;
+  field_type: 'text' | 'textarea' | 'date' | 'number' | 'select';
+  options?: string[];
+  required?: boolean;
+  default_value?: string;
+}
+
+export interface ProjectType {
+  id: string;
+  name: string;
+  description: string | null;
+  metadata_schema: MetadataField[];
+  is_system: boolean;
+  project_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProjectTypeListResponse {
+  items: ProjectType[];
+  total: number;
+}
+
+export interface ProjectTypeCreateRequest {
+  name: string;
+  description?: string | null;
+  metadata_schema?: MetadataField[];
+}
+
+export interface ProjectTypeUpdateRequest {
+  name?: string;
+  description?: string | null;
+  metadata_schema?: MetadataField[];
+}
+
+export interface RecordingTemplate {
+  id: string;
+  name: string;
+  description: string | null;
+  metadata_schema: MetadataField[];
+  is_system: boolean;
+  recording_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RecordingTemplateListResponse {
+  items: RecordingTemplate[];
+  total: number;
+}
+
+export interface RecordingTemplateCreateRequest {
+  name: string;
+  description?: string | null;
+  metadata_schema?: MetadataField[];
+}
+
+export interface RecordingTemplateUpdateRequest {
+  name?: string;
+  description?: string | null;
+  metadata_schema?: MetadataField[];
 }
 
 // AI Types
@@ -359,6 +449,7 @@ export interface RecordingUploadOptions {
   location?: string;
   recordedDate?: string;
   quality?: string;
+  templateId?: string;
 }
 
 // Config Types
@@ -538,6 +629,7 @@ class ApiClient {
       if (options?.location) formData.append('location', options.location);
       if (options?.recordedDate) formData.append('recorded_date', options.recordedDate);
       if (options?.quality) formData.append('quality', options.quality);
+      if (options?.templateId) formData.append('template_id', options.templateId);
 
       const response = await fetch(`${this.baseUrl}/api/recordings/upload`, {
         method: 'POST',
@@ -556,13 +648,26 @@ class ApiClient {
         method: 'DELETE',
       }),
 
-    update: (id: string, data: { title?: string; project_id?: string | null }) =>
+    update: (id: string, data: {
+      title?: string;
+      project_id?: string | null;
+      template_id?: string | null;
+      metadata?: Record<string, unknown>;
+    }) =>
       this.request<Recording>(`/api/recordings/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(
           Object.fromEntries(
-            Object.entries(data).filter(([, v]) => v !== undefined).map(([k, v]) => [k, v === null ? '' : v])
+            Object.entries(data)
+              .filter(([, v]) => v !== undefined)
+              .map(([k, v]) => {
+                // Convert null to empty string for project_id and template_id to trigger unassignment
+                if ((k === 'project_id' || k === 'template_id') && v === null) {
+                  return [k, ''];
+                }
+                return [k, v];
+              })
           )
         ),
       }),
@@ -971,6 +1076,54 @@ class ApiClient {
 
     removeRecording: (projectId: string, recordingId: string) =>
       this.request<MessageResponse>(`/api/projects/${projectId}/recordings/${recordingId}`, {
+        method: 'DELETE',
+      }),
+  };
+
+  // Project Types
+  projectTypes = {
+    list: () => this.request<ProjectTypeListResponse>('/api/project-types'),
+
+    get: (id: string) => this.request<ProjectType>(`/api/project-types/${id}`),
+
+    create: (data: ProjectTypeCreateRequest) =>
+      this.request<ProjectType>('/api/project-types', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+
+    update: (id: string, data: ProjectTypeUpdateRequest) =>
+      this.request<ProjectType>(`/api/project-types/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      }),
+
+    delete: (id: string) =>
+      this.request<MessageResponse>(`/api/project-types/${id}`, {
+        method: 'DELETE',
+      }),
+  };
+
+  // Recording Templates
+  recordingTemplates = {
+    list: () => this.request<RecordingTemplateListResponse>('/api/recording-templates'),
+
+    get: (id: string) => this.request<RecordingTemplate>(`/api/recording-templates/${id}`),
+
+    create: (data: RecordingTemplateCreateRequest) =>
+      this.request<RecordingTemplate>('/api/recording-templates', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+
+    update: (id: string, data: RecordingTemplateUpdateRequest) =>
+      this.request<RecordingTemplate>(`/api/recording-templates/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      }),
+
+    delete: (id: string) =>
+      this.request<MessageResponse>(`/api/recording-templates/${id}`, {
         method: 'DELETE',
       }),
   };

@@ -42,9 +42,51 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             raise
 
 
+async def seed_defaults(session: AsyncSession) -> None:
+    """Seed default project types and recording templates if they don't exist."""
+    from sqlalchemy import select
+
+    from .defaults import DEFAULT_PROJECT_TYPES, DEFAULT_RECORDING_TEMPLATES
+    from .models import ProjectType, RecordingTemplate
+
+    # Seed project types
+    for pt_data in DEFAULT_PROJECT_TYPES:
+        result = await session.execute(
+            select(ProjectType).where(ProjectType.name == pt_data["name"])
+        )
+        if not result.scalar_one_or_none():
+            pt = ProjectType(
+                name=pt_data["name"],
+                description=pt_data["description"],
+                metadata_schema=pt_data["metadata_schema"],
+                is_system=True,
+            )
+            session.add(pt)
+
+    # Seed recording templates
+    for rt_data in DEFAULT_RECORDING_TEMPLATES:
+        result = await session.execute(
+            select(RecordingTemplate).where(RecordingTemplate.name == rt_data["name"])
+        )
+        if not result.scalar_one_or_none():
+            rt = RecordingTemplate(
+                name=rt_data["name"],
+                description=rt_data["description"],
+                metadata_schema=rt_data["metadata_schema"],
+                is_system=True,
+            )
+            session.add(rt)
+
+    await session.commit()
+
+
 async def init_db() -> None:
-    """Initialize database tables."""
+    """Initialize database tables and seed defaults."""
     from .models import Base
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+    # Auto-seed defaults on startup
+    async with async_session() as session:
+        await seed_defaults(session)

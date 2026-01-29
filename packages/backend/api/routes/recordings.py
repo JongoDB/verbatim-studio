@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from persistence import get_db
-from persistence.models import Job, Recording, RecordingTag, Speaker, Tag, Transcript
+from persistence.models import Job, Recording, RecordingTag, RecordingTemplate, Speaker, Tag, Transcript
 from services.jobs import job_queue
 from services.storage import storage_service
 
@@ -112,11 +112,23 @@ MAX_FILE_SIZE = 10 * 1024 * 1024 * 1024
 
 
 # Pydantic models for responses
+class RecordingTemplateInfo(BaseModel):
+    """Embedded recording template info in response."""
+
+    id: str
+    name: str
+    description: str | None
+    metadata_schema: list[dict]
+    is_system: bool
+
+
 class RecordingResponse(BaseModel):
     """Response model for a recording."""
 
     id: str
     project_id: str | None
+    template_id: str | None
+    template: RecordingTemplateInfo | None = None
     title: str
     file_path: str
     file_name: str
@@ -169,11 +181,30 @@ class TranscribeResponse(BaseModel):
     status: str
 
 
-def _recording_to_response(recording: Recording, tag_ids: list[str] | None = None) -> RecordingResponse:
+def _template_to_info(t: RecordingTemplate | None) -> RecordingTemplateInfo | None:
+    """Convert RecordingTemplate to RecordingTemplateInfo."""
+    if not t:
+        return None
+    return RecordingTemplateInfo(
+        id=t.id,
+        name=t.name,
+        description=t.description,
+        metadata_schema=t.metadata_schema,
+        is_system=t.is_system,
+    )
+
+
+def _recording_to_response(
+    recording: Recording,
+    tag_ids: list[str] | None = None,
+    template: RecordingTemplate | None = None,
+) -> RecordingResponse:
     """Convert a Recording model to a response model."""
     return RecordingResponse(
         id=recording.id,
         project_id=recording.project_id,
+        template_id=recording.template_id,
+        template=_template_to_info(template),
         title=recording.title,
         file_path=recording.file_path,
         file_name=recording.file_name,
@@ -224,8 +255,8 @@ async def list_recordings(
     """
     from sqlalchemy import or_
 
-    # Build base query
-    query = select(Recording)
+    # Build base query with template eager load
+    query = select(Recording).options(selectinload(Recording.template))
 
     # Apply filters
     if project_id is not None:
@@ -327,7 +358,10 @@ async def list_recordings(
             tag_map[row.recording_id].append(row.tag_id)
 
     return RecordingListResponse(
-        items=[_recording_to_response(r, tag_ids=tag_map.get(r.id, [])) for r in recordings],
+        items=[
+            _recording_to_response(r, tag_ids=tag_map.get(r.id, []), template=r.template)
+            for r in recordings
+        ],
         total=total,
         page=page,
         page_size=page_size,
@@ -341,6 +375,7 @@ async def upload_recording(
     file: Annotated[UploadFile, File(description="Audio or video file to upload")],
     title: Annotated[str | None, Form(description="Recording title")] = None,
     project_id: Annotated[str | None, Form(description="Project ID to associate with")] = None,
+    template_id: Annotated[str | None, Form(description="Recording template ID")] = None,
     description: Annotated[str | None, Form(description="Recording description")] = None,
     tags: Annotated[str | None, Form(description="Comma-separated tag names")] = None,
     participants: Annotated[str | None, Form(description="Comma-separated participant names")] = None,
@@ -419,6 +454,17 @@ async def upload_recording(
     if quality:
         metadata["quality"] = quality
 
+    # Validate template_id if provided
+    if template_id:
+        template_result = await db.execute(
+            select(RecordingTemplate).where(RecordingTemplate.id == template_id)
+        )
+        if not template_result.scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid recording template ID",
+            )
+
     # Create recording record first to get ID
     recording = Recording(
         title=title or safe_filename or "Untitled Recording",
@@ -429,6 +475,7 @@ async def upload_recording(
         mime_type=content_type,
         metadata_=metadata,
         project_id=project_id,
+        template_id=template_id,
         status="pending",
     )
     db.add(recording)
@@ -494,6 +541,8 @@ class RecordingUpdateRequest(BaseModel):
 
     title: str | None = None
     project_id: str | None = Field(default=None, description="Set to a project ID, or empty string to unassign")
+    template_id: str | None = Field(default=None, description="Set to a template ID, or empty string to unassign")
+    metadata: dict | None = Field(default=None, description="Recording metadata (merged with existing)")
 
 
 @router.patch("/{recording_id}", response_model=RecordingResponse)
@@ -502,7 +551,7 @@ async def update_recording(
     body: RecordingUpdateRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> RecordingResponse:
-    """Update a recording's title and/or project assignment.
+    """Update a recording's title, project assignment, template, or metadata.
 
     Args:
         recording_id: The recording's unique ID.
@@ -536,8 +585,34 @@ async def update_recording(
     if body.project_id is not None:
         recording.project_id = body.project_id if body.project_id != "" else None
 
+    if body.template_id is not None:
+        # Validate template_id if not empty
+        if body.template_id:
+            template_result = await db.execute(
+                select(RecordingTemplate).where(RecordingTemplate.id == body.template_id)
+            )
+            if not template_result.scalar_one_or_none():
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid recording template ID",
+                )
+        recording.template_id = body.template_id if body.template_id != "" else None
+
+    if body.metadata is not None:
+        # Merge with existing metadata
+        current = recording.metadata_ or {}
+        current.update(body.metadata)
+        recording.metadata_ = current
+
     await db.commit()
-    await db.refresh(recording)
+
+    # Refresh with template relationship
+    result = await db.execute(
+        select(Recording)
+        .options(selectinload(Recording.template))
+        .where(Recording.id == recording_id)
+    )
+    recording = result.scalar_one()
 
     # Load tag IDs
     tag_result = await db.execute(
@@ -545,7 +620,7 @@ async def update_recording(
     )
     tag_ids = [row[0] for row in tag_result]
 
-    return _recording_to_response(recording, tag_ids=tag_ids)
+    return _recording_to_response(recording, tag_ids=tag_ids, template=recording.template)
 
 
 class BulkIdsRequest(BaseModel):
@@ -612,7 +687,11 @@ async def get_recording(
     Raises:
         HTTPException: If recording not found.
     """
-    result = await db.execute(select(Recording).where(Recording.id == recording_id))
+    result = await db.execute(
+        select(Recording)
+        .options(selectinload(Recording.template))
+        .where(Recording.id == recording_id)
+    )
     recording = result.scalar_one_or_none()
 
     if recording is None:
@@ -621,7 +700,13 @@ async def get_recording(
             detail=f"Recording not found: {recording_id}",
         )
 
-    return _recording_to_response(recording)
+    # Load tag IDs
+    tag_result = await db.execute(
+        select(RecordingTag.tag_id).where(RecordingTag.recording_id == recording_id)
+    )
+    tag_ids = [row[0] for row in tag_result]
+
+    return _recording_to_response(recording, tag_ids=tag_ids, template=recording.template)
 
 
 @router.get("/{recording_id}/audio")

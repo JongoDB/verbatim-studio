@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from persistence.database import get_db
-from persistence.models import Project, Recording
+from persistence.models import Project, ProjectType, Recording
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -18,6 +18,8 @@ class ProjectCreate(BaseModel):
 
     name: str
     description: str | None = None
+    project_type_id: str | None = None
+    metadata: dict | None = None
 
 
 class ProjectUpdate(BaseModel):
@@ -25,6 +27,18 @@ class ProjectUpdate(BaseModel):
 
     name: str | None = None
     description: str | None = None
+    project_type_id: str | None = None
+    metadata: dict | None = None
+
+
+class ProjectTypeInfo(BaseModel):
+    """Embedded project type info in response."""
+
+    id: str
+    name: str
+    description: str | None
+    metadata_schema: list[dict]
+    is_system: bool
 
 
 class ProjectResponse(BaseModel):
@@ -33,6 +47,8 @@ class ProjectResponse(BaseModel):
     id: str
     name: str
     description: str | None
+    project_type: ProjectTypeInfo | None
+    metadata: dict
     recording_count: int
     created_at: str
     updated_at: str
@@ -52,14 +68,33 @@ class MessageResponse(BaseModel):
     id: str | None = None
 
 
+def _project_type_to_info(pt: ProjectType | None) -> ProjectTypeInfo | None:
+    """Convert ProjectType to ProjectTypeInfo."""
+    if not pt:
+        return None
+    return ProjectTypeInfo(
+        id=pt.id,
+        name=pt.name,
+        description=pt.description,
+        metadata_schema=pt.metadata_schema,
+        is_system=pt.is_system,
+    )
+
+
 @router.get("", response_model=ProjectListResponse)
 async def list_projects(
     db: Annotated[AsyncSession, Depends(get_db)],
     search: Annotated[str | None, Query(description="Search by name")] = None,
 ) -> ProjectListResponse:
     """List all projects with recording counts."""
-    # Base query
-    query = select(Project).order_by(Project.updated_at.desc())
+    # Base query with project type eager load
+    from sqlalchemy.orm import selectinload
+
+    query = (
+        select(Project)
+        .options(selectinload(Project.project_type))
+        .order_by(Project.updated_at.desc())
+    )
 
     if search:
         query = query.where(Project.name.ilike(f"%{search}%"))
@@ -80,6 +115,8 @@ async def list_projects(
                 id=project.id,
                 name=project.name,
                 description=project.description,
+                project_type=_project_type_to_info(project.project_type),
+                metadata=project.metadata_,
                 recording_count=recording_count,
                 created_at=project.created_at.isoformat(),
                 updated_at=project.updated_at.isoformat(),
@@ -95,18 +132,41 @@ async def create_project(
     data: ProjectCreate,
 ) -> ProjectResponse:
     """Create a new project."""
+    from sqlalchemy.orm import selectinload
+
+    # Validate project_type_id if provided
+    project_type = None
+    if data.project_type_id:
+        result = await db.execute(
+            select(ProjectType).where(ProjectType.id == data.project_type_id)
+        )
+        project_type = result.scalar_one_or_none()
+        if not project_type:
+            raise HTTPException(status_code=400, detail="Invalid project type ID")
+
     project = Project(
         name=data.name,
         description=data.description,
+        project_type_id=data.project_type_id,
+        metadata_=data.metadata or {},
     )
     db.add(project)
     await db.commit()
-    await db.refresh(project)
+
+    # Refresh with relationships
+    result = await db.execute(
+        select(Project)
+        .options(selectinload(Project.project_type))
+        .where(Project.id == project.id)
+    )
+    project = result.scalar_one()
 
     return ProjectResponse(
         id=project.id,
         name=project.name,
         description=project.description,
+        project_type=_project_type_to_info(project.project_type),
+        metadata=project.metadata_,
         recording_count=0,
         created_at=project.created_at.isoformat(),
         updated_at=project.updated_at.isoformat(),
@@ -119,7 +179,13 @@ async def get_project(
     project_id: str,
 ) -> ProjectResponse:
     """Get a project by ID."""
-    result = await db.execute(select(Project).where(Project.id == project_id))
+    from sqlalchemy.orm import selectinload
+
+    result = await db.execute(
+        select(Project)
+        .options(selectinload(Project.project_type))
+        .where(Project.id == project_id)
+    )
     project = result.scalar_one_or_none()
 
     if not project:
@@ -134,6 +200,8 @@ async def get_project(
         id=project.id,
         name=project.name,
         description=project.description,
+        project_type=_project_type_to_info(project.project_type),
+        metadata=project.metadata_,
         recording_count=recording_count,
         created_at=project.created_at.isoformat(),
         updated_at=project.updated_at.isoformat(),
@@ -147,6 +215,8 @@ async def update_project(
     data: ProjectUpdate,
 ) -> ProjectResponse:
     """Update a project."""
+    from sqlalchemy.orm import selectinload
+
     result = await db.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()
 
@@ -157,9 +227,27 @@ async def update_project(
         project.name = data.name
     if data.description is not None:
         project.description = data.description
+    if data.project_type_id is not None:
+        # Validate project_type_id
+        if data.project_type_id:  # Not empty string
+            pt_result = await db.execute(
+                select(ProjectType).where(ProjectType.id == data.project_type_id)
+            )
+            if not pt_result.scalar_one_or_none():
+                raise HTTPException(status_code=400, detail="Invalid project type ID")
+        project.project_type_id = data.project_type_id if data.project_type_id else None
+    if data.metadata is not None:
+        project.metadata_ = data.metadata
 
     await db.commit()
-    await db.refresh(project)
+
+    # Refresh with relationships
+    result = await db.execute(
+        select(Project)
+        .options(selectinload(Project.project_type))
+        .where(Project.id == project_id)
+    )
+    project = result.scalar_one()
 
     count_result = await db.execute(
         select(func.count(Recording.id)).where(Recording.project_id == project.id)
@@ -170,6 +258,8 @@ async def update_project(
         id=project.id,
         name=project.name,
         description=project.description,
+        project_type=_project_type_to_info(project.project_type),
+        metadata=project.metadata_,
         recording_count=recording_count,
         created_at=project.created_at.isoformat(),
         updated_at=project.updated_at.isoformat(),

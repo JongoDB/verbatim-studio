@@ -18,18 +18,54 @@ def generate_uuid() -> str:
     return str(uuid.uuid4())
 
 
+class ProjectType(Base):
+    """Project type template with custom metadata schema."""
+
+    __tablename__ = "project_types"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    name: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    description: Mapped[str | None] = mapped_column(Text)
+    metadata_schema: Mapped[list] = mapped_column(JSON, default=list)
+    is_system: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(default=func.now(), onupdate=func.now())
+
+    projects: Mapped[list["Project"]] = relationship(back_populates="project_type")
+
+
+class RecordingTemplate(Base):
+    """Recording template with custom metadata schema."""
+
+    __tablename__ = "recording_templates"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    name: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    description: Mapped[str | None] = mapped_column(Text)
+    metadata_schema: Mapped[list] = mapped_column(JSON, default=list)
+    is_system: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(default=func.now(), onupdate=func.now())
+
+    recordings: Mapped[list["Recording"]] = relationship(back_populates="template")
+
+
 class Project(Base):
     """Project model for organizing recordings."""
 
     __tablename__ = "projects"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    project_type_id: Mapped[str | None] = mapped_column(
+        ForeignKey("project_types.id", ondelete="SET NULL")
+    )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
     metadata_: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(default=func.now())
     updated_at: Mapped[datetime] = mapped_column(default=func.now(), onupdate=func.now())
 
+    project_type: Mapped[ProjectType | None] = relationship(back_populates="projects")
     recordings: Mapped[list["Recording"]] = relationship(back_populates="project")
 
 
@@ -68,6 +104,9 @@ class Recording(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
     project_id: Mapped[str | None] = mapped_column(ForeignKey("projects.id", ondelete="SET NULL"))
+    template_id: Mapped[str | None] = mapped_column(
+        ForeignKey("recording_templates.id", ondelete="SET NULL")
+    )
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     file_path: Mapped[str] = mapped_column(String(512), nullable=False)
     file_name: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -80,6 +119,7 @@ class Recording(Base):
     updated_at: Mapped[datetime] = mapped_column(default=func.now(), onupdate=func.now())
 
     project: Mapped[Project | None] = relationship(back_populates="recordings")
+    template: Mapped[RecordingTemplate | None] = relationship(back_populates="recordings")
     transcript: Mapped["Transcript | None"] = relationship(
         back_populates="recording", uselist=False, cascade="all, delete-orphan"
     )
