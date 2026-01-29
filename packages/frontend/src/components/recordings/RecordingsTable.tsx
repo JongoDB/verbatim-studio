@@ -27,9 +27,16 @@ function formatFileSize(bytes: number | null): string {
 
 function formatDuration(seconds: number | null): string {
   if (seconds === null || seconds === undefined) return '--:--';
-  const m = Math.floor(seconds / 60);
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
   const s = Math.floor(seconds % 60);
+  if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+function isVideo(mimeType: string | null): boolean {
+  if (!mimeType) return false;
+  return mimeType.startsWith('video/');
 }
 
 function formatDate(dateString: string): string {
@@ -199,12 +206,25 @@ function RecordingRow({
       <tr className="hover:bg-muted/30 transition-colors border-b border-border">
         {/* Title */}
         <td className="px-3 py-2.5 min-w-0">
-          <h3 className="font-medium text-sm truncate" title={recording.title}>
-            {recording.title}
-          </h3>
-          <p className="text-xs text-muted-foreground truncate" title={recording.file_name}>
-            {recording.file_name}
-          </p>
+          <div className="flex items-center gap-2">
+            {isVideo(recording.mime_type) ? (
+              <svg className="w-4 h-4 shrink-0 text-purple-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+            ) : (
+              <svg className="w-4 h-4 shrink-0 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+              </svg>
+            )}
+            <div className="min-w-0">
+              <h3 className="font-medium text-sm truncate" title={recording.title}>
+                {recording.title}
+              </h3>
+              <p className="text-xs text-muted-foreground truncate" title={recording.file_name}>
+                {recording.file_name}
+              </p>
+            </div>
+          </div>
         </td>
 
         {/* Duration */}
