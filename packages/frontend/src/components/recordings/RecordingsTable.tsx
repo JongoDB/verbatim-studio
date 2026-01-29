@@ -15,6 +15,9 @@ interface RecordingsTableProps {
   onRetry: (recordingId: string) => void;
   onEdit: (recording: Recording) => void;
   jobProgress: Record<string, number>;
+  selectedIds: Set<string>;
+  onSelectRecording: (id: string, selected: boolean) => void;
+  onSelectAll: (selected: boolean) => void;
 }
 
 function formatFileSize(bytes: number | null): string {
@@ -81,6 +84,7 @@ const COLUMNS: Array<{
   className: string;
   headerClass?: string;
 }> = [
+  { key: 'checkbox', label: '', className: 'w-10', headerClass: 'w-10' },
   { key: 'title', label: 'Title', sortKey: 'title', className: '', headerClass: '' },
   { key: 'duration', label: 'Duration', sortKey: 'duration', className: 'hidden sm:table-cell w-24', headerClass: 'hidden sm:table-cell w-24' },
   { key: 'size', label: 'Size', className: 'hidden md:table-cell w-24', headerClass: 'hidden md:table-cell w-24' },
@@ -122,6 +126,9 @@ export function RecordingsTable({
   onRetry,
   onEdit,
   jobProgress,
+  selectedIds,
+  onSelectRecording,
+  onSelectAll,
 }: RecordingsTableProps) {
   const handleHeaderClick = (key: SortKey) => {
     if (sortBy === key) {
@@ -130,6 +137,9 @@ export function RecordingsTable({
       onSortChange(key, 'asc');
     }
   };
+
+  const allSelected = recordings.length > 0 && recordings.every(r => selectedIds.has(r.id));
+  const someSelected = recordings.some(r => selectedIds.has(r.id)) && !allSelected;
 
   return (
     <div className="rounded-lg border border-border overflow-hidden">
@@ -144,7 +154,17 @@ export function RecordingsTable({
                   col.headerClass
                 )}
               >
-                {col.sortKey ? (
+                {col.key === 'checkbox' ? (
+                  <input
+                    type="checkbox"
+                    checked={allSelected}
+                    ref={(el) => {
+                      if (el) el.indeterminate = someSelected;
+                    }}
+                    onChange={(e) => onSelectAll(e.target.checked)}
+                    className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                  />
+                ) : col.sortKey ? (
                   <button
                     onClick={() => handleHeaderClick(col.sortKey!)}
                     className="inline-flex items-center hover:text-foreground transition-colors"
@@ -176,6 +196,8 @@ export function RecordingsTable({
                 onCancel={onCancel}
                 onRetry={onRetry}
                 onEdit={onEdit}
+                isSelected={selectedIds.has(recording.id)}
+                onSelectChange={(selected) => onSelectRecording(recording.id, selected)}
               />
             );
           })}
@@ -195,6 +217,8 @@ function RecordingRow({
   onCancel,
   onRetry,
   onEdit,
+  isSelected,
+  onSelectChange,
 }: {
   recording: Recording;
   status: { label: string; className: string };
@@ -205,10 +229,21 @@ function RecordingRow({
   onCancel: (recordingId: string) => void;
   onRetry: (recordingId: string) => void;
   onEdit: (recording: Recording) => void;
+  isSelected: boolean;
+  onSelectChange: (selected: boolean) => void;
 }) {
   return (
     <>
-      <tr className="hover:bg-muted/30 transition-colors border-b border-border">
+      <tr className={cn("hover:bg-muted/30 transition-colors border-b border-border", isSelected && "bg-primary/5")}>
+        {/* Checkbox */}
+        <td className="px-3 py-2.5 w-10">
+          <input
+            type="checkbox"
+            checked={isSelected}
+            onChange={(e) => onSelectChange(e.target.checked)}
+            className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+          />
+        </td>
         {/* Title */}
         <td className="px-3 py-2.5 min-w-0">
           <div className="flex items-center gap-2">

@@ -534,6 +534,20 @@ class ApiClient {
         method: 'POST',
       }),
 
+    bulkDelete: (ids: string[]) =>
+      this.request<MessageResponse>(`/api/recordings/bulk-delete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids }),
+      }),
+
+    bulkAssign: (ids: string[], projectId: string | null) =>
+      this.request<MessageResponse>(`/api/recordings/bulk-assign`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids, project_id: projectId }),
+      }),
+
     getAudioUrl: (id: string) => `${this.baseUrl}/api/recordings/${id}/audio`,
   };
 

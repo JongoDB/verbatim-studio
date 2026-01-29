@@ -6,6 +6,7 @@ import { RecordingsTable } from '@/components/recordings/RecordingsTable';
 import { RecordingFilters, type FilterState, type ViewMode } from '@/components/recordings/RecordingFilters';
 import { TranscribeDialog } from '@/components/recordings/TranscribeDialog';
 import { EditRecordingDialog } from '@/components/recordings/EditRecordingDialog';
+import { BulkActionBar } from '@/components/recordings/BulkActionBar';
 import { AudioRecorder } from '@/components/recordings/AudioRecorder';
 import { RecordingSetupPanel, type RecordingSettings } from '@/components/recordings/RecordingSetupPanel';
 import { ProjectSelector } from '@/components/projects/ProjectSelector';
@@ -102,6 +103,7 @@ export function RecordingsPage({ onViewTranscript }: RecordingsPageProps) {
   const [recordingSettings, setRecordingSettings] = useState<RecordingSettings | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [jobProgress, setJobProgress] = useState<Record<string, number>>({});
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadRecordings = useCallback(async () => {
@@ -356,6 +358,64 @@ export function RecordingsPage({ onViewTranscript }: RecordingsPageProps) {
     loadRecordings();
   }, [loadRecordings]);
 
+  // Bulk selection handlers
+  const handleSelectRecording = useCallback((id: string, selected: boolean) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (selected) {
+        next.add(id);
+      } else {
+        next.delete(id);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleSelectAll = useCallback((selected: boolean) => {
+    if (selected) {
+      setSelectedIds(new Set(recordings.map(r => r.id)));
+    } else {
+      setSelectedIds(new Set());
+    }
+  }, [recordings]);
+
+  const handleClearSelection = useCallback(() => {
+    setSelectedIds(new Set());
+  }, []);
+
+  const handleBulkDelete = useCallback(async () => {
+    if (selectedIds.size === 0) return;
+    try {
+      await api.recordings.bulkDelete(Array.from(selectedIds));
+      setSelectedIds(new Set());
+      await loadRecordings();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete recordings');
+    }
+  }, [selectedIds, loadRecordings]);
+
+  const handleBulkAssignProject = useCallback(async (projectId: string | null) => {
+    if (selectedIds.size === 0) return;
+    try {
+      await api.recordings.bulkAssign(Array.from(selectedIds), projectId);
+      setSelectedIds(new Set());
+      await loadRecordings();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to assign project');
+    }
+  }, [selectedIds, loadRecordings]);
+
+  // Escape key to clear selection
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && selectedIds.size > 0) {
+        setSelectedIds(new Set());
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedIds.size]);
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -507,6 +567,8 @@ export function RecordingsPage({ onViewTranscript }: RecordingsPageProps) {
               onRetry={() => handleRetry(recording.id)}
               onEdit={() => handleEdit(recording)}
               progress={jobProgress[recording.id]}
+              isSelected={selectedIds.has(recording.id)}
+              onSelectChange={(selected) => handleSelectRecording(recording.id, selected)}
             />
           ))}
         </div>
@@ -523,6 +585,9 @@ export function RecordingsPage({ onViewTranscript }: RecordingsPageProps) {
           onRetry={(id) => handleRetry(id)}
           onEdit={handleEdit}
           jobProgress={jobProgress}
+          selectedIds={selectedIds}
+          onSelectRecording={handleSelectRecording}
+          onSelectAll={handleSelectAll}
         />
       )}
 
@@ -540,6 +605,14 @@ export function RecordingsPage({ onViewTranscript }: RecordingsPageProps) {
         recording={editDialogRecording}
         onClose={() => setEditDialogRecording(null)}
         onSaved={handleEditSaved}
+      />
+
+      {/* Bulk Action Bar */}
+      <BulkActionBar
+        selectedCount={selectedIds.size}
+        onDelete={handleBulkDelete}
+        onAssignProject={handleBulkAssignProject}
+        onClearSelection={handleClearSelection}
       />
     </div>
   );

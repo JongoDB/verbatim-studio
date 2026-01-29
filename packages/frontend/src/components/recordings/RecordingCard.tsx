@@ -10,6 +10,8 @@ interface RecordingCardProps {
   onRetry?: () => void;
   onEdit?: () => void;
   progress?: number;
+  isSelected?: boolean;
+  onSelectChange?: (selected: boolean) => void;
 }
 
 function formatFileSize(bytes: number | null): string {
@@ -78,13 +80,23 @@ export function RecordingCard({
   onRetry,
   onEdit,
   progress,
+  isSelected,
+  onSelectChange,
 }: RecordingCardProps) {
   const status = statusConfig[recording.status] || statusConfig.pending;
 
   return (
-    <div className="rounded-lg border bg-card p-4 shadow-sm">
+    <div className={cn("rounded-lg border bg-card p-4 shadow-sm", isSelected && "ring-2 ring-primary")}>
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-start gap-2.5 min-w-0 flex-1">
+          {onSelectChange && (
+            <input
+              type="checkbox"
+              checked={isSelected ?? false}
+              onChange={(e) => onSelectChange(e.target.checked)}
+              className="h-4 w-4 mt-1 rounded border-gray-300 text-primary focus:ring-primary shrink-0"
+            />
+          )}
           {isVideo(recording.mime_type) ? (
             <svg className="w-5 h-5 shrink-0 mt-0.5 text-purple-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
               <path strokeLinecap="round" strokeLinejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />

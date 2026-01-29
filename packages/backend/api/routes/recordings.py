@@ -548,6 +548,53 @@ async def update_recording(
     return _recording_to_response(recording, tag_ids=tag_ids)
 
 
+class BulkIdsRequest(BaseModel):
+    """Request model for bulk operations."""
+
+    ids: list[str] = Field(..., min_length=1)
+
+
+class BulkAssignRequest(BaseModel):
+    """Request model for bulk project assignment."""
+
+    ids: list[str] = Field(..., min_length=1)
+    project_id: str | None = Field(default=None, description="Project ID or null to unassign")
+
+
+@router.post("/bulk-delete", response_model=MessageResponse)
+async def bulk_delete_recordings(
+    body: BulkIdsRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> MessageResponse:
+    """Delete multiple recordings and their files."""
+    result = await db.execute(select(Recording).where(Recording.id.in_(body.ids)))
+    recordings = result.scalars().all()
+
+    for recording in recordings:
+        if recording.file_path:
+            await storage_service.delete_file(recording.file_path)
+        await db.delete(recording)
+
+    await db.commit()
+    return MessageResponse(message=f"Deleted {len(recordings)} recording(s)")
+
+
+@router.post("/bulk-assign", response_model=MessageResponse)
+async def bulk_assign_recordings(
+    body: BulkAssignRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> MessageResponse:
+    """Assign multiple recordings to a project (or unassign)."""
+    result = await db.execute(select(Recording).where(Recording.id.in_(body.ids)))
+    recordings = result.scalars().all()
+
+    for recording in recordings:
+        recording.project_id = body.project_id
+
+    await db.commit()
+    return MessageResponse(message=f"Updated {len(recordings)} recording(s)")
+
+
 @router.get("/{recording_id}", response_model=RecordingResponse)
 async def get_recording(
     recording_id: str,
