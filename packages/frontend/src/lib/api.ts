@@ -422,6 +422,48 @@ export interface TranscriptionSettingsUpdate {
   hf_token?: string;
 }
 
+// System Info Types
+export interface StoragePaths {
+  data_dir: string;
+  media_dir: string;
+  models_dir: string;
+  database_path: string;
+}
+
+export interface DiskUsage {
+  total_bytes: number;
+  used_bytes: number;
+  free_bytes: number;
+  percent_used: number;
+}
+
+export interface StorageBreakdown {
+  media_bytes: number;
+  media_count: number;
+  database_bytes: number;
+  models_bytes: number;
+  models_count: number;
+  total_bytes: number;
+}
+
+export interface ContentCounts {
+  recordings: number;
+  transcripts: number;
+  segments: number;
+}
+
+export interface SystemInfo {
+  app_version: string;
+  python_version: string;
+  platform: string;
+  platform_version: string;
+  paths: StoragePaths;
+  disk_usage: DiskUsage;
+  storage_breakdown: StorageBreakdown;
+  content_counts: ContentCounts;
+  max_upload_bytes: number;
+}
+
 class ApiClient {
   private baseUrl: string;
 
@@ -945,6 +987,11 @@ class ApiClient {
         method: 'PUT',
         body: JSON.stringify(data),
       }),
+  };
+
+  // System
+  system = {
+    info: () => this.request<SystemInfo>('/api/system/info'),
   };
 }
 

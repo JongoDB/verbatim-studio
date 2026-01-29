@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { api, type ArchiveInfo, type TranscriptionSettings, type AIModel, type AIModelDownloadEvent } from '@/lib/api';
+import { api, type ArchiveInfo, type TranscriptionSettings, type AIModel, type AIModelDownloadEvent, type SystemInfo } from '@/lib/api';
 
 interface SettingsPageProps {
   theme: 'light' | 'dark' | 'system';
@@ -97,15 +97,19 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
   const [aiError, setAiError] = useState<string | null>(null);
   const downloadAbortRef = useRef<{ abort: () => void } | null>(null);
 
+  // System info state
+  const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
+
   const defaultLanguage = settings.defaultLanguage || '';
   const defaultPlaybackSpeed = settings.defaultPlaybackSpeed || 1;
   const autoTranscribe = settings.autoTranscribe ?? false;
 
-  // Load archive info, config status, transcription settings, and AI models
+  // Load archive info, config status, transcription settings, AI models, and system info
   useEffect(() => {
     api.archive.info().then(setArchiveInfo).catch(console.error);
     api.config.getTranscription().then(setTxSettings).catch(console.error);
     api.ai.listModels().then((r) => setAiModels(r.models)).catch(console.error);
+    api.system.info().then(setSystemInfo).catch(console.error);
   }, []);
 
   const handleExport = useCallback(async () => {
@@ -934,6 +938,150 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
           </p>
         </div>
       </div>
+
+      {/* System Information Section */}
+      {systemInfo && (
+        <div className="mt-6 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+          <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-700">
+            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">System Information</h2>
+          </div>
+          <div className="px-5 py-4 space-y-6">
+            {/* App Info */}
+            <div>
+              <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Application</h3>
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-500 dark:text-gray-400">Version</span>
+                  <span className="font-mono text-gray-900 dark:text-gray-100">{systemInfo.app_version}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500 dark:text-gray-400">Python</span>
+                  <span className="font-mono text-gray-900 dark:text-gray-100">{systemInfo.python_version}</span>
+                </div>
+                <div className="flex justify-between col-span-2">
+                  <span className="text-gray-500 dark:text-gray-400">Platform</span>
+                  <span className="font-mono text-gray-900 dark:text-gray-100 text-right truncate ml-4" title={systemInfo.platform_version}>
+                    {systemInfo.platform}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500 dark:text-gray-400">Max Upload</span>
+                  <span className="font-mono text-gray-900 dark:text-gray-100">{formatBytes(systemInfo.max_upload_bytes)}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Storage Paths */}
+            <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+              <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Storage Paths</h3>
+              <div className="space-y-2 text-sm">
+                <div className="flex flex-col">
+                  <span className="text-gray-500 dark:text-gray-400">Data Directory</span>
+                  <span className="font-mono text-xs text-gray-900 dark:text-gray-100 truncate" title={systemInfo.paths.data_dir}>
+                    {systemInfo.paths.data_dir}
+                  </span>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-gray-500 dark:text-gray-400">Media Directory</span>
+                  <span className="font-mono text-xs text-gray-900 dark:text-gray-100 truncate" title={systemInfo.paths.media_dir}>
+                    {systemInfo.paths.media_dir}
+                  </span>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-gray-500 dark:text-gray-400">Models Directory</span>
+                  <span className="font-mono text-xs text-gray-900 dark:text-gray-100 truncate" title={systemInfo.paths.models_dir}>
+                    {systemInfo.paths.models_dir}
+                  </span>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-gray-500 dark:text-gray-400">Database</span>
+                  <span className="font-mono text-xs text-gray-900 dark:text-gray-100 truncate" title={systemInfo.paths.database_path}>
+                    {systemInfo.paths.database_path}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Disk Usage */}
+            <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+              <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Disk Usage</h3>
+              <div className="space-y-2">
+                <div className="w-full h-3 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all ${
+                      systemInfo.disk_usage.percent_used > 90
+                        ? 'bg-red-500'
+                        : systemInfo.disk_usage.percent_used > 75
+                          ? 'bg-yellow-500'
+                          : 'bg-blue-500'
+                    }`}
+                    style={{ width: `${systemInfo.disk_usage.percent_used}%` }}
+                  />
+                </div>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  {formatBytes(systemInfo.disk_usage.free_bytes)} free of {formatBytes(systemInfo.disk_usage.total_bytes)} ({systemInfo.disk_usage.percent_used}% used)
+                </p>
+              </div>
+            </div>
+
+            {/* Storage Breakdown */}
+            <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+              <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Verbatim Storage</h3>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-500 dark:text-gray-400">Media Files</span>
+                  <span className="text-gray-900 dark:text-gray-100">
+                    {systemInfo.storage_breakdown.media_count} files ({formatBytes(systemInfo.storage_breakdown.media_bytes)})
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500 dark:text-gray-400">Database</span>
+                  <span className="text-gray-900 dark:text-gray-100">
+                    {formatBytes(systemInfo.storage_breakdown.database_bytes)}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500 dark:text-gray-400">AI Models</span>
+                  <span className="text-gray-900 dark:text-gray-100">
+                    {systemInfo.storage_breakdown.models_count} models ({formatBytes(systemInfo.storage_breakdown.models_bytes)})
+                  </span>
+                </div>
+                <div className="flex justify-between pt-2 border-t border-gray-100 dark:border-gray-700 font-medium">
+                  <span className="text-gray-700 dark:text-gray-300">Total</span>
+                  <span className="text-gray-900 dark:text-gray-100">
+                    {formatBytes(systemInfo.storage_breakdown.total_bytes)}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Content Counts */}
+            <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+              <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Content</h3>
+              <div className="grid grid-cols-3 gap-4 text-center">
+                <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-900">
+                  <div className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+                    {systemInfo.content_counts.recordings}
+                  </div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400">Recordings</div>
+                </div>
+                <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-900">
+                  <div className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+                    {systemInfo.content_counts.transcripts}
+                  </div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400">Transcripts</div>
+                </div>
+                <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-900">
+                  <div className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+                    {systemInfo.content_counts.segments.toLocaleString()}
+                  </div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400">Segments</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
