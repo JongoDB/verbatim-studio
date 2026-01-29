@@ -1,5 +1,104 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { api, type DashboardStats, type Recording, type Project } from '@/lib/api';
+
+interface CreateProjectModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onCreated: (project: Project) => void;
+}
+
+function CreateProjectModal({ isOpen, onClose, onCreated }: CreateProjectModalProps) {
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [isCreating, setIsCreating] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) return;
+
+    setIsCreating(true);
+    try {
+      const newProject = await api.projects.create({
+        name: name.trim(),
+        description: description.trim() || null,
+      });
+      onCreated(newProject);
+      onClose();
+      setName('');
+      setDescription('');
+    } catch (err) {
+      console.error('Failed to create project:', err);
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md mx-4 p-6">
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
+          Create New Project
+        </h3>
+        <form onSubmit={handleSubmit}>
+          <div className="space-y-4">
+            <div>
+              <label htmlFor="projectName" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Project Name
+              </label>
+              <input
+                id="projectName"
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Enter project name"
+                className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                autoFocus
+                disabled={isCreating}
+              />
+            </div>
+            <div>
+              <label htmlFor="projectDescription" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Description (optional)
+              </label>
+              <textarea
+                id="projectDescription"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Enter project description"
+                rows={3}
+                className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                disabled={isCreating}
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-3 mt-6">
+            <button
+              type="button"
+              onClick={() => {
+                onClose();
+                setName('');
+                setDescription('');
+              }}
+              className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+              disabled={isCreating}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={!name.trim() || isCreating}
+              className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isCreating ? 'Creating...' : 'Create Project'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
 
 interface DashboardProps {
   onNavigateToRecordings?: () => void;
@@ -102,6 +201,19 @@ export function Dashboard({ onNavigateToRecordings, onNavigateToProjects, onView
   const [recentProjects, setRecentProjects] = useState<Project[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showCreateProject, setShowCreateProject] = useState(false);
+
+  const handleProjectCreated = useCallback((project: Project) => {
+    setRecentProjects((prev) => [project, ...prev].slice(0, 5));
+    setStats((prev) => prev ? {
+      ...prev,
+      projects: {
+        ...prev.projects,
+        total_projects: prev.projects.total_projects + 1,
+        last_updated: project.updated_at,
+      },
+    } : prev);
+  }, []);
 
   useEffect(() => {
     async function loadDashboardData() {
@@ -158,6 +270,28 @@ export function Dashboard({ onNavigateToRecordings, onNavigateToProjects, onView
 
   return (
     <div className="space-y-6">
+      {/* Quick Actions */}
+      <div className="flex flex-wrap gap-3">
+        <button
+          onClick={onNavigateToRecordings}
+          className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors shadow-sm"
+        >
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+          </svg>
+          Upload Recording
+        </button>
+        <button
+          onClick={() => setShowCreateProject(true)}
+          className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 rounded-lg font-medium hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+        >
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+          </svg>
+          Create Project
+        </button>
+      </div>
+
       {/* Stats Grid */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
@@ -403,7 +537,7 @@ export function Dashboard({ onNavigateToRecordings, onNavigateToProjects, onView
         </div>
       </div>
 
-      {/* Quick Action */}
+      {/* Quick Action - Empty State */}
       {onNavigateToRecordings && recordings.total_recordings === 0 && (
         <div className="rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600 p-8 text-center">
           <svg
@@ -432,6 +566,13 @@ export function Dashboard({ onNavigateToRecordings, onNavigateToProjects, onView
           </button>
         </div>
       )}
+
+      {/* Create Project Modal */}
+      <CreateProjectModal
+        isOpen={showCreateProject}
+        onClose={() => setShowCreateProject(false)}
+        onCreated={handleProjectCreated}
+      />
     </div>
   );
 }
