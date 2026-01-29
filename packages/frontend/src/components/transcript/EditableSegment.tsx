@@ -18,6 +18,7 @@ interface EditableSegmentProps {
   onHighlightChange: (segmentId: string, color: HighlightColor | null) => void;
   onCommentCountChange: (segmentId: string, delta: number) => void;
   onSpeakerReassign?: (segmentId: string, speakerName: string) => void;
+  highlightedText?: React.ReactNode;
 }
 
 function formatTime(seconds: number): string {
@@ -49,6 +50,7 @@ export function EditableSegment({
   onHighlightChange,
   onCommentCountChange,
   onSpeakerReassign,
+  highlightedText,
 }: EditableSegmentProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [text, setText] = useState(segment.text);
@@ -187,7 +189,7 @@ export function EditableSegment({
               }`}
               title="Click to edit"
             >
-              {segment.text}
+              {highlightedText ?? segment.text}
               {segment.edited && (
                 <span className="ml-2 text-xs text-gray-500 dark:text-gray-500">(edited)</span>
               )}

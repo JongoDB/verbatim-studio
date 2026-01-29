@@ -6,7 +6,15 @@ import { ExportButton } from '@/components/transcript/ExportButton';
 import { SpeakerPanel } from '@/components/transcript/SpeakerPanel';
 import { AIAnalysisPanel } from '@/components/ai/AIAnalysisPanel';
 import { BulkHighlightToolbar } from '@/components/transcript/BulkHighlightToolbar';
+import { TranscriptSearch, highlightSearchMatches } from '@/components/transcript/TranscriptSearch';
 import { useKeyboardShortcuts, KEYBOARD_SHORTCUTS } from '@/hooks/useKeyboardShortcuts';
+
+interface SearchMatch {
+  segmentId: string;
+  segmentIndex: number;
+  startIndex: number;
+  endIndex: number;
+}
 
 interface TranscriptPageProps {
   recordingId: string;
@@ -132,6 +140,12 @@ export function TranscriptPage({ recordingId, onBack, initialSeekTime }: Transcr
 
   // --- Selection & annotation state ---
   const [selectedSegmentIds, setSelectedSegmentIds] = useState<Set<string>>(new Set());
+
+  // --- In-transcript search state ---
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchMatches, setSearchMatches] = useState<SearchMatch[]>([]);
+  const [currentMatchIndex, setCurrentMatchIndex] = useState(-1);
+  const segmentRefs = useRef<Map<number, HTMLDivElement>>(new Map());
 
   const handleToggleSelect = useCallback((segmentId: string) => {
     setSelectedSegmentIds((prev) => {
@@ -264,11 +278,42 @@ export function TranscriptPage({ recordingId, onBack, initialSeekTime }: Transcr
     onPlayPause: () => audioRef.current?.toggle(),
     onSkipBack: handleSkipBack,
     onSkipForward: handleSkipForward,
-    onEscape: onBack,
+    onEscape: showSearch ? () => setShowSearch(false) : onBack,
     onNextSegment: handleNextSegment,
     onPrevSegment: handlePrevSegment,
     enabled: !isLoading && !!transcript,
   });
+
+  // Ctrl+F to open in-transcript search
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+        e.preventDefault();
+        setShowSearch(true);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  // Search handlers
+  const handleSearchMatchChange = useCallback((matches: SearchMatch[], currentIndex: number) => {
+    setSearchMatches(matches);
+    setCurrentMatchIndex(currentIndex);
+  }, []);
+
+  const handleScrollToSegment = useCallback((segmentIndex: number) => {
+    const el = segmentRefs.current.get(segmentIndex);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, []);
+
+  const handleCloseSearch = useCallback(() => {
+    setShowSearch(false);
+    setSearchMatches([]);
+    setCurrentMatchIndex(-1);
+  }, []);
 
   const [showShortcuts, setShowShortcuts] = useState(false);
 
@@ -394,6 +439,17 @@ export function TranscriptPage({ recordingId, onBack, initialSeekTime }: Transcr
           src={api.recordings.getAudioUrl(recordingId)}
           onTimeUpdate={setCurrentTime}
         />
+        {/* In-transcript search bar */}
+        {showSearch && (
+          <div className="mt-3">
+            <TranscriptSearch
+              segments={transcript.segments}
+              onClose={handleCloseSearch}
+              onMatchChange={handleSearchMatchChange}
+              onScrollToSegment={handleScrollToSegment}
+            />
+          </div>
+        )}
       </div>
 
       {/* Transcript info header */}
@@ -403,6 +459,16 @@ export function TranscriptPage({ recordingId, onBack, initialSeekTime }: Transcr
             {recording.title}
           </h2>
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowSearch(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-sm rounded-md border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+              title="Find in transcript (Ctrl+F)"
+            >
+              <svg className="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              <span className="hidden sm:inline">Find</span>
+            </button>
             <button
               onClick={() => setShowShortcuts(!showShortcuts)}
               className="inline-flex items-center gap-1.5 px-3 py-2 text-sm rounded-md border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
@@ -498,27 +564,38 @@ export function TranscriptPage({ recordingId, onBack, initialSeekTime }: Transcr
           {transcript.segments.length} segment{transcript.segments.length !== 1 ? 's' : ''}
         </h3>
         <div className="space-y-2">
-          {transcript.segments.map((segment) => {
+          {transcript.segments.map((segment, index) => {
             const speaker = segment.speaker ? speakerMap.get(segment.speaker) ?? null : null;
             const speakerIndex = segment.speaker ? (speakerIndexMap.get(segment.speaker) ?? 0) : 0;
+            const highlighted = searchMatches.length > 0
+              ? highlightSearchMatches(segment.text, segment.id, searchMatches, currentMatchIndex)
+              : undefined;
 
             return (
-              <EditableSegment
+              <div
                 key={segment.id}
-                segment={segment}
-                transcriptId={transcript.id}
-                speaker={speaker}
-                speakerIndex={speakerIndex}
-                isActive={segment.id === activeSegmentId}
-                isSelected={selectedSegmentIds.has(segment.id)}
-                onSegmentUpdate={handleSegmentUpdate}
-                onSpeakerUpdate={handleSpeakerUpdate}
-                onSeek={seekTo}
-                onToggleSelect={handleToggleSelect}
-                onHighlightChange={handleHighlightChange}
-                onCommentCountChange={handleCommentCountChange}
-                onSpeakerReassign={handleSpeakerReassign}
-              />
+                ref={(el) => {
+                  if (el) segmentRefs.current.set(index, el);
+                  else segmentRefs.current.delete(index);
+                }}
+              >
+                <EditableSegment
+                  segment={segment}
+                  transcriptId={transcript.id}
+                  speaker={speaker}
+                  speakerIndex={speakerIndex}
+                  isActive={segment.id === activeSegmentId}
+                  isSelected={selectedSegmentIds.has(segment.id)}
+                  onSegmentUpdate={handleSegmentUpdate}
+                  onSpeakerUpdate={handleSpeakerUpdate}
+                  onSeek={seekTo}
+                  onToggleSelect={handleToggleSelect}
+                  onHighlightChange={handleHighlightChange}
+                  onCommentCountChange={handleCommentCountChange}
+                  onSpeakerReassign={handleSpeakerReassign}
+                  highlightedText={highlighted}
+                />
+              </div>
             );
           })}
         </div>
