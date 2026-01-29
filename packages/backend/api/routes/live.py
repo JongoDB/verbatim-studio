@@ -23,6 +23,10 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/live", tags=["live"])
 
 
+# Chunk interval must match frontend (3 seconds)
+CHUNK_INTERVAL_SECONDS = 3.0
+
+
 @dataclass
 class LiveSession:
     """State for a live transcription session."""
@@ -33,7 +37,7 @@ class LiveSession:
     audio_chunks: list[bytes] = field(default_factory=list)
     total_duration: float = 0.0
     language: str = "en"
-    last_transcribed_end: float = 0.0  # Track where we left off
+    chunk_count: int = 0  # Track chunk index for time offset
 
 
 class SaveSessionRequest(BaseModel):
@@ -156,18 +160,21 @@ async def live_transcribe(websocket: WebSocket):
                 audio_data = message["bytes"]
                 session.audio_chunks.append(audio_data)
 
-                # Write ALL accumulated chunks to temp file (WebM needs header from first chunk)
+                # Calculate time offset for this chunk
+                time_offset = session.chunk_count * CHUNK_INTERVAL_SECONDS
+
+                # Each chunk is now a complete, standalone WebM file
+                # Write just this chunk to temp file for transcription
                 with tempfile.NamedTemporaryFile(
                     suffix=".webm",
                     delete=False,
                     dir=settings.DATA_DIR,
                 ) as tmp:
-                    for chunk in session.audio_chunks:
-                        tmp.write(chunk)
+                    tmp.write(audio_data)
                     tmp_path = tmp.name
 
                 try:
-                    # Transcribe the complete accumulated audio
+                    # Transcribe just this chunk
                     options = TranscriptionOptions(
                         language=session.language,
                         word_timestamps=False,  # Faster without word timestamps
@@ -175,41 +182,37 @@ async def live_transcribe(websocket: WebSocket):
 
                     result = await engine.transcribe(tmp_path, options)
 
-                    # Only process segments we haven't seen yet
-                    new_segments = []
+                    # Process segments with time offset applied
                     for seg in result.segments:
-                        # Skip segments we've already transcribed (with small tolerance)
-                        if seg.end <= session.last_transcribed_end + 0.1:
-                            continue
-
                         segment_data = {
                             "text": seg.text,
-                            "start": seg.start,
-                            "end": seg.end,
+                            "start": time_offset + seg.start,
+                            "end": time_offset + seg.end,
                             "speaker": seg.speaker,
                         }
-                        new_segments.append(segment_data)
                         session.segments.append(segment_data)
 
                         # Send segment to client
                         await websocket.send_json({
                             "type": "transcript",
                             "text": seg.text,
-                            "start": seg.start,
-                            "end": seg.end,
+                            "start": segment_data["start"],
+                            "end": segment_data["end"],
                             "chunk_index": chunk_index,
                         })
 
                     # Update tracking
+                    session.chunk_count += 1
                     if result.segments:
-                        session.last_transcribed_end = result.segments[-1].end
-                        session.total_duration = result.segments[-1].end
+                        session.total_duration = time_offset + result.segments[-1].end
+                    else:
+                        session.total_duration = time_offset + CHUNK_INTERVAL_SECONDS
                     chunk_index += 1
 
                     logger.debug(
-                        "Processed chunk %d: %d new segments, total duration %.1fs",
+                        "Processed chunk %d: %d segments, total duration %.1fs",
                         chunk_index,
-                        len(new_segments),
+                        len(result.segments),
                         session.total_duration,
                     )
 

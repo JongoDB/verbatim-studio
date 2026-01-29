@@ -47,7 +47,12 @@ export function LiveTranscriptionPage({ onNavigateToRecordings: _onNavigateToRec
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const timerRef = useRef<number | null>(null);
+  const chunkIntervalRef = useRef<number | null>(null);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
+  const isRecordingRef = useRef(false);
+
+  // Chunk interval in milliseconds (3 seconds for responsiveness)
+  const CHUNK_INTERVAL_MS = 3000;
 
   // Auto-scroll to bottom when new segments arrive
   useEffect(() => {
@@ -57,7 +62,9 @@ export function LiveTranscriptionPage({ onNavigateToRecordings: _onNavigateToRec
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      isRecordingRef.current = false;
       if (timerRef.current) clearInterval(timerRef.current);
+      if (chunkIntervalRef.current) clearInterval(chunkIntervalRef.current);
       if (mediaRecorderRef.current?.state === 'recording') {
         mediaRecorderRef.current.stop();
       }
@@ -154,6 +161,35 @@ export function LiveTranscriptionPage({ onNavigateToRecordings: _onNavigateToRec
     setConnectionState('disconnected');
   }, []);
 
+  // Create a new MediaRecorder and start recording a chunk
+  const startNewChunk = useCallback(() => {
+    if (!streamRef.current || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+      return;
+    }
+
+    const mediaRecorder = new MediaRecorder(streamRef.current, {
+      mimeType: 'audio/webm;codecs=opus',
+    });
+    mediaRecorderRef.current = mediaRecorder;
+
+    const chunks: Blob[] = [];
+    mediaRecorder.ondataavailable = (event) => {
+      if (event.data.size > 0) {
+        chunks.push(event.data);
+      }
+    };
+
+    mediaRecorder.onstop = () => {
+      if (chunks.length > 0 && wsRef.current?.readyState === WebSocket.OPEN) {
+        // Combine chunks into a complete WebM file and send
+        const blob = new Blob(chunks, { type: 'audio/webm;codecs=opus' });
+        wsRef.current.send(blob);
+      }
+    };
+
+    mediaRecorder.start();
+  }, []);
+
   const startRecording = useCallback(() => {
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
       setError('Not connected');
@@ -166,38 +202,52 @@ export function LiveTranscriptionPage({ onNavigateToRecordings: _onNavigateToRec
 
     // Send start command
     wsRef.current.send(JSON.stringify({ type: 'start', language }));
+    isRecordingRef.current = true;
 
-    // Create MediaRecorder with 5-second chunks
-    const mediaRecorder = new MediaRecorder(streamRef.current, {
-      mimeType: 'audio/webm;codecs=opus',
-    });
-    mediaRecorderRef.current = mediaRecorder;
-
-    mediaRecorder.ondataavailable = (event) => {
-      if (event.data.size > 0 && wsRef.current?.readyState === WebSocket.OPEN) {
-        // Send audio chunk as binary
-        wsRef.current.send(event.data);
-      }
-    };
-
-    mediaRecorder.start(5000); // 5-second chunks
+    // Start the first chunk
+    startNewChunk();
     setConnectionState('recording');
     setDuration(0);
 
-    // Start timer
+    // Set up interval to stop current recorder and start new one every N seconds
+    // This produces complete, standalone WebM files that can be transcribed independently
+    chunkIntervalRef.current = window.setInterval(() => {
+      if (!isRecordingRef.current) return;
+
+      // Stop current recorder (triggers onstop which sends the complete chunk)
+      if (mediaRecorderRef.current?.state === 'recording') {
+        mediaRecorderRef.current.stop();
+      }
+
+      // Start new recorder for next chunk
+      startNewChunk();
+    }, CHUNK_INTERVAL_MS);
+
+    // Start duration timer
     timerRef.current = window.setInterval(() => {
       setDuration(prev => prev + 1);
     }, 1000);
-  }, [language]);
+  }, [language, startNewChunk]);
 
   const stopRecording = useCallback(() => {
+    isRecordingRef.current = false;
+
+    // Stop the chunk cycling interval
+    if (chunkIntervalRef.current) {
+      clearInterval(chunkIntervalRef.current);
+      chunkIntervalRef.current = null;
+    }
+
+    // Stop current recorder and send final chunk
     if (mediaRecorderRef.current?.state === 'recording') {
       mediaRecorderRef.current.stop();
     }
+
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
     }
+
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: 'stop' }));
     }
@@ -274,7 +324,7 @@ export function LiveTranscriptionPage({ onNavigateToRecordings: _onNavigateToRec
               </span>
             </div>
             <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-              Real-time speech-to-text with 5-second processing intervals
+              Real-time speech-to-text with 3-second processing intervals
             </p>
           </div>
         </div>
@@ -463,8 +513,8 @@ export function LiveTranscriptionPage({ onNavigateToRecordings: _onNavigateToRec
           About Live Transcription (Beta)
         </h3>
         <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
-          Audio is captured in 5-second chunks and sent to your local transcription engine.
-          There may be a delay of 5-10 seconds between speaking and seeing the text appear.
+          Audio is captured in 3-second chunks and sent to your local transcription engine.
+          There may be a delay of 3-6 seconds between speaking and seeing the text appear.
         </p>
         <ul className="text-sm text-gray-600 dark:text-gray-400 space-y-1">
           <li>
