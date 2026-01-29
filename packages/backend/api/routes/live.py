@@ -33,6 +33,7 @@ class LiveSession:
     audio_chunks: list[bytes] = field(default_factory=list)
     total_duration: float = 0.0
     language: str = "en"
+    last_transcribed_end: float = 0.0  # Track where we left off
 
 
 class SaveSessionRequest(BaseModel):
@@ -155,17 +156,18 @@ async def live_transcribe(websocket: WebSocket):
                 audio_data = message["bytes"]
                 session.audio_chunks.append(audio_data)
 
-                # Save chunk to temp file for transcription
+                # Write ALL accumulated chunks to temp file (WebM needs header from first chunk)
                 with tempfile.NamedTemporaryFile(
                     suffix=".webm",
                     delete=False,
                     dir=settings.DATA_DIR,
                 ) as tmp:
-                    tmp.write(audio_data)
+                    for chunk in session.audio_chunks:
+                        tmp.write(chunk)
                     tmp_path = tmp.name
 
                 try:
-                    # Transcribe the chunk
+                    # Transcribe the complete accumulated audio
                     options = TranscriptionOptions(
                         language=session.language,
                         word_timestamps=False,  # Faster without word timestamps
@@ -173,39 +175,41 @@ async def live_transcribe(websocket: WebSocket):
 
                     result = await engine.transcribe(tmp_path, options)
 
-                    # Calculate time offset based on previous chunks
-                    time_offset = session.total_duration
-
+                    # Only process segments we haven't seen yet
+                    new_segments = []
                     for seg in result.segments:
+                        # Skip segments we've already transcribed (with small tolerance)
+                        if seg.end <= session.last_transcribed_end + 0.1:
+                            continue
+
                         segment_data = {
                             "text": seg.text,
-                            "start": time_offset + seg.start,
-                            "end": time_offset + seg.end,
+                            "start": seg.start,
+                            "end": seg.end,
                             "speaker": seg.speaker,
                         }
+                        new_segments.append(segment_data)
                         session.segments.append(segment_data)
 
                         # Send segment to client
                         await websocket.send_json({
                             "type": "transcript",
                             "text": seg.text,
-                            "start": segment_data["start"],
-                            "end": segment_data["end"],
+                            "start": seg.start,
+                            "end": seg.end,
                             "chunk_index": chunk_index,
                         })
 
-                    # Update duration (assume ~5 seconds per chunk)
+                    # Update tracking
                     if result.segments:
-                        chunk_duration = result.segments[-1].end
-                    else:
-                        chunk_duration = 5.0
-                    session.total_duration += chunk_duration
+                        session.last_transcribed_end = result.segments[-1].end
+                        session.total_duration = result.segments[-1].end
                     chunk_index += 1
 
                     logger.debug(
-                        "Processed chunk %d: %d segments, total duration %.1fs",
+                        "Processed chunk %d: %d new segments, total duration %.1fs",
                         chunk_index,
-                        len(result.segments),
+                        len(new_segments),
                         session.total_duration,
                     )
 
