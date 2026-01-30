@@ -131,22 +131,26 @@ export function Sidebar({ currentTab, onNavigate, theme, onCycleTheme, version, 
         ].join(' ')}
       >
         {/* Top: Brand + collapse toggle */}
-        <div className={`flex items-center h-14 border-b border-border shrink-0 ${collapsed ? 'md:justify-center md:px-0' : 'gap-2 px-3'}`}>
+        <div className={`flex items-center h-14 border-b border-border shrink-0 ${collapsed ? 'md:justify-center md:px-2' : 'gap-2 px-3'}`}>
           {collapsed ? (
-            // Collapsed: show icon placeholder that expands sidebar on click
+            // Collapsed: show icon that expands sidebar on click
             <button
               onClick={() => setCollapsed(false)}
-              className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center shrink-0 cursor-pointer"
+              className="w-10 h-10 flex items-center justify-center shrink-0 cursor-pointer hover:opacity-80 transition-opacity"
               aria-label="Expand sidebar"
             >
-              <span className="text-primary-foreground font-bold text-sm">V</span>
+              <img
+                src="/logo-icon.png"
+                alt="Verbatim Studio"
+                className="h-8 w-auto object-contain"
+              />
             </button>
           ) : (
-            // Expanded: show full logo
+            // Expanded: show full logo (invert in dark mode to make text visible)
             <img
               src="/logo.png"
               alt="Verbatim Studio"
-              className="h-8 object-contain"
+              className="h-11 object-contain dark:invert dark:hue-rotate-180"
             />
           )}
           {/* Desktop collapse toggle (hidden when collapsed — V logo expands instead) */}
