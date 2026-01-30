@@ -543,6 +543,46 @@ export function TranscriptPage({ recordingId, onBack, initialSeekTime }: Transcr
             </div>
           )}
         </div>
+
+        {/* Recording Template & Metadata */}
+        {(recording.template || (recording.metadata && Object.keys(recording.metadata).length > 0)) && (
+          <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+            {recording.template && (
+              <div className="mb-3">
+                <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300">
+                  <svg className="w-3.5 h-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  {recording.template.name}
+                </span>
+              </div>
+            )}
+            {recording.metadata && Object.keys(recording.metadata).length > 0 && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-sm">
+                {Object.entries(recording.metadata).map(([key, value]) => {
+                  // Skip empty values
+                  if (value === null || value === undefined || value === '') return null;
+                  // Format the key for display (convert snake_case to Title Case)
+                  const formattedKey = key
+                    .replace(/_/g, ' ')
+                    .replace(/\b\w/g, (c) => c.toUpperCase());
+                  // Format the value
+                  const formattedValue = Array.isArray(value)
+                    ? value.join(', ')
+                    : typeof value === 'object'
+                    ? JSON.stringify(value)
+                    : String(value);
+                  return (
+                    <div key={key} className="flex flex-col">
+                      <span className="text-xs text-gray-500 dark:text-gray-400">{formattedKey}</span>
+                      <span className="text-gray-900 dark:text-gray-100 break-words">{formattedValue}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Speaker Statistics Panel */}

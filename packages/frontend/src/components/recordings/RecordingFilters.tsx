@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { api, type Tag, type UniqueSpeaker } from '@/lib/api';
+import { api, type Tag, type UniqueSpeaker, type RecordingTemplate } from '@/lib/api';
 
 export type ViewMode = 'grid' | 'list';
 
@@ -12,6 +12,7 @@ export interface FilterState {
   dateTo: string;
   tagIds: string[];
   speaker: string;
+  templateId: string;
 }
 
 interface RecordingFiltersProps {
@@ -47,15 +48,17 @@ export function RecordingFilters({
   const [localSearch, setLocalSearch] = useState(filters.search);
   const [tags, setTags] = useState<Tag[]>([]);
   const [speakers, setSpeakers] = useState<UniqueSpeaker[]>([]);
+  const [templates, setTemplates] = useState<RecordingTemplate[]>([]);
   const [showTagDropdown, setShowTagDropdown] = useState(false);
   const [newTagName, setNewTagName] = useState('');
   const [showAdvanced, setShowAdvanced] = useState(false);
   const tagDropdownRef = useRef<HTMLDivElement>(null);
 
-  // Load tags and speakers
+  // Load tags, speakers, and templates
   useEffect(() => {
     api.tags.list().then((r) => setTags(r.items)).catch(() => {});
     api.speakers.unique().then((r) => setSpeakers(r.items)).catch(() => {});
+    api.recordingTemplates.list().then((r) => setTemplates(r.items)).catch(() => {});
   }, []);
 
   // Debounce search input
@@ -86,10 +89,10 @@ export function RecordingFilters({
 
   // Auto-show advanced filters if any advanced filter is active
   useEffect(() => {
-    if (filters.dateFrom || filters.dateTo || filters.tagIds.length > 0 || filters.speaker) {
+    if (filters.dateFrom || filters.dateTo || filters.tagIds.length > 0 || filters.speaker || filters.templateId) {
       setShowAdvanced(true);
     }
-  }, [filters.dateFrom, filters.dateTo, filters.tagIds, filters.speaker]);
+  }, [filters.dateFrom, filters.dateTo, filters.tagIds, filters.speaker, filters.templateId]);
 
   const handleClearFilters = () => {
     setLocalSearch('');
@@ -102,6 +105,7 @@ export function RecordingFilters({
       dateTo: '',
       tagIds: [],
       speaker: '',
+      templateId: '',
     });
   };
 
@@ -145,7 +149,8 @@ export function RecordingFilters({
     filters.dateFrom ||
     filters.dateTo ||
     filters.tagIds.length > 0 ||
-    filters.speaker;
+    filters.speaker ||
+    filters.templateId;
 
   const activeFilterCount = [
     filters.search,
@@ -153,6 +158,7 @@ export function RecordingFilters({
     filters.dateFrom || filters.dateTo,
     filters.tagIds.length > 0,
     filters.speaker,
+    filters.templateId,
   ].filter(Boolean).length;
 
   return (
@@ -315,6 +321,23 @@ export function RecordingFilters({
               {speakers.map((s) => (
                 <option key={s.name} value={s.name}>
                   {s.name} ({s.count})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Template Filter */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-gray-500 dark:text-gray-400">Template</label>
+            <select
+              value={filters.templateId}
+              onChange={(e) => onFiltersChange({ ...filters, templateId: e.target.value })}
+              className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 py-1.5 px-3 text-sm text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            >
+              <option value="">All Templates</option>
+              {templates.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
                 </option>
               ))}
             </select>

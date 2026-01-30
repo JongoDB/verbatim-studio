@@ -235,6 +235,7 @@ async def list_recordings(
     date_to: Annotated[str | None, Query(description="Filter to date (ISO 8601, e.g. 2024-12-31)")] = None,
     tag_ids: Annotated[str | None, Query(description="Comma-separated tag IDs to filter by")] = None,
     speaker: Annotated[str | None, Query(description="Filter by speaker name")] = None,
+    template_id: Annotated[str | None, Query(description="Filter by template ID")] = None,
 ) -> RecordingListResponse:
     """List all recordings with pagination and filtering.
 
@@ -251,6 +252,7 @@ async def list_recordings(
         date_to: Optional end date filter (inclusive).
         tag_ids: Optional comma-separated tag IDs to filter by.
         speaker: Optional speaker name to filter by.
+        template_id: Optional template ID to filter by.
 
     Returns:
         Paginated list of recordings.
@@ -327,6 +329,10 @@ async def list_recordings(
                 )
             )
         )
+
+    # Template filter
+    if template_id is not None:
+        query = query.where(Recording.template_id == template_id)
 
     # Get total count
     count_query = select(func.count()).select_from(query.subquery())

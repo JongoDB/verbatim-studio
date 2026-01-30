@@ -655,6 +655,7 @@ class ApiClient {
       dateTo?: string;
       tagIds?: string[];
       speaker?: string;
+      templateId?: string;
     }) => {
       const params = new URLSearchParams();
       params.set('page', String(options?.page ?? 1));
@@ -668,6 +669,7 @@ class ApiClient {
       if (options?.dateTo) params.set('date_to', options.dateTo);
       if (options?.tagIds?.length) params.set('tag_ids', options.tagIds.join(','));
       if (options?.speaker) params.set('speaker', options.speaker);
+      if (options?.templateId) params.set('template_id', options.templateId);
       return this.request<RecordingListResponse>(`/api/recordings?${params.toString()}`);
     },
 

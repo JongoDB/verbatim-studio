@@ -29,6 +29,7 @@ const DEFAULT_FILTERS: FilterState = {
   dateTo: '',
   tagIds: [],
   speaker: '',
+  templateId: '',
 };
 
 function filtersFromUrlParams(): Partial<FilterState> {
@@ -43,6 +44,7 @@ function filtersFromUrlParams(): Partial<FilterState> {
   if (params.has('dateTo')) result.dateTo = params.get('dateTo')!;
   if (params.has('tagIds')) result.tagIds = params.get('tagIds')!.split(',').filter(Boolean);
   if (params.has('speaker')) result.speaker = params.get('speaker')!;
+  if (params.has('templateId')) result.templateId = params.get('templateId')!;
 
   return result;
 }
@@ -58,6 +60,7 @@ function filtersToUrlParams(filters: FilterState): string {
   if (filters.dateTo) params.set('dateTo', filters.dateTo);
   if (filters.tagIds.length > 0) params.set('tagIds', filters.tagIds.join(','));
   if (filters.speaker) params.set('speaker', filters.speaker);
+  if (filters.templateId) params.set('templateId', filters.templateId);
 
   return params.toString();
 }
@@ -124,6 +127,7 @@ export function RecordingsPage({ onViewTranscript }: RecordingsPageProps) {
         dateTo: filters.dateTo || undefined,
         tagIds: filters.tagIds.length > 0 ? filters.tagIds : undefined,
         speaker: filters.speaker || undefined,
+        templateId: filters.templateId || undefined,
       });
       setRecordings(response.items);
       setTotalRecordings(response.total);
