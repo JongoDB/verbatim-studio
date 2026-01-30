@@ -315,6 +315,13 @@ export interface WordFrequency {
   count: number;
 }
 
+export interface InheritedTag {
+  id: string;
+  name: string;
+  color: string | null;
+  recording_count: number;
+}
+
 export interface ProjectAnalytics {
   recording_stats: ProjectRecordingStats;
   total_duration_seconds: number;
@@ -323,6 +330,7 @@ export interface ProjectAnalytics {
   avg_confidence: number | null;
   recording_timeline: TimelineEntry[];
   word_frequency: WordFrequency[];
+  inherited_tags: InheritedTag[];
 }
 
 // Project Type and Recording Template Types

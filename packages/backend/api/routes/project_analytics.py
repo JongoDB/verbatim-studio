@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from persistence.database import get_db
-from persistence.models import Project, ProjectRecording, Recording, Segment, Transcript
+from persistence.models import Project, ProjectRecording, Recording, RecordingTag, Segment, Tag, Transcript
 
 router = APIRouter(prefix="/projects", tags=["project-analytics"])
 
@@ -67,6 +67,15 @@ class WordFrequency(BaseModel):
     count: int
 
 
+class InheritedTag(BaseModel):
+    """A tag inherited from recordings."""
+
+    id: str
+    name: str
+    color: str | None
+    recording_count: int
+
+
 class ProjectAnalytics(BaseModel):
     """Analytics data for a project."""
 
@@ -77,6 +86,7 @@ class ProjectAnalytics(BaseModel):
     avg_confidence: float | None
     recording_timeline: list[TimelineEntry]
     word_frequency: list[WordFrequency]
+    inherited_tags: list[InheritedTag]
 
 
 @router.get("/{project_id}/analytics", response_model=ProjectAnalytics)
@@ -161,6 +171,40 @@ async def get_project_analytics(
         for word, count in word_counter.most_common(50)
     ]
 
+    # Compute inherited tags from recordings
+    recording_ids = [r.id for r in recordings]
+    inherited_tags: list[InheritedTag] = []
+    if recording_ids:
+        # Get all tags associated with recordings in this project
+        result = await db.execute(
+            select(Tag, RecordingTag.recording_id)
+            .join(RecordingTag, RecordingTag.tag_id == Tag.id)
+            .where(RecordingTag.recording_id.in_(recording_ids))
+        )
+        tag_recordings = result.all()
+
+        # Count recordings per tag
+        tag_counts: dict[str, tuple[Tag, int]] = {}
+        for tag, _recording_id in tag_recordings:
+            if tag.id not in tag_counts:
+                tag_counts[tag.id] = (tag, 0)
+            existing_tag, count = tag_counts[tag.id]
+            tag_counts[tag.id] = (existing_tag, count + 1)
+
+        # Convert to InheritedTag list, sorted by recording count descending
+        inherited_tags = sorted(
+            [
+                InheritedTag(
+                    id=tag.id,
+                    name=tag.name,
+                    color=tag.color,
+                    recording_count=count,
+                )
+                for tag, count in tag_counts.values()
+            ],
+            key=lambda t: (-t.recording_count, t.name),
+        )
+
     return ProjectAnalytics(
         recording_stats=recording_stats,
         total_duration_seconds=total_duration,
@@ -169,4 +213,5 @@ async def get_project_analytics(
         avg_confidence=avg_confidence,
         recording_timeline=recording_timeline,
         word_frequency=word_frequency,
+        inherited_tags=inherited_tags,
     )

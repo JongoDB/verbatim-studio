@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { MetadataFieldEditor } from '@/components/shared/MetadataFieldEditor';
 import { DynamicMetadataForm } from '@/components/shared/DynamicMetadataForm';
+import { TagInput } from '@/components/shared/TagInput';
 import { api, type Project, type ProjectType, type MetadataField } from '@/lib/api';
 
 interface ProjectsPageProps {
@@ -28,6 +29,7 @@ export function ProjectsPage({ onNavigateToProject }: ProjectsPageProps) {
     name: '',
     description: '',
     project_type_id: '',
+    tags: [] as string[],
     metadata: {} as Record<string, unknown>,
   });
 
@@ -78,6 +80,7 @@ export function ProjectsPage({ onNavigateToProject }: ProjectsPageProps) {
       name: '',
       description: '',
       project_type_id: '',
+      tags: [],
       metadata: {},
     });
   };
@@ -96,11 +99,16 @@ export function ProjectsPage({ onNavigateToProject }: ProjectsPageProps) {
   // Project CRUD
   const handleCreateProject = async () => {
     try {
+      // Merge tags into metadata
+      const metadata = {
+        ...form.metadata,
+        ...(form.tags.length > 0 ? { tags: form.tags } : {}),
+      };
       await api.projects.create({
         name: form.name,
         description: form.description || undefined,
         project_type_id: form.project_type_id || undefined,
-        metadata: Object.keys(form.metadata).length > 0 ? form.metadata : undefined,
+        metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
       });
       resetForm();
       setCreateDialogOpen(false);
@@ -113,11 +121,16 @@ export function ProjectsPage({ onNavigateToProject }: ProjectsPageProps) {
   const handleUpdateProject = async () => {
     if (!selectedProject) return;
     try {
+      // Merge tags into metadata
+      const metadata = {
+        ...form.metadata,
+        tags: form.tags.length > 0 ? form.tags : undefined,
+      };
       await api.projects.update(selectedProject.id, {
         name: form.name,
         description: form.description || undefined,
         project_type_id: form.project_type_id || null,
-        metadata: form.metadata,
+        metadata,
       });
       setEditDialogOpen(false);
       setSelectedProject(null);
@@ -142,11 +155,13 @@ export function ProjectsPage({ onNavigateToProject }: ProjectsPageProps) {
 
   const openEditDialog = (project: Project) => {
     setSelectedProject(project);
+    const { tags, ...otherMetadata } = project.metadata || {};
     setForm({
       name: project.name,
       description: project.description || '',
       project_type_id: project.project_type?.id || '',
-      metadata: project.metadata || {},
+      tags: (tags as string[]) || [],
+      metadata: otherMetadata || {},
     });
     setEditDialogOpen(true);
   };
@@ -368,6 +383,19 @@ export function ProjectsPage({ onNavigateToProject }: ProjectsPageProps) {
                   {project.description}
                 </p>
               )}
+              {/* Tags */}
+              {((project.metadata?.tags as string[]) || []).length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-2">
+                  {((project.metadata?.tags as string[]) || []).map((tag) => (
+                    <span
+                      key={tag}
+                      className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-primary/10 text-primary"
+                    >
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              )}
               <p className="text-xs text-muted-foreground mt-3">
                 {project.recording_count} recording{project.recording_count !== 1 ? 's' : ''}
               </p>
@@ -430,6 +458,15 @@ export function ProjectsPage({ onNavigateToProject }: ProjectsPageProps) {
                     <option key={type.id} value={type.id}>{type.name}</option>
                   ))}
                 </select>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-foreground">Tags</label>
+                <TagInput
+                  tags={form.tags}
+                  onChange={(tags) => setForm({ ...form, tags })}
+                  suggestions={uniqueTags}
+                  placeholder="Add tags..."
+                />
               </div>
               {selectedTypeSchema.length > 0 && (
                 <div className="space-y-1.5">
@@ -513,6 +550,15 @@ export function ProjectsPage({ onNavigateToProject }: ProjectsPageProps) {
                     <option key={type.id} value={type.id}>{type.name}</option>
                   ))}
                 </select>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-foreground">Tags</label>
+                <TagInput
+                  tags={form.tags}
+                  onChange={(tags) => setForm({ ...form, tags })}
+                  suggestions={uniqueTags}
+                  placeholder="Add tags..."
+                />
               </div>
               {selectedTypeSchema.length > 0 && (
                 <div className="space-y-1.5">

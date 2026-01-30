@@ -1,5 +1,5 @@
 import { cn } from '@/lib/utils';
-import type { Recording } from '@/lib/api';
+import type { Recording, Tag, Project } from '@/lib/api';
 
 interface RecordingCardProps {
   recording: Recording;
@@ -12,6 +12,10 @@ interface RecordingCardProps {
   progress?: number;
   isSelected?: boolean;
   onSelectChange?: (selected: boolean) => void;
+  /** All available tags for display */
+  allTags?: Tag[];
+  /** All available projects for display */
+  allProjects?: Project[];
 }
 
 function formatFileSize(bytes: number | null): string {
@@ -82,8 +86,16 @@ export function RecordingCard({
   progress,
   isSelected,
   onSelectChange,
+  allTags = [],
+  allProjects = [],
 }: RecordingCardProps) {
   const status = statusConfig[recording.status] || statusConfig.pending;
+
+  // Get tags for this recording
+  const recordingTags = allTags.filter(t => recording.tag_ids?.includes(t.id));
+
+  // Get projects for this recording
+  const recordingProjects = allProjects.filter(p => recording.project_ids?.includes(p.id));
 
   return (
     <div className={cn("rounded-lg border bg-card p-4 shadow-sm", isSelected && "ring-2 ring-primary")}>
@@ -148,6 +160,43 @@ export function RecordingCard({
         <span>{formatFileSize(recording.file_size)}</span>
         <span>{formatDate(recording.created_at)}</span>
       </div>
+
+      {/* Tags */}
+      {recordingTags.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1">
+          {recordingTags.map((tag) => (
+            <span
+              key={tag.id}
+              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium bg-primary/10 text-primary"
+            >
+              {tag.color && (
+                <span
+                  className="w-2 h-2 rounded-full"
+                  style={{ backgroundColor: tag.color }}
+                />
+              )}
+              {tag.name}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* Projects */}
+      {recordingProjects.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1">
+          {recordingProjects.map((project) => (
+            <span
+              key={project.id}
+              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium bg-muted text-muted-foreground"
+            >
+              <svg className="w-3 h-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+              </svg>
+              {project.name}
+            </span>
+          ))}
+        </div>
+      )}
 
       <div className="mt-4 flex items-center gap-2">
         {recording.status === 'pending' && (

@@ -261,6 +261,37 @@ export function ProjectAnalyticsPage({ projectId, onBack }: ProjectAnalyticsPage
           </div>
         </div>
       )}
+
+      {/* Inherited Tags */}
+      <div className="border border-border rounded-lg p-4 bg-card">
+        <h2 className="text-lg font-semibold text-foreground mb-4">Inherited Tags</h2>
+        <p className="text-xs text-muted-foreground mb-3">
+          Tags from recordings in this project
+        </p>
+        {analytics.inherited_tags.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No tags on recordings in this project</p>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {analytics.inherited_tags.map((tag) => (
+              <span
+                key={tag.id}
+                className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium bg-muted text-foreground"
+              >
+                {tag.color && (
+                  <span
+                    className="w-2.5 h-2.5 rounded-full"
+                    style={{ backgroundColor: tag.color }}
+                  />
+                )}
+                {tag.name}
+                <span className="text-xs text-muted-foreground">
+                  ({tag.recording_count})
+                </span>
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

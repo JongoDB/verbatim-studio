@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { api, type Recording } from '@/lib/api';
+import { api, type Recording, type Tag, type Project } from '@/lib/api';
 import { UploadDropzone } from '@/components/recordings/UploadDropzone';
 import { RecordingCard } from '@/components/recordings/RecordingCard';
 import { RecordingsTable } from '@/components/recordings/RecordingsTable';
@@ -106,6 +106,8 @@ export function RecordingsPage({ onViewTranscript }: RecordingsPageProps) {
   const [jobProgress, setJobProgress] = useState<Record<string, number>>({});
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [templateManagerOpen, setTemplateManagerOpen] = useState(false);
+  const [allTags, setAllTags] = useState<Tag[]>([]);
+  const [allProjects, setAllProjects] = useState<Project[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadRecordings = useCallback(async () => {
@@ -139,6 +141,12 @@ export function RecordingsPage({ onViewTranscript }: RecordingsPageProps) {
     const interval = setInterval(loadRecordings, 5000);
     return () => clearInterval(interval);
   }, [loadRecordings]);
+
+  // Load tags and projects for display
+  useEffect(() => {
+    api.tags.list().then((res) => setAllTags(res.items)).catch(() => {});
+    api.projects.list().then((res) => setAllProjects(res.items || [])).catch(() => {});
+  }, []);
 
   // Poll job progress for processing recordings
   useEffect(() => {
@@ -396,16 +404,16 @@ export function RecordingsPage({ onViewTranscript }: RecordingsPageProps) {
     }
   }, [selectedIds, loadRecordings]);
 
-  const handleBulkAssignProject = useCallback(async (projectId: string | null) => {
-    if (selectedIds.size === 0) return;
-    try {
-      await api.recordings.bulkAssign(Array.from(selectedIds), projectId);
-      setSelectedIds(new Set());
-      await loadRecordings();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to assign project');
-    }
-  }, [selectedIds, loadRecordings]);
+  const handleLinkedToProjects = useCallback(async () => {
+    setSelectedIds(new Set());
+    await loadRecordings();
+  }, [loadRecordings]);
+
+  // Build a map of recording ID to its project IDs for the bulk action bar
+  const recordingProjectMap = recordings.reduce<Record<string, string[]>>((acc, r) => {
+    acc[r.id] = r.project_ids || [];
+    return acc;
+  }, {});
 
   // Escape key to clear selection
   useEffect(() => {
@@ -580,6 +588,8 @@ export function RecordingsPage({ onViewTranscript }: RecordingsPageProps) {
               progress={jobProgress[recording.id]}
               isSelected={selectedIds.has(recording.id)}
               onSelectChange={(selected) => handleSelectRecording(recording.id, selected)}
+              allTags={allTags}
+              allProjects={allProjects}
             />
           ))}
         </div>
@@ -599,6 +609,8 @@ export function RecordingsPage({ onViewTranscript }: RecordingsPageProps) {
           selectedIds={selectedIds}
           onSelectRecording={handleSelectRecording}
           onSelectAll={handleSelectAll}
+          allTags={allTags}
+          allProjects={allProjects}
         />
       )}
 
@@ -621,9 +633,11 @@ export function RecordingsPage({ onViewTranscript }: RecordingsPageProps) {
       {/* Bulk Action Bar */}
       <BulkActionBar
         selectedCount={selectedIds.size}
+        selectedIds={selectedIds}
+        recordingProjectMap={recordingProjectMap}
         onDelete={handleBulkDelete}
-        onAssignProject={handleBulkAssignProject}
         onClearSelection={handleClearSelection}
+        onLinked={handleLinkedToProjects}
       />
 
       {/* Recording Template Manager */}

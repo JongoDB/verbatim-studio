@@ -1,5 +1,5 @@
 import { cn } from '@/lib/utils';
-import type { Recording } from '@/lib/api';
+import type { Recording, Tag, Project } from '@/lib/api';
 
 type SortKey = 'created_at' | 'title' | 'duration';
 
@@ -18,6 +18,8 @@ interface RecordingsTableProps {
   selectedIds: Set<string>;
   onSelectRecording: (id: string, selected: boolean) => void;
   onSelectAll: (selected: boolean) => void;
+  allTags?: Tag[];
+  allProjects?: Project[];
 }
 
 function formatFileSize(bytes: number | null): string {
@@ -129,6 +131,8 @@ export function RecordingsTable({
   selectedIds,
   onSelectRecording,
   onSelectAll,
+  allTags = [],
+  allProjects = [],
 }: RecordingsTableProps) {
   const handleHeaderClick = (key: SortKey) => {
     if (sortBy === key) {
@@ -198,6 +202,8 @@ export function RecordingsTable({
                 onEdit={onEdit}
                 isSelected={selectedIds.has(recording.id)}
                 onSelectChange={(selected) => onSelectRecording(recording.id, selected)}
+                allTags={allTags}
+                allProjects={allProjects}
               />
             );
           })}
@@ -219,6 +225,8 @@ function RecordingRow({
   onEdit,
   isSelected,
   onSelectChange,
+  allTags,
+  allProjects,
 }: {
   recording: Recording;
   status: { label: string; className: string };
@@ -231,7 +239,12 @@ function RecordingRow({
   onEdit: (recording: Recording) => void;
   isSelected: boolean;
   onSelectChange: (selected: boolean) => void;
+  allTags: Tag[];
+  allProjects: Project[];
 }) {
+  // Get tags and projects for this recording
+  const recordingTags = allTags.filter(t => recording.tag_ids?.includes(t.id));
+  const recordingProjects = allProjects.filter(p => recording.project_ids?.includes(p.id));
   return (
     <>
       <tr className={cn("hover:bg-muted/30 transition-colors border-b border-border", isSelected && "bg-primary/5")}>
@@ -256,13 +269,43 @@ function RecordingRow({
                 <path strokeLinecap="round" strokeLinejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
               </svg>
             )}
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <h3 className="font-medium text-sm truncate" title={recording.title}>
                 {recording.title}
               </h3>
               <p className="text-xs text-muted-foreground truncate" title={recording.file_name}>
                 {recording.file_name}
               </p>
+              {/* Tags and Projects */}
+              {(recordingTags.length > 0 || recordingProjects.length > 0) && (
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {recordingTags.map((tag) => (
+                    <span
+                      key={tag.id}
+                      className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-medium bg-primary/10 text-primary"
+                    >
+                      {tag.color && (
+                        <span
+                          className="w-1.5 h-1.5 rounded-full"
+                          style={{ backgroundColor: tag.color }}
+                        />
+                      )}
+                      {tag.name}
+                    </span>
+                  ))}
+                  {recordingProjects.map((project) => (
+                    <span
+                      key={project.id}
+                      className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-medium bg-muted text-muted-foreground"
+                    >
+                      <svg className="w-2.5 h-2.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                      </svg>
+                      {project.name}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </td>
