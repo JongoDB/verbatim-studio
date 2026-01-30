@@ -3,6 +3,7 @@ import { api, type DashboardStats, type Recording, type Project } from '@/lib/ap
 import { CreateProjectDialog } from '@/components/projects/CreateProjectDialog';
 import { AudioRecorder } from '@/components/recordings/AudioRecorder';
 import { RecordingSetupPanel, type RecordingSettings } from '@/components/recordings/RecordingSetupPanel';
+import { UploadSetupDialog, type UploadOptions } from '@/components/recordings/UploadSetupDialog';
 
 interface DashboardProps {
   onNavigateToRecordings?: () => void;
@@ -110,6 +111,7 @@ export function Dashboard({ onNavigateToRecordings, onNavigateToProjects, onView
   const [isUploading, setIsUploading] = useState(false);
   const [recordingPhase, setRecordingPhase] = useState<'none' | 'setup' | 'recording'>('none');
   const [recordingSettings, setRecordingSettings] = useState<RecordingSettings | null>(null);
+  const [pendingUploadFile, setPendingUploadFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleProjectCreated = useCallback((project: Project) => {
@@ -142,10 +144,32 @@ export function Dashboard({ onNavigateToRecordings, onNavigateToProjects, onView
     }
   }, []);
 
-  const handleUpload = useCallback(async (file: File) => {
+  const handleUpload = useCallback((file: File) => {
+    // Open the setup dialog instead of uploading directly
+    setPendingUploadFile(file);
+  }, []);
+
+  const handleUploadConfirm = useCallback(async (options: UploadOptions) => {
+    if (!pendingUploadFile) return;
+
+    setPendingUploadFile(null);
     setIsUploading(true);
     try {
-      await api.recordings.upload(file);
+      const result = await api.recordings.upload(pendingUploadFile, {
+        title: options.title,
+        templateId: options.templateId,
+        metadata: options.metadata,
+      });
+
+      // Auto-transcribe if option is enabled
+      if (options.autoTranscribe && result.id) {
+        try {
+          await api.recordings.transcribe(result.id);
+        } catch {
+          console.error('Failed to start auto-transcription');
+        }
+      }
+
       await refreshData();
       onRecordingUploaded?.();
     } catch (err) {
@@ -153,7 +177,7 @@ export function Dashboard({ onNavigateToRecordings, onNavigateToProjects, onView
     } finally {
       setIsUploading(false);
     }
-  }, [onRecordingUploaded, refreshData]);
+  }, [onRecordingUploaded, refreshData, pendingUploadFile]);
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -169,7 +193,7 @@ export function Dashboard({ onNavigateToRecordings, onNavigateToProjects, onView
     try {
       const file = new File([blob], filename, { type: blob.type });
       const meta = recordingSettings?.metadata;
-      await api.recordings.upload(file, {
+      const result = await api.recordings.upload(file, {
         title: meta?.title || undefined,
         description: meta?.description || undefined,
         tags: meta?.tags?.length ? meta.tags : undefined,
@@ -178,6 +202,16 @@ export function Dashboard({ onNavigateToRecordings, onNavigateToProjects, onView
         recordedDate: meta?.recordedDate || undefined,
         quality: recordingSettings?.quality,
       });
+
+      // Auto-transcribe if option is enabled
+      if (recordingSettings?.autoTranscribe && result.id) {
+        try {
+          await api.recordings.transcribe(result.id);
+        } catch {
+          console.error('Failed to start auto-transcription');
+        }
+      }
+
       await refreshData();
       onRecordingUploaded?.();
     } catch (err) {
@@ -588,6 +622,14 @@ export function Dashboard({ onNavigateToRecordings, onNavigateToProjects, onView
         isOpen={showCreateProject}
         onClose={() => setShowCreateProject(false)}
         onCreated={handleProjectCreated}
+      />
+
+      {/* Upload Setup Dialog */}
+      <UploadSetupDialog
+        isOpen={pendingUploadFile !== null}
+        file={pendingUploadFile}
+        onClose={() => setPendingUploadFile(null)}
+        onConfirm={handleUploadConfirm}
       />
     </div>
   );
