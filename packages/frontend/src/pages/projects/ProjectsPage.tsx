@@ -8,14 +8,26 @@ interface ProjectsPageProps {
   onNavigateToProject?: (projectId: string) => void;
 }
 
+// Debounce hook
+function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState<T>(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedValue(value), delay);
+    return () => clearTimeout(timer);
+  }, [value, delay]);
+  return debouncedValue;
+}
+
 export function ProjectsPage({ onNavigateToProject }: ProjectsPageProps) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectTypes, setProjectTypes] = useState<ProjectType[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const debouncedSearch = useDebounce(searchQuery, 300);
   const [filterTypeId, setFilterTypeId] = useState('');
   const [filterTag, setFilterTag] = useState('');
   const dialogRef = useRef<HTMLDivElement>(null);
+  const isInitialLoad = useRef(true);
 
   // Dialogs
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -44,12 +56,12 @@ export function ProjectsPage({ onNavigateToProject }: ProjectsPageProps) {
   const [typeDeleteDialogOpen, setTypeDeleteDialogOpen] = useState(false);
 
   // Load data
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (showLoading = false) => {
     try {
-      setLoading(true);
+      if (showLoading) setLoading(true);
       const [projectsRes, typesRes] = await Promise.all([
         api.projects.list({
-          search: searchQuery || undefined,
+          search: debouncedSearch || undefined,
           projectTypeId: filterTypeId || undefined,
           tag: filterTag || undefined,
         }),
@@ -61,8 +73,9 @@ export function ProjectsPage({ onNavigateToProject }: ProjectsPageProps) {
       console.error('Failed to load data:', error);
     } finally {
       setLoading(false);
+      isInitialLoad.current = false;
     }
-  }, [searchQuery, filterTypeId, filterTag]);
+  }, [debouncedSearch, filterTypeId, filterTag]);
 
   // Extract unique tags from all projects
   const uniqueTags = Array.from(
@@ -72,7 +85,7 @@ export function ProjectsPage({ onNavigateToProject }: ProjectsPageProps) {
   ).sort();
 
   useEffect(() => {
-    loadData();
+    loadData(isInitialLoad.current);
   }, [loadData]);
 
   const resetForm = () => {
