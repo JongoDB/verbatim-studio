@@ -82,11 +82,11 @@ export function UploadDropzone({ onUpload, isUploading }: UploadDropzoneProps) {
         disabled={isUploading}
       />
 
-      <div className="flex flex-col items-center gap-2">
+      <div className="flex flex-col items-center gap-3">
         {isUploading ? (
           <>
             <svg
-              className="h-10 w-10 animate-spin text-primary"
+              className="h-16 w-16 animate-spin text-primary"
               xmlns="http://www.w3.org/2000/svg"
               fill="none"
               viewBox="0 0 24 24"
@@ -109,29 +109,31 @@ export function UploadDropzone({ onUpload, isUploading }: UploadDropzoneProps) {
           </>
         ) : (
           <>
-            <svg
-              className={cn(
-                'h-10 w-10',
-                isDragOver ? 'text-primary' : 'text-muted-foreground'
-              )}
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth="1.5"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"
-              />
-            </svg>
-            <div>
+            <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
+              <svg
+                className={cn(
+                  'h-8 w-8',
+                  isDragOver ? 'text-primary' : 'text-muted-foreground'
+                )}
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth="1.5"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"
+                />
+              </svg>
+            </div>
+            <div className="text-center">
               <p className="text-sm font-medium">
-                {isDragOver ? 'Drop to upload' : 'Drag and drop a recording'}
+                {isDragOver ? 'Drop to upload' : 'Drag and drop audio/video'}
               </p>
               <p className="text-xs text-muted-foreground mt-1">
-                or click to browse (audio/video files)
+                or click to browse files
               </p>
             </div>
           </>
