@@ -1145,8 +1145,8 @@ class ApiClient {
         for (const line of lines) {
           if (line.startsWith('data: ')) {
             try {
-              const data = JSON.parse(line.slice(6));
-              yield data as ChatStreamToken;
+              const token = JSON.parse(line.slice(6));
+              yield token as ChatStreamToken;
             } catch {
               // Skip invalid JSON
             }
