@@ -503,14 +503,11 @@ async def chat_multi_stream(
 
     async def generate():
         try:
-            model_name = "unknown"
             async for chunk in ai_service.chat_stream(messages, options):
-                if chunk.model:
-                    model_name = chunk.model
                 if chunk.content:
                     yield f"data: {json.dumps({'token': chunk.content})}\n\n"
                 if chunk.finish_reason:
-                    yield f"data: {json.dumps({'done': True, 'model': model_name})}\n\n"
+                    yield f"data: {json.dumps({'done': True})}\n\n"
         except Exception as e:
             logger.exception("Multi-chat stream failed")
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
