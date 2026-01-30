@@ -3,11 +3,17 @@ import { MetadataFieldEditor } from '@/components/shared/MetadataFieldEditor';
 import { DynamicMetadataForm } from '@/components/shared/DynamicMetadataForm';
 import { api, type Project, type ProjectType, type MetadataField } from '@/lib/api';
 
-export function ProjectsPage() {
+interface ProjectsPageProps {
+  onNavigateToProject?: (projectId: string) => void;
+}
+
+export function ProjectsPage({ onNavigateToProject }: ProjectsPageProps) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectTypes, setProjectTypes] = useState<ProjectType[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [filterTypeId, setFilterTypeId] = useState('');
+  const [filterTag, setFilterTag] = useState('');
   const dialogRef = useRef<HTMLDivElement>(null);
 
   // Dialogs
@@ -40,7 +46,11 @@ export function ProjectsPage() {
     try {
       setLoading(true);
       const [projectsRes, typesRes] = await Promise.all([
-        api.projects.list(searchQuery || undefined),
+        api.projects.list({
+          search: searchQuery || undefined,
+          projectTypeId: filterTypeId || undefined,
+          tag: filterTag || undefined,
+        }),
         api.projectTypes.list(),
       ]);
       setProjects(projectsRes.items);
@@ -50,7 +60,14 @@ export function ProjectsPage() {
     } finally {
       setLoading(false);
     }
-  }, [searchQuery]);
+  }, [searchQuery, filterTypeId, filterTag]);
+
+  // Extract unique tags from all projects
+  const uniqueTags = Array.from(
+    new Set(
+      projects.flatMap(p => (p.metadata?.tags as string[]) || [])
+    )
+  ).sort();
 
   useEffect(() => {
     loadData();
@@ -258,18 +275,42 @@ export function ProjectsPage() {
         </div>
       </div>
 
-      {/* Search */}
-      <div className="relative max-w-md">
-        <svg className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
-        </svg>
-        <input
-          type="text"
-          placeholder="Search projects..."
-          value={searchQuery}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)}
-          className="w-full rounded-lg border border-border bg-background pl-10 pr-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-        />
+      {/* Search and Filters */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative flex-1 min-w-[200px] max-w-md">
+          <svg className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+          </svg>
+          <input
+            type="text"
+            placeholder="Search projects..."
+            value={searchQuery}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)}
+            className="w-full rounded-lg border border-border bg-background pl-10 pr-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+          />
+        </div>
+        <select
+          value={filterTypeId}
+          onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFilterTypeId(e.target.value)}
+          className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+        >
+          <option value="">All Types</option>
+          {projectTypes.map((type) => (
+            <option key={type.id} value={type.id}>{type.name}</option>
+          ))}
+        </select>
+        {uniqueTags.length > 0 && (
+          <select
+            value={filterTag}
+            onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFilterTag(e.target.value)}
+            className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+          >
+            <option value="">All Tags</option>
+            {uniqueTags.map((tag) => (
+              <option key={tag} value={tag}>{tag}</option>
+            ))}
+          </select>
+        )}
       </div>
 
       {/* Projects Grid */}
@@ -291,7 +332,8 @@ export function ProjectsPage() {
           {projects.map((project) => (
             <div
               key={project.id}
-              className="border border-border rounded-lg p-4 bg-card hover:shadow-md transition-shadow"
+              className="border border-border rounded-lg p-4 bg-card hover:shadow-md transition-shadow cursor-pointer"
+              onClick={() => onNavigateToProject?.(project.id)}
             >
               <div className="flex items-start justify-between">
                 <div className="flex-1 min-w-0">
@@ -304,7 +346,7 @@ export function ProjectsPage() {
                 </div>
                 <div className="flex items-center gap-1 ml-2">
                   <button
-                    onClick={() => openEditDialog(project)}
+                    onClick={(e) => { e.stopPropagation(); openEditDialog(project); }}
                     className="p-1.5 rounded-md hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
                   >
                     <svg className="h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -312,7 +354,7 @@ export function ProjectsPage() {
                     </svg>
                   </button>
                   <button
-                    onClick={() => openDeleteDialog(project)}
+                    onClick={(e) => { e.stopPropagation(); openDeleteDialog(project); }}
                     className="p-1.5 rounded-md hover:bg-destructive/10 transition-colors text-destructive"
                   >
                     <svg className="h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">

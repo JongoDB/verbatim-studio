@@ -85,6 +85,8 @@ def _project_type_to_info(pt: ProjectType | None) -> ProjectTypeInfo | None:
 async def list_projects(
     db: Annotated[AsyncSession, Depends(get_db)],
     search: Annotated[str | None, Query(description="Search by name")] = None,
+    project_type_id: Annotated[str | None, Query(description="Filter by project type")] = None,
+    tag: Annotated[str | None, Query(description="Filter by tag in metadata.tags")] = None,
 ) -> ProjectListResponse:
     """List all projects with recording counts."""
     # Base query with project type eager load
@@ -99,8 +101,18 @@ async def list_projects(
     if search:
         query = query.where(Project.name.ilike(f"%{search}%"))
 
+    if project_type_id:
+        query = query.where(Project.project_type_id == project_type_id)
+
     result = await db.execute(query)
     projects = result.scalars().all()
+
+    # Filter by tag if specified (stored in metadata.tags array)
+    if tag:
+        projects = [
+            p for p in projects
+            if tag in (p.metadata_.get("tags") or [])
+        ]
 
     # Get recording counts
     items = []
@@ -337,3 +349,57 @@ async def remove_recording_from_project(
     await db.commit()
 
     return MessageResponse(message="Recording removed from project", id=recording_id)
+
+
+class ProjectRecordingResponse(BaseModel):
+    """Response model for a recording in a project context."""
+
+    id: str
+    title: str
+    file_name: str
+    duration_seconds: float | None
+    status: str
+    created_at: str
+    updated_at: str
+
+
+class ProjectRecordingsResponse(BaseModel):
+    """Response model for listing recordings in a project."""
+
+    items: list[ProjectRecordingResponse]
+    total: int
+
+
+@router.get("/{project_id}/recordings", response_model=ProjectRecordingsResponse)
+async def get_project_recordings(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    project_id: str,
+) -> ProjectRecordingsResponse:
+    """Get all recordings for a project."""
+    # Verify project exists
+    project_result = await db.execute(select(Project).where(Project.id == project_id))
+    if not project_result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    # Get recordings
+    result = await db.execute(
+        select(Recording)
+        .where(Recording.project_id == project_id)
+        .order_by(Recording.created_at.desc())
+    )
+    recordings = result.scalars().all()
+
+    items = [
+        ProjectRecordingResponse(
+            id=r.id,
+            title=r.title,
+            file_name=r.file_name,
+            duration_seconds=r.duration_seconds,
+            status=r.status,
+            created_at=r.created_at.isoformat(),
+            updated_at=r.updated_at.isoformat(),
+        )
+        for r in recordings
+    ]
+
+    return ProjectRecordingsResponse(items=items, total=len(items))

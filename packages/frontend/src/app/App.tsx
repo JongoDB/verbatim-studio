@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { api, type ApiInfo, type HealthStatus, type GlobalSearchResult } from '@/lib/api';
 import { RecordingsPage } from '@/pages/recordings/RecordingsPage';
 import { ProjectsPage } from '@/pages/projects/ProjectsPage';
+import { ProjectDetailPage } from '@/pages/projects/ProjectDetailPage';
+import { ProjectAnalyticsPage } from '@/pages/projects/ProjectAnalyticsPage';
 import { TranscriptPage } from '@/pages/transcript/TranscriptPage';
 import { SearchPage } from '@/pages/search/SearchPage';
 import { LiveTranscriptionPage } from '@/pages/live/LiveTranscriptionPage';
@@ -15,6 +17,8 @@ type NavigationState =
   | { type: 'dashboard' }
   | { type: 'recordings' }
   | { type: 'projects' }
+  | { type: 'project-detail'; projectId: string }
+  | { type: 'project-analytics'; projectId: string }
   | { type: 'live' }
   | { type: 'search' }
   | { type: 'settings' }
@@ -78,7 +82,26 @@ export function App() {
     setNavigation({ type: 'projects' });
   }, []);
 
-  const currentTab = navigation.type === 'transcript' ? 'recordings' : navigation.type as 'dashboard' | 'recordings' | 'projects' | 'live' | 'search' | 'settings';
+  const handleNavigateToProjectDetail = useCallback((projectId: string) => {
+    setNavigation({ type: 'project-detail', projectId });
+  }, []);
+
+  const handleNavigateToProjectAnalytics = useCallback((projectId: string) => {
+    setNavigation({ type: 'project-analytics', projectId });
+  }, []);
+
+  // Map navigation types to sidebar tabs
+  const currentTab = (() => {
+    switch (navigation.type) {
+      case 'transcript':
+        return 'recordings';
+      case 'project-detail':
+      case 'project-analytics':
+        return 'projects';
+      default:
+        return navigation.type as 'dashboard' | 'recordings' | 'projects' | 'live' | 'search' | 'settings';
+    }
+  })();
 
   const handleSearchResult = useCallback((result: GlobalSearchResult) => {
     // Navigate to the recording's transcript, seeking to the segment time if available
@@ -254,7 +277,21 @@ export function App() {
               <RecordingsPage onViewTranscript={handleViewTranscript} />
             )}
             {navigation.type === 'projects' && (
-              <ProjectsPage />
+              <ProjectsPage onNavigateToProject={handleNavigateToProjectDetail} />
+            )}
+            {navigation.type === 'project-detail' && (
+              <ProjectDetailPage
+                projectId={navigation.projectId}
+                onBack={handleNavigateToProjects}
+                onViewTranscript={handleViewTranscript}
+                onNavigateToAnalytics={() => handleNavigateToProjectAnalytics(navigation.projectId)}
+              />
+            )}
+            {navigation.type === 'project-analytics' && (
+              <ProjectAnalyticsPage
+                projectId={navigation.projectId}
+                onBack={() => handleNavigateToProjectDetail(navigation.projectId)}
+              />
             )}
             {navigation.type === 'live' && (
               <LiveTranscriptionPage

@@ -279,6 +279,56 @@ export interface ProjectUpdateRequest {
   metadata?: Record<string, unknown>;
 }
 
+// Project Recording (for project detail page)
+export interface ProjectRecording {
+  id: string;
+  title: string;
+  file_name: string;
+  duration_seconds: number | null;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProjectRecordingsResponse {
+  items: ProjectRecording[];
+  total: number;
+}
+
+// Project Analytics
+export interface ProjectRecordingStats {
+  total: number;
+  completed: number;
+  failed: number;
+  pending: number;
+  processing: number;
+}
+
+export interface TimelineEntry {
+  date: string;
+  count: number;
+  recording_ids: string[];
+}
+
+export interface WordFrequency {
+  word: string;
+  count: number;
+}
+
+export interface SpeakerDistribution {
+  speaker: string;
+  segment_count: number;
+  total_duration: number;
+}
+
+export interface ProjectAnalytics {
+  recording_stats: ProjectRecordingStats;
+  total_duration_seconds: number;
+  recording_timeline: TimelineEntry[];
+  word_frequency: WordFrequency[];
+  speaker_distribution: SpeakerDistribution[];
+}
+
 // Project Type and Recording Template Types
 export interface MetadataField {
   name: string;
@@ -1043,14 +1093,22 @@ class ApiClient {
 
   // Projects
   projects = {
-    list: (search?: string) => {
+    list: (options?: { search?: string; projectTypeId?: string; tag?: string }) => {
       const params = new URLSearchParams();
-      if (search) params.set('search', search);
+      if (options?.search) params.set('search', options.search);
+      if (options?.projectTypeId) params.set('project_type_id', options.projectTypeId);
+      if (options?.tag) params.set('tag', options.tag);
       const queryString = params.toString();
       return this.request<ProjectListResponse>(`/api/projects${queryString ? `?${queryString}` : ''}`);
     },
 
     get: (id: string) => this.request<Project>(`/api/projects/${id}`),
+
+    getRecordings: (projectId: string) =>
+      this.request<ProjectRecordingsResponse>(`/api/projects/${projectId}/recordings`),
+
+    analytics: (projectId: string) =>
+      this.request<ProjectAnalytics>(`/api/projects/${projectId}/analytics`),
 
     create: (data: ProjectCreateRequest) =>
       this.request<Project>('/api/projects', {
