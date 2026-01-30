@@ -620,10 +620,9 @@ async def update_recording(
         recording.template_id = body.template_id if body.template_id != "" else None
 
     if body.metadata is not None:
-        # Merge with existing metadata
+        # Merge with existing metadata (create new dict to trigger SQLAlchemy change detection)
         current = recording.metadata_ or {}
-        current.update(body.metadata)
-        recording.metadata_ = current
+        recording.metadata_ = {**current, **body.metadata}
 
     await db.commit()
 

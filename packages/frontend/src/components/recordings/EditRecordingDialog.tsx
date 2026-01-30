@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
-import { api, type Recording, type Tag } from '@/lib/api';
+import { api, type Recording, type Tag, type RecordingTemplate } from '@/lib/api';
+import { DynamicMetadataForm } from '@/components/shared/DynamicMetadataForm';
 
 interface EditRecordingDialogProps {
   isOpen: boolean;
@@ -27,13 +28,29 @@ export function EditRecordingDialog({
   const [newTagName, setNewTagName] = useState('');
   const [loadingTags, setLoadingTags] = useState(false);
 
+  // Template state
+  const [templates, setTemplates] = useState<RecordingTemplate[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+  const [originalTemplateId, setOriginalTemplateId] = useState<string | null>(null);
+  const [metadata, setMetadata] = useState<Record<string, unknown>>({});
+  const [originalMetadata, setOriginalMetadata] = useState<Record<string, unknown>>({});
+  const [loadingTemplates, setLoadingTemplates] = useState(false);
+
+  // Get selected template
+  const selectedTemplate = templates.find(t => t.id === selectedTemplateId);
+
   // Load recording data when dialog opens
   useEffect(() => {
     if (isOpen && recording) {
       setTitle(recording.title);
+      setSelectedTemplateId(recording.template_id);
+      setOriginalTemplateId(recording.template_id);
+      setMetadata(recording.metadata || {});
+      setOriginalMetadata(recording.metadata || {});
       setError(null);
       setSaving(false);
       loadTags();
+      loadTemplates();
     }
   }, [isOpen, recording]);
 
@@ -54,6 +71,25 @@ export function EditRecordingDialog({
     } finally {
       setLoadingTags(false);
     }
+  };
+
+  const loadTemplates = async () => {
+    setLoadingTemplates(true);
+    try {
+      const res = await api.recordingTemplates.list();
+      setTemplates(res.items);
+    } catch {
+      console.error('Failed to load templates');
+    } finally {
+      setLoadingTemplates(false);
+    }
+  };
+
+  const handleTemplateChange = (templateId: string) => {
+    const newTemplateId = templateId || null;
+    setSelectedTemplateId(newTemplateId);
+    // Keep existing metadata values that match new template fields
+    // (metadata is preserved, new template just shows different fields)
   };
 
   // Focus title input on open
@@ -117,9 +153,31 @@ export function EditRecordingDialog({
     setError(null);
 
     try {
+      // Build update payload
+      const updates: {
+        title?: string;
+        template_id?: string | null;
+        metadata?: Record<string, unknown>;
+      } = {};
+
       // Update title if changed
       if (trimmed !== recording.title) {
-        await api.recordings.update(recording.id, { title: trimmed });
+        updates.title = trimmed;
+      }
+
+      // Update template if changed
+      if (selectedTemplateId !== originalTemplateId) {
+        updates.template_id = selectedTemplateId;
+      }
+
+      // Update metadata if changed
+      if (JSON.stringify(metadata) !== JSON.stringify(originalMetadata)) {
+        updates.metadata = metadata;
+      }
+
+      // Only call API if there are changes
+      if (Object.keys(updates).length > 0) {
+        await api.recordings.update(recording.id, updates);
       }
 
       // Update tags
@@ -146,7 +204,9 @@ export function EditRecordingDialog({
 
   const hasChanges = title.trim() !== recording.title ||
     [...recordingTagIds].some(id => !originalTagIds.has(id)) ||
-    [...originalTagIds].some(id => !recordingTagIds.has(id));
+    [...originalTagIds].some(id => !recordingTagIds.has(id)) ||
+    selectedTemplateId !== originalTemplateId ||
+    JSON.stringify(metadata) !== JSON.stringify(originalMetadata);
 
   return (
     <div
@@ -189,6 +249,54 @@ export function EditRecordingDialog({
               className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
             />
           </div>
+
+          {/* Recording Template */}
+          <div>
+            <label htmlFor="edit-template" className="block text-sm font-medium text-foreground mb-1">
+              Recording Type
+            </label>
+            {loadingTemplates ? (
+              <div className="flex items-center justify-center py-2">
+                <svg className="h-5 w-5 animate-spin text-muted-foreground" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+              </div>
+            ) : (
+              <select
+                id="edit-template"
+                value={selectedTemplateId || ''}
+                onChange={(e) => handleTemplateChange(e.target.value)}
+                disabled={saving}
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
+              >
+                <option value="">No template</option>
+                {templates.map((template) => (
+                  <option key={template.id} value={template.id}>
+                    {template.name}
+                  </option>
+                ))}
+              </select>
+            )}
+            {selectedTemplate?.description && (
+              <p className="mt-1 text-xs text-muted-foreground">{selectedTemplate.description}</p>
+            )}
+          </div>
+
+          {/* Template Metadata Fields */}
+          {selectedTemplate && selectedTemplate.metadata_schema.length > 0 && (
+            <div className="border-t border-border pt-4">
+              <h4 className="text-sm font-medium text-foreground mb-3">
+                {selectedTemplate.name} Fields
+              </h4>
+              <DynamicMetadataForm
+                fields={selectedTemplate.metadata_schema}
+                values={metadata}
+                onChange={setMetadata}
+                disabled={saving}
+              />
+            </div>
+          )}
 
           {/* Tags */}
           <div>
