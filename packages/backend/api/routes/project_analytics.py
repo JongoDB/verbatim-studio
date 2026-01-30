@@ -15,8 +15,9 @@ from persistence.models import Project, ProjectRecording, Recording, Segment, Tr
 
 router = APIRouter(prefix="/projects", tags=["project-analytics"])
 
-# Common stop words to filter out
+# Common stop words to filter out (including contractions)
 STOP_WORDS = {
+    # Articles, conjunctions, prepositions
     "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for", "of",
     "with", "by", "from", "as", "is", "was", "are", "were", "been", "be", "have",
     "has", "had", "do", "does", "did", "will", "would", "could", "should", "may",
@@ -32,6 +33,12 @@ STOP_WORDS = {
     "under", "again", "further", "then", "once", "up", "down", "off", "away",
     "um", "uh", "like", "yeah", "okay", "ok", "right", "well", "so", "just", "know",
     "think", "got", "going", "get", "go", "come", "see", "want", "say", "said",
+    # Common contractions
+    "don't", "can't", "won't", "didn't", "doesn't", "isn't", "aren't", "wasn't",
+    "weren't", "haven't", "hasn't", "hadn't", "wouldn't", "couldn't", "shouldn't",
+    "it's", "that's", "what's", "there's", "here's", "i'm", "you're", "we're",
+    "they're", "i've", "you've", "we've", "they've", "i'll", "you'll", "we'll",
+    "they'll", "i'd", "you'd", "we'd", "they'd", "let's", "ain't", "y'all",
 }
 
 
@@ -65,6 +72,9 @@ class ProjectAnalytics(BaseModel):
 
     recording_stats: RecordingStats
     total_duration_seconds: float
+    avg_duration_seconds: float | None
+    total_word_count: int
+    avg_confidence: float | None
     recording_timeline: list[TimelineEntry]
     word_frequency: list[WordFrequency]
 
@@ -103,8 +113,10 @@ async def get_project_analytics(
         processing=status_counts.get("processing", 0),
     )
 
-    # Calculate total duration
-    total_duration = sum(r.duration_seconds or 0 for r in recordings)
+    # Calculate total and average duration
+    durations = [r.duration_seconds for r in recordings if r.duration_seconds]
+    total_duration = sum(durations)
+    avg_duration = sum(durations) / len(durations) if durations else None
 
     # Build timeline (group by date)
     timeline_dict: dict[str, list[str]] = {}
@@ -119,17 +131,29 @@ async def get_project_analytics(
         for date, ids in sorted(timeline_dict.items(), reverse=True)
     ]
 
-    # Calculate word frequency from all segments
+    # Calculate word frequency and stats from all segments
     word_counter: Counter[str] = Counter()
+    total_word_count = 0
+    confidence_scores: list[float] = []
 
     for recording in recordings:
         if not recording.transcript:
             continue
         for segment in recording.transcript.segments:
-            words = re.findall(r"\b[a-zA-Z]{3,}\b", segment.text.lower())
+            # Match words including contractions (e.g., "don't", "I'm")
+            words = re.findall(r"\b[a-zA-Z]+(?:'[a-zA-Z]+)?\b", segment.text.lower())
+            total_word_count += len(words)
             for word in words:
-                if word not in STOP_WORDS:
+                if len(word) >= 3 and word not in STOP_WORDS:
                     word_counter[word] += 1
+            # Collect confidence scores
+            if segment.confidence is not None:
+                confidence_scores.append(segment.confidence)
+
+    # Calculate average confidence
+    avg_confidence = (
+        sum(confidence_scores) / len(confidence_scores) if confidence_scores else None
+    )
 
     # Get top 50 words
     word_frequency = [
@@ -140,6 +164,9 @@ async def get_project_analytics(
     return ProjectAnalytics(
         recording_stats=recording_stats,
         total_duration_seconds=total_duration,
+        avg_duration_seconds=avg_duration,
+        total_word_count=total_word_count,
+        avg_confidence=avg_confidence,
         recording_timeline=recording_timeline,
         word_frequency=word_frequency,
     )

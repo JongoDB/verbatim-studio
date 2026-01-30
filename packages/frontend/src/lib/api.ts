@@ -318,6 +318,9 @@ export interface WordFrequency {
 export interface ProjectAnalytics {
   recording_stats: ProjectRecordingStats;
   total_duration_seconds: number;
+  avg_duration_seconds: number | null;
+  total_word_count: number;
+  avg_confidence: number | null;
   recording_timeline: TimelineEntry[];
   word_frequency: WordFrequency[];
 }

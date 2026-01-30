@@ -99,6 +99,26 @@ async def init_db() -> None:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
+    # Run schema migrations for changes that create_all won't handle
+    async with engine.begin() as conn:
+        await _run_migrations(conn)
+
     # Auto-seed defaults on startup
     async with async_session() as session:
         await seed_defaults(session)
+
+
+async def _run_migrations(conn) -> None:
+    """Run schema migrations that create_all doesn't handle (column drops, renames, etc)."""
+    # Migration 1: Remove old project_id column from recordings table
+    # (replaced by many-to-many junction table project_recordings)
+    result = await conn.execute(text("PRAGMA table_info(recordings)"))
+    columns = [row[1] for row in result.fetchall()]
+    if "project_id" in columns:
+        # SQLite doesn't support DROP COLUMN before 3.35.0, so we need to recreate
+        # the table. However, newer SQLite versions support it directly.
+        try:
+            await conn.execute(text("ALTER TABLE recordings DROP COLUMN project_id"))
+        except Exception:
+            # Older SQLite - column will remain but be unused
+            pass

@@ -16,6 +16,8 @@ function formatDuration(seconds: number | null): string {
   return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
+const PAGE_SIZE = 25;
+
 export function AddRecordingDialog({
   projectId,
   existingRecordingIds,
@@ -25,26 +27,49 @@ export function AddRecordingDialog({
 }: AddRecordingDialogProps) {
   const [recordings, setRecordings] = useState<Recording[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+  const [total, setTotal] = useState(0);
 
   useEffect(() => {
     if (open) {
-      loadRecordings();
+      loadRecordings(1);
     }
   }, [open]);
 
-  const loadRecordings = async () => {
+  const loadRecordings = async (pageNum: number) => {
     try {
-      setLoading(true);
-      const response = await api.recordings.list({ pageSize: 100 });
-      setRecordings(response.items);
-      // Pre-select existing recordings
-      setSelectedIds(new Set(existingRecordingIds));
+      if (pageNum === 1) {
+        setLoading(true);
+        setRecordings([]);
+      } else {
+        setLoadingMore(true);
+      }
+      const response = await api.recordings.list({ page: pageNum, pageSize: PAGE_SIZE });
+      if (pageNum === 1) {
+        setRecordings(response.items);
+        // Pre-select existing recordings
+        setSelectedIds(new Set(existingRecordingIds));
+      } else {
+        setRecordings(prev => [...prev, ...response.items]);
+      }
+      setTotal(response.total);
+      setHasMore(response.items.length === PAGE_SIZE && pageNum * PAGE_SIZE < response.total);
+      setPage(pageNum);
     } catch (error) {
       console.error('Failed to load recordings:', error);
     } finally {
       setLoading(false);
+      setLoadingMore(false);
+    }
+  };
+
+  const loadMore = () => {
+    if (!loadingMore && hasMore) {
+      loadRecordings(page + 1);
     }
   };
 
@@ -139,7 +164,7 @@ export function AddRecordingDialog({
             Clear
           </button>
           <span className="text-sm text-muted-foreground ml-auto">
-            {selectedIds.size} selected
+            {selectedIds.size} selected{total > 0 && ` · ${recordings.length} of ${total} recordings`}
           </span>
         </div>
 
@@ -200,6 +225,27 @@ export function AddRecordingDialog({
                   )}
                 </label>
               ))}
+              {hasMore && (
+                <div className="px-5 py-4 text-center">
+                  <button
+                    onClick={loadMore}
+                    disabled={loadingMore}
+                    className="px-4 py-2 text-sm font-medium rounded-lg border border-border text-foreground hover:bg-muted transition-colors disabled:opacity-50"
+                  >
+                    {loadingMore ? (
+                      <span className="flex items-center gap-2">
+                        <svg className="h-4 w-4 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                        </svg>
+                        Loading...
+                      </span>
+                    ) : (
+                      `Load More (${total - recordings.length} remaining)`
+                    )}
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
