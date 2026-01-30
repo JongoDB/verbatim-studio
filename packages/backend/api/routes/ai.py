@@ -90,6 +90,33 @@ class ChatResponse(BaseModel):
     model: str
 
 
+class MultiChatRequest(BaseModel):
+    """Request model for multi-transcript chat."""
+    message: str
+    transcript_ids: list[str] = []
+    history: list[dict] = []  # [{"role": "user"|"assistant", "content": "..."}]
+    temperature: float = 0.7
+
+
+class StreamToken(BaseModel):
+    """A single token in a streaming response."""
+    token: str | None = None
+    done: bool = False
+    model: str | None = None
+    error: str | None = None
+
+
+MAX_SYSTEM_PROMPT = """You are Max, the Verbatim Assistant. You help users understand and analyze their transcript recordings.
+
+Guidelines:
+- Be concise and factual
+- Reference specific quotes from transcripts when relevant
+- When comparing transcripts, clearly label which transcript you're referencing (e.g., "In Transcript A...")
+- If asked about something not in the attached transcripts, say so
+- When no transcripts are attached, help with general questions about recordings, transcription, or the app
+"""
+
+
 class SummarizationResponse(BaseModel):
     """Response model for transcript summarization."""
 
@@ -393,6 +420,75 @@ async def chat_stream(request: ChatRequest) -> StreamingResponse:
         except Exception as e:
             logger.exception("Stream chat failed")
             yield f"data: [ERROR] {str(e)}\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
+
+
+@router.post("/chat/multi")
+async def chat_multi_stream(
+    request: MultiChatRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> StreamingResponse:
+    """Stream a chat response with multi-transcript context."""
+    _ensure_active_model_loaded()
+    factory = get_factory()
+    ai_service = factory.create_ai_service()
+
+    if not await ai_service.is_available():
+        raise HTTPException(
+            status_code=503,
+            detail="AI service not available. Please configure a model path.",
+        )
+
+    # Build context from transcripts
+    context_parts = []
+    if request.transcript_ids:
+        for i, tid in enumerate(request.transcript_ids):
+            label = chr(65 + i)  # A, B, C, ...
+            try:
+                text = await get_transcript_text(db, tid)
+                # Get transcript title
+                result = await db.execute(select(Transcript).where(Transcript.id == tid))
+                transcript = result.scalar_one_or_none()
+                title = transcript.title if transcript else f"Transcript {label}"
+                context_parts.append(f"=== Transcript {label}: {title} ===\n{text}\n")
+            except Exception:
+                logger.warning(f"Could not load transcript {tid}")
+                continue
+
+    # Build system message
+    system_content = MAX_SYSTEM_PROMPT
+    if context_parts:
+        system_content += f"\n\nYou have access to {len(context_parts)} transcript(s):\n\n"
+        system_content += "\n".join(context_parts)
+    else:
+        system_content += "\n\nNo transcripts are currently attached. Help with general questions."
+
+    # Build messages list
+    messages = [ChatMessage(role="system", content=system_content)]
+
+    # Add history
+    for msg in request.history:
+        messages.append(ChatMessage(role=msg["role"], content=msg["content"]))
+
+    # Add current message
+    messages.append(ChatMessage(role="user", content=request.message))
+
+    options = ChatOptions(temperature=request.temperature, max_tokens=1024)
+
+    async def generate():
+        try:
+            model_name = "unknown"
+            async for chunk in ai_service.chat_stream(messages, options):
+                if chunk.model:
+                    model_name = chunk.model
+                if chunk.content:
+                    yield f"data: {json.dumps({'token': chunk.content})}\n\n"
+                if chunk.finish_reason:
+                    yield f"data: {json.dumps({'done': True, 'model': model_name})}\n\n"
+        except Exception as e:
+            logger.exception("Multi-chat stream failed")
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
 
     return StreamingResponse(generate(), media_type="text/event-stream")
 
