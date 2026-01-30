@@ -25,7 +25,8 @@ export function ChatFAB({ onClick, isOpen }: ChatFABProps) {
           ? 'bg-blue-600 hover:bg-blue-700 hover:scale-105'
           : 'bg-gray-400 cursor-not-allowed'
       }`}
-      disabled={aiAvailable === false}
+      disabled={aiAvailable !== true}
+      aria-label={aiAvailable ? 'Open Verbatim Assistant' : 'AI not available'}
       title={aiAvailable ? 'Verbatim Assistant' : 'AI not available'}
     >
       {/* Sparkle icon */}
@@ -35,6 +36,7 @@ export function ChatFAB({ onClick, isOpen }: ChatFABProps) {
         viewBox="0 0 24 24"
         stroke="currentColor"
         strokeWidth="2"
+        aria-hidden="true"
       >
         <path
           strokeLinecap="round"
