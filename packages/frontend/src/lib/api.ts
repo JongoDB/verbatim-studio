@@ -415,6 +415,20 @@ export interface AIChatRequest {
   max_tokens?: number | null;
 }
 
+export interface ChatMultiRequest {
+  message: string;
+  transcript_ids: string[];
+  history: Array<{ role: 'user' | 'assistant'; content: string }>;
+  temperature?: number;
+}
+
+export interface ChatStreamToken {
+  token?: string;
+  done?: boolean;
+  model?: string;
+  error?: string;
+}
+
 export interface AIChatResponse {
   content: string;
   model: string;
@@ -1099,6 +1113,47 @@ class ApiClient {
         `/api/ai/models/${modelId}`,
         { method: 'DELETE' }
       ),
+
+    chatMultiStream: async function* (
+      this: ApiClient,
+      data: ChatMultiRequest
+    ): AsyncGenerator<ChatStreamToken> {
+      const response = await fetch(`${this.baseUrl}/api/ai/chat/multi`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`);
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error('No response body');
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              yield data as ChatStreamToken;
+            } catch {
+              // Skip invalid JSON
+            }
+          }
+        }
+      }
+    },
   };
 
   // Projects
