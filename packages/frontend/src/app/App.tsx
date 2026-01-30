@@ -12,6 +12,10 @@ import { Dashboard } from '@/components/dashboard/Dashboard';
 import { SettingsPage } from '@/pages/settings/SettingsPage';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { APP_VERSION } from '@/version'; // static fallback
+import { ChatFAB } from '@/components/ai/ChatFAB';
+import { ChatPanel } from '@/components/ai/ChatPanel';
+import type { ChatMessage } from '@/components/ai/ChatMessages';
+import type { AttachedTranscript } from '@/components/ai/TranscriptPicker';
 
 type NavigationState =
   | { type: 'dashboard' }
@@ -94,6 +98,11 @@ export function App() {
     pathToNavigation(window.location.pathname)
   );
   const [theme, setTheme] = useState<Theme>(getInitialTheme);
+
+  // Chat assistant state
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [attachedTranscripts, setAttachedTranscripts] = useState<AttachedTranscript[]>([]);
 
   const handleViewTranscript = useCallback((recordingId: string) => {
     setNavigation({ type: 'transcript', recordingId });
@@ -233,6 +242,26 @@ export function App() {
     const interval = setInterval(checkBackend, 15000);
     return () => clearInterval(interval);
   }, []);
+
+  // Auto-attach current transcript when opening chat from transcript page
+  const handleOpenChat = useCallback(() => {
+    if (navigation.type === 'transcript' && !isChatOpen) {
+      // Check if this transcript is already attached
+      const alreadyAttached = attachedTranscripts.some(
+        (t) => t.id === navigation.recordingId
+      );
+      if (!alreadyAttached) {
+        // Fetch recording title and attach
+        api.recordings.get(navigation.recordingId).then((recording) => {
+          setAttachedTranscripts((prev) => [
+            ...prev,
+            { id: recording.id, title: recording.title },
+          ]);
+        }).catch(() => {});
+      }
+    }
+    setIsChatOpen(true);
+  }, [navigation, isChatOpen, attachedTranscripts]);
 
   // Show loading state while connecting
   if (isConnecting) {
@@ -377,6 +406,17 @@ export function App() {
           </div>
         </main>
       </div>
+
+      {/* Chat Assistant */}
+      <ChatFAB onClick={handleOpenChat} isOpen={isChatOpen} />
+      <ChatPanel
+        isOpen={isChatOpen}
+        onClose={() => setIsChatOpen(false)}
+        messages={chatMessages}
+        setMessages={setChatMessages}
+        attached={attachedTranscripts}
+        setAttached={setAttachedTranscripts}
+      />
     </div>
   );
 }
