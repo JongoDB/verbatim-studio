@@ -8,7 +8,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -90,16 +90,26 @@ class ChatResponse(BaseModel):
     model: str
 
 
+class HistoryMessage(BaseModel):
+    """A message in chat history."""
+    role: str
+    content: str
+
+
 class MultiChatRequest(BaseModel):
     """Request model for multi-transcript chat."""
     message: str
     transcript_ids: list[str] = []
-    history: list[dict] = []  # [{"role": "user"|"assistant", "content": "..."}]
-    temperature: float = 0.7
+    history: list[HistoryMessage] = []
+    temperature: float = Field(default=0.7, ge=0, le=2)
 
 
 class StreamToken(BaseModel):
-    """A single token in a streaming response."""
+    """A single token in a streaming response.
+
+    This model documents the SSE response format for /chat/multi.
+    The endpoint yields JSON dicts matching this schema.
+    """
     token: str | None = None
     done: bool = False
     model: str | None = None
@@ -453,7 +463,7 @@ async def chat_multi_stream(
                 title = transcript.title if transcript else f"Transcript {label}"
                 context_parts.append(f"=== Transcript {label}: {title} ===\n{text}\n")
             except Exception:
-                logger.warning(f"Could not load transcript {tid}")
+                logger.warning("Could not load transcript %s", tid)
                 continue
 
     # Build system message
@@ -469,7 +479,7 @@ async def chat_multi_stream(
 
     # Add history
     for msg in request.history:
-        messages.append(ChatMessage(role=msg["role"], content=msg["content"]))
+        messages.append(ChatMessage(role=msg.role, content=msg.content))
 
     # Add current message
     messages.append(ChatMessage(role="user", content=request.message))
