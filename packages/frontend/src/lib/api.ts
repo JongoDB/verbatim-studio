@@ -417,7 +417,7 @@ export interface AIChatRequest {
 
 export interface ChatMultiRequest {
   message: string;
-  transcript_ids: string[];
+  recording_ids: string[];  // Recording IDs to attach for context
   history: Array<{ role: 'user' | 'assistant'; content: string }>;
   temperature?: number;
 }

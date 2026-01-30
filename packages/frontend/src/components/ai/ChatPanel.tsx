@@ -42,7 +42,7 @@ export function ChatPanel({
 
       for await (const token of api.ai.chatMultiStream({
         message,
-        transcript_ids: attached.map((t) => t.id),
+        recording_ids: attached.map((t) => t.id),
         history,
         temperature: 0.7,
       })) {

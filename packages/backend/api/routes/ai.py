@@ -17,7 +17,7 @@ from core.factory import get_factory
 from core.interfaces import ChatMessage, ChatOptions
 from core.model_catalog import MODEL_CATALOG
 from persistence.database import get_db
-from persistence.models import Transcript, Segment
+from persistence.models import Recording, Transcript, Segment
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/ai", tags=["ai"])
@@ -99,7 +99,7 @@ class HistoryMessage(BaseModel):
 class MultiChatRequest(BaseModel):
     """Request model for multi-transcript chat."""
     message: str
-    transcript_ids: list[str] = []
+    recording_ids: list[str] = []  # Recording IDs (frontend sends these, we look up transcripts)
     history: list[HistoryMessage] = []
     temperature: float = Field(default=0.7, ge=0, le=2)
 
@@ -450,20 +450,35 @@ async def chat_multi_stream(
             detail="AI service not available. Please configure a model path.",
         )
 
-    # Build context from transcripts
+    # Build context from recordings (look up transcripts by recording_id)
     context_parts = []
-    if request.transcript_ids:
-        for i, tid in enumerate(request.transcript_ids):
+    if request.recording_ids:
+        for i, recording_id in enumerate(request.recording_ids):
             label = chr(65 + i)  # A, B, C, ...
             try:
-                text = await get_transcript_text(db, tid)
-                # Get transcript title
-                result = await db.execute(select(Transcript).where(Transcript.id == tid))
-                transcript = result.scalar_one_or_none()
-                title = transcript.title if transcript else f"Transcript {label}"
+                # Get recording for title
+                recording_result = await db.execute(
+                    select(Recording).where(Recording.id == recording_id)
+                )
+                recording = recording_result.scalar_one_or_none()
+                if not recording:
+                    logger.warning("Recording not found: %s", recording_id)
+                    continue
+
+                # Get transcript via recording_id
+                transcript_result = await db.execute(
+                    select(Transcript).where(Transcript.recording_id == recording_id)
+                )
+                transcript = transcript_result.scalar_one_or_none()
+                if not transcript:
+                    logger.warning("No transcript for recording: %s", recording_id)
+                    continue
+
+                text = await get_transcript_text(db, transcript.id)
+                title = recording.title
                 context_parts.append(f"=== Transcript {label}: {title} ===\n{text}\n")
             except Exception:
-                logger.warning("Could not load transcript %s", tid)
+                logger.warning("Could not load recording %s", recording_id)
                 continue
 
     # Build system message
