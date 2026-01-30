@@ -97,15 +97,25 @@ export function RecordingCard({
   // Get projects for this recording
   const recordingProjects = allProjects.filter(p => recording.project_ids?.includes(p.id));
 
+  const isClickable = recording.status === 'completed';
+
   return (
     <div className={cn("rounded-lg border bg-card p-4 shadow-sm", isSelected && "ring-2 ring-primary")}>
-      <div className="flex items-start justify-between gap-4">
+      {/* Clickable header area - clicking goes to transcript for completed recordings */}
+      <div
+        className={cn(
+          "flex items-start justify-between gap-4",
+          isClickable && "cursor-pointer hover:opacity-80 transition-opacity"
+        )}
+        onClick={isClickable ? onView : undefined}
+      >
         <div className="flex items-start gap-2.5 min-w-0 flex-1">
           {onSelectChange && (
             <input
               type="checkbox"
               checked={isSelected ?? false}
               onChange={(e) => onSelectChange(e.target.checked)}
+              onClick={(e) => e.stopPropagation()}
               className="h-4 w-4 mt-1 rounded border-gray-300 text-primary focus:ring-primary shrink-0"
             />
           )}

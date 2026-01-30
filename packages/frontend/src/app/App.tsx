@@ -24,6 +24,49 @@ type NavigationState =
   | { type: 'settings' }
   | { type: 'transcript'; recordingId: string; initialSeekTime?: number };
 
+// Map navigation state to URL path
+function navigationToPath(nav: NavigationState): string {
+  switch (nav.type) {
+    case 'dashboard': return '/';
+    case 'recordings': return '/recordings';
+    case 'projects': return '/projects';
+    case 'project-detail': return `/projects/${nav.projectId}`;
+    case 'project-analytics': return `/projects/${nav.projectId}/analytics`;
+    case 'live': return '/live';
+    case 'search': return '/search';
+    case 'settings': return '/settings';
+    case 'transcript': return `/recordings/${nav.recordingId}`;
+  }
+}
+
+// Parse URL path to navigation state
+function pathToNavigation(path: string): NavigationState {
+  // Remove trailing slash
+  const cleanPath = path.replace(/\/$/, '') || '/';
+
+  if (cleanPath === '/' || cleanPath === '') return { type: 'dashboard' };
+  if (cleanPath === '/recordings') return { type: 'recordings' };
+  if (cleanPath === '/projects') return { type: 'projects' };
+  if (cleanPath === '/live') return { type: 'live' };
+  if (cleanPath === '/search') return { type: 'search' };
+  if (cleanPath === '/settings') return { type: 'settings' };
+
+  // /recordings/:id -> transcript
+  const recordingMatch = cleanPath.match(/^\/recordings\/([^/]+)$/);
+  if (recordingMatch) return { type: 'transcript', recordingId: recordingMatch[1] };
+
+  // /projects/:id/analytics -> project analytics
+  const analyticsMatch = cleanPath.match(/^\/projects\/([^/]+)\/analytics$/);
+  if (analyticsMatch) return { type: 'project-analytics', projectId: analyticsMatch[1] };
+
+  // /projects/:id -> project detail
+  const projectMatch = cleanPath.match(/^\/projects\/([^/]+)$/);
+  if (projectMatch) return { type: 'project-detail', projectId: projectMatch[1] };
+
+  // Default to dashboard for unknown paths
+  return { type: 'dashboard' };
+}
+
 type Theme = 'light' | 'dark' | 'system';
 
 function getInitialTheme(): Theme {
@@ -47,7 +90,9 @@ export function App() {
   const [health, setHealth] = useState<HealthStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(true);
-  const [navigation, setNavigation] = useState<NavigationState>({ type: 'dashboard' });
+  const [navigation, setNavigation] = useState<NavigationState>(() =>
+    pathToNavigation(window.location.pathname)
+  );
   const [theme, setTheme] = useState<Theme>(getInitialTheme);
 
   const handleViewTranscript = useCallback((recordingId: string) => {
@@ -148,6 +193,23 @@ export function App() {
       if (current === 'dark') return 'system';
       return 'light';
     });
+  }, []);
+
+  // Sync navigation state to URL
+  useEffect(() => {
+    const targetPath = navigationToPath(navigation);
+    if (window.location.pathname !== targetPath) {
+      window.history.replaceState(null, '', targetPath);
+    }
+  }, [navigation]);
+
+  // Handle browser back/forward navigation
+  useEffect(() => {
+    const handlePopState = () => {
+      setNavigation(pathToNavigation(window.location.pathname));
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
   useEffect(() => {

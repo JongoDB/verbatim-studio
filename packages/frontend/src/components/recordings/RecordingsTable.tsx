@@ -245,9 +245,29 @@ function RecordingRow({
   // Get tags and projects for this recording
   const recordingTags = allTags.filter(t => recording.tag_ids?.includes(t.id));
   const recordingProjects = allProjects.filter(p => recording.project_ids?.includes(p.id));
+  const isClickable = recording.status === 'completed';
+
+  const handleRowClick = (e: React.MouseEvent) => {
+    // Don't navigate if clicking on interactive elements
+    const target = e.target as HTMLElement;
+    if (target.closest('button') || target.closest('input') || target.closest('a')) {
+      return;
+    }
+    if (isClickable) {
+      onView(recording.id);
+    }
+  };
+
   return (
     <>
-      <tr className={cn("hover:bg-muted/30 transition-colors border-b border-border", isSelected && "bg-primary/5")}>
+      <tr
+        className={cn(
+          "hover:bg-muted/30 transition-colors border-b border-border",
+          isSelected && "bg-primary/5",
+          isClickable && "cursor-pointer"
+        )}
+        onClick={handleRowClick}
+      >
         {/* Checkbox */}
         <td className="px-3 py-2.5 w-10">
           <input
