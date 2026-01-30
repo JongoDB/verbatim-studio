@@ -37,7 +37,7 @@ export function AddRecordingDialog({
   const loadRecordings = async () => {
     try {
       setLoading(true);
-      const response = await api.recordings.list({ pageSize: 1000 });
+      const response = await api.recordings.list({ pageSize: 100 });
       setRecordings(response.items);
       // Pre-select existing recordings
       setSelectedIds(new Set(existingRecordingIds));
