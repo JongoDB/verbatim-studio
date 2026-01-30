@@ -1114,45 +1114,46 @@ class ApiClient {
         { method: 'DELETE' }
       ),
 
-    chatMultiStream: async function* (
-      this: ApiClient,
-      data: ChatMultiRequest
-    ): AsyncGenerator<ChatStreamToken> {
-      const response = await fetch(`${this.baseUrl}/api/ai/chat/multi`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      });
+    chatMultiStream: (data: ChatMultiRequest): AsyncGenerator<ChatStreamToken> => {
+      const baseUrl = this.baseUrl;
+      async function* streamGenerator(): AsyncGenerator<ChatStreamToken> {
+        const response = await fetch(`${baseUrl}/api/ai/chat/multi`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data),
+        });
 
-      if (!response.ok) {
-        throw new Error(`API error: ${response.status}`);
-      }
+        if (!response.ok) {
+          throw new Error(`API error: ${response.status}`);
+        }
 
-      const reader = response.body?.getReader();
-      if (!reader) throw new Error('No response body');
+        const reader = response.body?.getReader();
+        if (!reader) throw new Error('No response body');
 
-      const decoder = new TextDecoder();
-      let buffer = '';
+        const decoder = new TextDecoder();
+        let buffer = '';
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
 
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
 
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            try {
-              const token = JSON.parse(line.slice(6));
-              yield token as ChatStreamToken;
-            } catch {
-              // Skip invalid JSON
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const token = JSON.parse(line.slice(6));
+                yield token as ChatStreamToken;
+              } catch {
+                // Skip invalid JSON
+              }
             }
           }
         }
       }
+      return streamGenerator();
     },
   };
 
