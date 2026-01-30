@@ -150,7 +150,7 @@ export function Sidebar({ currentTab, onNavigate, theme, onCycleTheme, version, 
             <img
               src="/logo.png"
               alt="Verbatim Studio"
-              className="h-11 object-contain dark:invert dark:hue-rotate-180"
+              className="h-8 object-contain dark:invert dark:hue-rotate-180"
             />
           )}
           {/* Desktop collapse toggle (hidden when collapsed — V logo expands instead) */}
