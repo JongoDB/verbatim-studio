@@ -20,7 +20,7 @@ from core.interfaces import (
     SpeakerEntity,
     TranscriptEntity,
 )
-from persistence.models import Job, Project, Recording, Segment, Setting, Speaker, Transcript
+from persistence.models import Job, Project, ProjectRecording, Recording, Segment, Setting, Speaker, Transcript
 
 from .mappers import (
     entity_to_job,
@@ -132,7 +132,14 @@ class SQLiteRecordingRepository(IRecordingRepository):
         query = select(Recording)
 
         if project_id:
-            query = query.where(Recording.project_id == project_id)
+            # Filter by project using junction table
+            query = query.where(
+                Recording.id.in_(
+                    select(ProjectRecording.recording_id).where(
+                        ProjectRecording.project_id == project_id
+                    )
+                )
+            )
         if status:
             query = query.where(Recording.status == status)
         if search:

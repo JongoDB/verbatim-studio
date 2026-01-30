@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from persistence import get_db
-from persistence.models import Job, Recording, RecordingTag, RecordingTemplate, Speaker, Tag, Transcript
+from persistence.models import Job, ProjectRecording, Recording, RecordingTag, RecordingTemplate, Speaker, Tag, Transcript
 from services.jobs import job_queue
 from services.storage import storage_service
 
@@ -126,7 +126,7 @@ class RecordingResponse(BaseModel):
     """Response model for a recording."""
 
     id: str
-    project_id: str | None
+    project_ids: list[str] = Field(default_factory=list)
     template_id: str | None
     template: RecordingTemplateInfo | None = None
     title: str
@@ -197,12 +197,13 @@ def _template_to_info(t: RecordingTemplate | None) -> RecordingTemplateInfo | No
 def _recording_to_response(
     recording: Recording,
     tag_ids: list[str] | None = None,
+    project_ids: list[str] | None = None,
     template: RecordingTemplate | None = None,
 ) -> RecordingResponse:
     """Convert a Recording model to a response model."""
     return RecordingResponse(
         id=recording.id,
-        project_id=recording.project_id,
+        project_ids=project_ids or [],
         template_id=recording.template_id,
         template=_template_to_info(template),
         title=recording.title,
@@ -260,7 +261,14 @@ async def list_recordings(
 
     # Apply filters
     if project_id is not None:
-        query = query.where(Recording.project_id == project_id)
+        # Filter by project using junction table
+        query = query.where(
+            Recording.id.in_(
+                select(ProjectRecording.recording_id).where(
+                    ProjectRecording.project_id == project_id
+                )
+            )
+        )
 
     if status is not None:
         query = query.where(Recording.status == status)
@@ -345,9 +353,10 @@ async def list_recordings(
     result = await db.execute(query)
     recordings = result.scalars().all()
 
-    # Batch-load tag IDs for all recordings
+    # Batch-load tag IDs and project IDs for all recordings
     recording_ids = [r.id for r in recordings]
     tag_map: dict[str, list[str]] = {rid: [] for rid in recording_ids}
+    project_map: dict[str, list[str]] = {rid: [] for rid in recording_ids}
     if recording_ids:
         tag_result = await db.execute(
             select(RecordingTag.recording_id, RecordingTag.tag_id).where(
@@ -357,9 +366,22 @@ async def list_recordings(
         for row in tag_result:
             tag_map[row.recording_id].append(row.tag_id)
 
+        project_result = await db.execute(
+            select(ProjectRecording.recording_id, ProjectRecording.project_id).where(
+                ProjectRecording.recording_id.in_(recording_ids)
+            )
+        )
+        for row in project_result:
+            project_map[row.recording_id].append(row.project_id)
+
     return RecordingListResponse(
         items=[
-            _recording_to_response(r, tag_ids=tag_map.get(r.id, []), template=r.template)
+            _recording_to_response(
+                r,
+                tag_ids=tag_map.get(r.id, []),
+                project_ids=project_map.get(r.id, []),
+                template=r.template,
+            )
             for r in recordings
         ],
         total=total,
@@ -474,12 +496,15 @@ async def upload_recording(
         duration_seconds=duration,
         mime_type=content_type,
         metadata_=metadata,
-        project_id=project_id,
         template_id=template_id,
         status="pending",
     )
     db.add(recording)
     await db.flush()  # Get the ID without committing
+
+    # Add to project if project_id provided
+    if project_id:
+        db.add(ProjectRecording(project_id=project_id, recording_id=recording.id))
 
     # Create or find tags and assign to recording
     if tags:
@@ -540,7 +565,6 @@ class RecordingUpdateRequest(BaseModel):
     """Request model for updating a recording."""
 
     title: str | None = None
-    project_id: str | None = Field(default=None, description="Set to a project ID, or empty string to unassign")
     template_id: str | None = Field(default=None, description="Set to a template ID, or empty string to unassign")
     metadata: dict | None = Field(default=None, description="Recording metadata (merged with existing)")
 
@@ -582,9 +606,6 @@ async def update_recording(
             )
         recording.title = stripped
 
-    if body.project_id is not None:
-        recording.project_id = body.project_id if body.project_id != "" else None
-
     if body.template_id is not None:
         # Validate template_id if not empty
         if body.template_id:
@@ -614,13 +635,20 @@ async def update_recording(
     )
     recording = result.scalar_one()
 
-    # Load tag IDs
+    # Load tag IDs and project IDs
     tag_result = await db.execute(
         select(RecordingTag.tag_id).where(RecordingTag.recording_id == recording_id)
     )
     tag_ids = [row[0] for row in tag_result]
 
-    return _recording_to_response(recording, tag_ids=tag_ids, template=recording.template)
+    project_result = await db.execute(
+        select(ProjectRecording.project_id).where(ProjectRecording.recording_id == recording_id)
+    )
+    project_ids = [row[0] for row in project_result]
+
+    return _recording_to_response(
+        recording, tag_ids=tag_ids, project_ids=project_ids, template=recording.template
+    )
 
 
 class BulkIdsRequest(BaseModel):
@@ -659,15 +687,43 @@ async def bulk_assign_recordings(
     body: BulkAssignRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> MessageResponse:
-    """Assign multiple recordings to a project (or unassign)."""
-    result = await db.execute(select(Recording).where(Recording.id.in_(body.ids)))
-    recordings = result.scalars().all()
+    """Assign multiple recordings to a project (or remove from all projects)."""
+    # Verify recordings exist
+    result = await db.execute(select(Recording.id).where(Recording.id.in_(body.ids)))
+    recording_ids = [row[0] for row in result]
 
-    for recording in recordings:
-        recording.project_id = body.project_id
+    if not recording_ids:
+        return MessageResponse(message="No recordings found")
+
+    if body.project_id is None:
+        # Remove from all projects
+        await db.execute(
+            select(ProjectRecording).where(
+                ProjectRecording.recording_id.in_(recording_ids)
+            )
+        )
+        # Actually delete them
+        from sqlalchemy import delete
+
+        await db.execute(
+            delete(ProjectRecording).where(
+                ProjectRecording.recording_id.in_(recording_ids)
+            )
+        )
+    else:
+        # Add to specified project (skip if already linked)
+        for rid in recording_ids:
+            existing = await db.execute(
+                select(ProjectRecording).where(
+                    ProjectRecording.project_id == body.project_id,
+                    ProjectRecording.recording_id == rid,
+                )
+            )
+            if not existing.scalar_one_or_none():
+                db.add(ProjectRecording(project_id=body.project_id, recording_id=rid))
 
     await db.commit()
-    return MessageResponse(message=f"Updated {len(recordings)} recording(s)")
+    return MessageResponse(message=f"Updated {len(recording_ids)} recording(s)")
 
 
 @router.get("/{recording_id}", response_model=RecordingResponse)
@@ -700,13 +756,20 @@ async def get_recording(
             detail=f"Recording not found: {recording_id}",
         )
 
-    # Load tag IDs
+    # Load tag IDs and project IDs
     tag_result = await db.execute(
         select(RecordingTag.tag_id).where(RecordingTag.recording_id == recording_id)
     )
     tag_ids = [row[0] for row in tag_result]
 
-    return _recording_to_response(recording, tag_ids=tag_ids, template=recording.template)
+    project_result = await db.execute(
+        select(ProjectRecording.project_id).where(ProjectRecording.recording_id == recording_id)
+    )
+    project_ids = [row[0] for row in project_result]
+
+    return _recording_to_response(
+        recording, tag_ids=tag_ids, project_ids=project_ids, template=recording.template
+    )
 
 
 @router.get("/{recording_id}/audio")

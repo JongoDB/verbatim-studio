@@ -1,11 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { api, type Recording } from '@/lib/api';
 
-interface Project {
-  id: string;
-  name: string;
-}
-
 interface EditRecordingDialogProps {
   isOpen: boolean;
   recording: Recording | null;
@@ -20,8 +15,6 @@ export function EditRecordingDialog({
   onSaved,
 }: EditRecordingDialogProps) {
   const [title, setTitle] = useState('');
-  const [projectId, setProjectId] = useState<string>('');
-  const [projects, setProjects] = useState<Project[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -31,22 +24,10 @@ export function EditRecordingDialog({
   useEffect(() => {
     if (isOpen && recording) {
       setTitle(recording.title);
-      setProjectId(recording.project_id || '');
       setError(null);
       setSaving(false);
     }
   }, [isOpen, recording]);
-
-  // Load projects list
-  useEffect(() => {
-    if (isOpen) {
-      api.projects.list().then((res) => {
-        setProjects(res.items || []);
-      }).catch(() => {
-        // Non-critical — project dropdown will just be empty
-      });
-    }
-  }, [isOpen]);
 
   // Focus title input on open
   useEffect(() => {
@@ -84,19 +65,8 @@ export function EditRecordingDialog({
     setError(null);
 
     try {
-      const updates: { title?: string; project_id?: string | null } = {};
-
       if (trimmed !== recording.title) {
-        updates.title = trimmed;
-      }
-
-      const newProjectId = projectId || null;
-      if (newProjectId !== (recording.project_id || null)) {
-        updates.project_id = newProjectId;
-      }
-
-      if (Object.keys(updates).length > 0) {
-        await api.recordings.update(recording.id, updates);
+        await api.recordings.update(recording.id, { title: trimmed });
       }
 
       onSaved();
@@ -150,25 +120,6 @@ export function EditRecordingDialog({
               disabled={saving}
               className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
             />
-          </div>
-
-          {/* Project */}
-          <div>
-            <label htmlFor="edit-project" className="block text-sm font-medium text-foreground mb-1">
-              Project
-            </label>
-            <select
-              id="edit-project"
-              value={projectId}
-              onChange={(e) => setProjectId(e.target.value)}
-              disabled={saving}
-              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
-            >
-              <option value="">No project</option>
-              {projects.map((p) => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
-            </select>
           </div>
 
           {/* Error */}

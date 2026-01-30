@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from persistence.database import get_db
-from persistence.models import Project, Recording, Segment, Transcript
+from persistence.models import Project, ProjectRecording, Recording, Segment, Transcript
 
 router = APIRouter(prefix="/projects", tags=["project-analytics"])
 
@@ -60,14 +60,6 @@ class WordFrequency(BaseModel):
     count: int
 
 
-class SpeakerDistribution(BaseModel):
-    """A speaker's contribution to the project."""
-
-    speaker: str
-    segment_count: int
-    total_duration: float
-
-
 class ProjectAnalytics(BaseModel):
     """Analytics data for a project."""
 
@@ -75,7 +67,6 @@ class ProjectAnalytics(BaseModel):
     total_duration_seconds: float
     recording_timeline: list[TimelineEntry]
     word_frequency: list[WordFrequency]
-    speaker_distribution: list[SpeakerDistribution]
 
 
 @router.get("/{project_id}/analytics", response_model=ProjectAnalytics)
@@ -93,7 +84,8 @@ async def get_project_analytics(
     # Get all recordings for this project with transcripts and segments
     result = await db.execute(
         select(Recording)
-        .where(Recording.project_id == project_id)
+        .join(ProjectRecording, ProjectRecording.recording_id == Recording.id)
+        .where(ProjectRecording.project_id == project_id)
         .options(
             selectinload(Recording.transcript).selectinload(Transcript.segments)
         )
@@ -129,24 +121,15 @@ async def get_project_analytics(
 
     # Calculate word frequency from all segments
     word_counter: Counter[str] = Counter()
-    speaker_data: dict[str, dict] = {}
 
     for recording in recordings:
         if not recording.transcript:
             continue
         for segment in recording.transcript.segments:
-            # Word frequency
             words = re.findall(r"\b[a-zA-Z]{3,}\b", segment.text.lower())
             for word in words:
                 if word not in STOP_WORDS:
                     word_counter[word] += 1
-
-            # Speaker distribution
-            speaker = segment.speaker or "Unknown"
-            if speaker not in speaker_data:
-                speaker_data[speaker] = {"segment_count": 0, "total_duration": 0}
-            speaker_data[speaker]["segment_count"] += 1
-            speaker_data[speaker]["total_duration"] += segment.end_time - segment.start_time
 
     # Get top 50 words
     word_frequency = [
@@ -154,24 +137,9 @@ async def get_project_analytics(
         for word, count in word_counter.most_common(50)
     ]
 
-    # Build speaker distribution
-    speaker_distribution = [
-        SpeakerDistribution(
-            speaker=speaker,
-            segment_count=data["segment_count"],
-            total_duration=data["total_duration"],
-        )
-        for speaker, data in sorted(
-            speaker_data.items(),
-            key=lambda x: x[1]["total_duration"],
-            reverse=True,
-        )
-    ]
-
     return ProjectAnalytics(
         recording_stats=recording_stats,
         total_duration_seconds=total_duration,
         recording_timeline=recording_timeline,
         word_frequency=word_frequency,
-        speaker_distribution=speaker_distribution,
     )

@@ -12,7 +12,7 @@ export interface RecordingTemplateInfo {
 
 export interface Recording {
   id: string;
-  project_id: string | null;
+  project_ids: string[];
   template_id: string | null;
   template: RecordingTemplateInfo | null;
   title: string;
@@ -315,18 +315,11 @@ export interface WordFrequency {
   count: number;
 }
 
-export interface SpeakerDistribution {
-  speaker: string;
-  segment_count: number;
-  total_duration: number;
-}
-
 export interface ProjectAnalytics {
   recording_stats: ProjectRecordingStats;
   total_duration_seconds: number;
   recording_timeline: TimelineEntry[];
   word_frequency: WordFrequency[];
-  speaker_distribution: SpeakerDistribution[];
 }
 
 // Project Type and Recording Template Types

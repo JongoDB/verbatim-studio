@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from persistence.database import get_db
-from persistence.models import Project, ProjectType, Recording
+from persistence.models import Project, ProjectRecording, ProjectType, Recording
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -118,7 +118,9 @@ async def list_projects(
     items = []
     for project in projects:
         count_result = await db.execute(
-            select(func.count(Recording.id)).where(Recording.project_id == project.id)
+            select(func.count(ProjectRecording.recording_id)).where(
+                ProjectRecording.project_id == project.id
+            )
         )
         recording_count = count_result.scalar() or 0
 
@@ -204,7 +206,9 @@ async def get_project(
         raise HTTPException(status_code=404, detail="Project not found")
 
     count_result = await db.execute(
-        select(func.count(Recording.id)).where(Recording.project_id == project.id)
+        select(func.count(ProjectRecording.recording_id)).where(
+            ProjectRecording.project_id == project.id
+        )
     )
     recording_count = count_result.scalar() or 0
 
@@ -262,7 +266,9 @@ async def update_project(
     project = result.scalar_one()
 
     count_result = await db.execute(
-        select(func.count(Recording.id)).where(Recording.project_id == project.id)
+        select(func.count(ProjectRecording.recording_id)).where(
+            ProjectRecording.project_id == project.id
+        )
     )
     recording_count = count_result.scalar() or 0
 
@@ -283,19 +289,12 @@ async def delete_project(
     db: Annotated[AsyncSession, Depends(get_db)],
     project_id: str,
 ) -> MessageResponse:
-    """Delete a project. Recordings are unassigned, not deleted."""
+    """Delete a project. Junction table entries are cascaded, recordings remain."""
     result = await db.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()
 
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
-
-    # Unassign recordings from project
-    await db.execute(
-        Recording.__table__.update()
-        .where(Recording.project_id == project_id)
-        .values(project_id=None)
-    )
 
     await db.delete(project)
     await db.commit()
@@ -317,11 +316,22 @@ async def add_recording_to_project(
 
     # Verify recording exists
     recording_result = await db.execute(select(Recording).where(Recording.id == recording_id))
-    recording = recording_result.scalar_one_or_none()
-    if not recording:
+    if not recording_result.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Recording not found")
 
-    recording.project_id = project_id
+    # Check if already linked
+    existing = await db.execute(
+        select(ProjectRecording).where(
+            ProjectRecording.project_id == project_id,
+            ProjectRecording.recording_id == recording_id,
+        )
+    )
+    if existing.scalar_one_or_none():
+        return MessageResponse(message="Recording already in project", id=recording_id)
+
+    # Add the link
+    link = ProjectRecording(project_id=project_id, recording_id=recording_id)
+    db.add(link)
     await db.commit()
 
     return MessageResponse(message="Recording added to project", id=recording_id)
@@ -334,18 +344,18 @@ async def remove_recording_from_project(
     recording_id: str,
 ) -> MessageResponse:
     """Remove a recording from a project."""
-    recording_result = await db.execute(
-        select(Recording).where(
-            Recording.id == recording_id,
-            Recording.project_id == project_id,
+    link_result = await db.execute(
+        select(ProjectRecording).where(
+            ProjectRecording.project_id == project_id,
+            ProjectRecording.recording_id == recording_id,
         )
     )
-    recording = recording_result.scalar_one_or_none()
+    link = link_result.scalar_one_or_none()
 
-    if not recording:
+    if not link:
         raise HTTPException(status_code=404, detail="Recording not found in project")
 
-    recording.project_id = None
+    await db.delete(link)
     await db.commit()
 
     return MessageResponse(message="Recording removed from project", id=recording_id)
@@ -381,10 +391,11 @@ async def get_project_recordings(
     if not project_result.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Project not found")
 
-    # Get recordings
+    # Get recordings via junction table
     result = await db.execute(
         select(Recording)
-        .where(Recording.project_id == project_id)
+        .join(ProjectRecording, ProjectRecording.recording_id == Recording.id)
+        .where(ProjectRecording.project_id == project_id)
         .order_by(Recording.created_at.desc())
     )
     recordings = result.scalars().all()

@@ -66,7 +66,9 @@ class Project(Base):
     updated_at: Mapped[datetime] = mapped_column(default=func.now(), onupdate=func.now())
 
     project_type: Mapped[ProjectType | None] = relationship(back_populates="projects")
-    recordings: Mapped[list["Recording"]] = relationship(back_populates="project")
+    recordings: Mapped[list["Recording"]] = relationship(
+        secondary="project_recordings", back_populates="projects"
+    )
 
 
 class Tag(Base):
@@ -97,13 +99,25 @@ class RecordingTag(Base):
     )
 
 
+class ProjectRecording(Base):
+    """Junction table for project-recording many-to-many relationship."""
+
+    __tablename__ = "project_recordings"
+
+    project_id: Mapped[str] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), primary_key=True
+    )
+    recording_id: Mapped[str] = mapped_column(
+        ForeignKey("recordings.id", ondelete="CASCADE"), primary_key=True
+    )
+
+
 class Recording(Base):
     """Recording model for audio/video files."""
 
     __tablename__ = "recordings"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
-    project_id: Mapped[str | None] = mapped_column(ForeignKey("projects.id", ondelete="SET NULL"))
     template_id: Mapped[str | None] = mapped_column(
         ForeignKey("recording_templates.id", ondelete="SET NULL")
     )
@@ -118,7 +132,9 @@ class Recording(Base):
     created_at: Mapped[datetime] = mapped_column(default=func.now())
     updated_at: Mapped[datetime] = mapped_column(default=func.now(), onupdate=func.now())
 
-    project: Mapped[Project | None] = relationship(back_populates="recordings")
+    projects: Mapped[list[Project]] = relationship(
+        secondary="project_recordings", back_populates="recordings"
+    )
     template: Mapped[RecordingTemplate | None] = relationship(back_populates="recordings")
     transcript: Mapped["Transcript | None"] = relationship(
         back_populates="recording", uselist=False, cascade="all, delete-orphan"
