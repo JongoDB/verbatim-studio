@@ -2,6 +2,7 @@
 
 import asyncio
 import io
+import json
 import logging
 from datetime import datetime
 from pathlib import Path
@@ -404,6 +405,7 @@ async def upload_recording(
     location: Annotated[str | None, Form(description="Recording location")] = None,
     recorded_date: Annotated[str | None, Form(description="Actual recording date (ISO 8601)")] = None,
     quality: Annotated[str | None, Form(description="Recording quality preset used")] = None,
+    extra_metadata: Annotated[str | None, Form(description="Additional metadata as JSON")] = None,
 ) -> RecordingCreateResponse:
     """Upload an audio or video file with optional metadata.
 
@@ -475,6 +477,18 @@ async def upload_recording(
         metadata["recorded_date"] = recorded_date
     if quality:
         metadata["quality"] = quality
+
+    # Merge extra_metadata JSON if provided (for template fields)
+    if extra_metadata:
+        try:
+            extra = json.loads(extra_metadata)
+            if isinstance(extra, dict):
+                metadata.update(extra)
+        except json.JSONDecodeError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid JSON in extra_metadata field",
+            )
 
     # Validate template_id if provided
     if template_id:

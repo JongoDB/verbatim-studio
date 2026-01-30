@@ -11,6 +11,7 @@ import { AudioRecorder } from '@/components/recordings/AudioRecorder';
 import { RecordingSetupPanel, type RecordingSettings } from '@/components/recordings/RecordingSetupPanel';
 import { ProjectSelector } from '@/components/projects/ProjectSelector';
 import { RecordingTemplateManager } from '@/components/recordings/RecordingTemplateManager';
+import { UploadSetupDialog, type UploadOptions } from '@/components/recordings/UploadSetupDialog';
 
 interface RecordingsPageProps {
   onViewTranscript: (recordingId: string) => void;
@@ -108,6 +109,7 @@ export function RecordingsPage({ onViewTranscript }: RecordingsPageProps) {
   const [templateManagerOpen, setTemplateManagerOpen] = useState(false);
   const [allTags, setAllTags] = useState<Tag[]>([]);
   const [allProjects, setAllProjects] = useState<Project[]>([]);
+  const [pendingUploadFile, setPendingUploadFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadRecordings = useCallback(async () => {
@@ -213,13 +215,25 @@ export function RecordingsPage({ onViewTranscript }: RecordingsPageProps) {
     localStorage.setItem(VIEW_MODE_KEY, viewMode);
   }, [viewMode]);
 
-  const handleUpload = useCallback(
-    async (file: File) => {
+  const handleUpload = useCallback((file: File) => {
+    // Open the setup dialog instead of uploading directly
+    setPendingUploadFile(file);
+  }, []);
+
+  const handleUploadConfirm = useCallback(
+    async (options: UploadOptions) => {
+      if (!pendingUploadFile) return;
+
+      setPendingUploadFile(null);
       setIsUploading(true);
       setError(null);
 
       try {
-        await api.recordings.upload(file);
+        await api.recordings.upload(pendingUploadFile, {
+          title: options.title,
+          templateId: options.templateId,
+          metadata: options.metadata,
+        });
         await loadRecordings();
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to upload file');
@@ -227,7 +241,7 @@ export function RecordingsPage({ onViewTranscript }: RecordingsPageProps) {
         setIsUploading(false);
       }
     },
-    [loadRecordings]
+    [loadRecordings, pendingUploadFile]
   );
 
   const handleBatchImport = useCallback(
@@ -628,6 +642,14 @@ export function RecordingsPage({ onViewTranscript }: RecordingsPageProps) {
         recording={editDialogRecording}
         onClose={() => setEditDialogRecording(null)}
         onSaved={handleEditSaved}
+      />
+
+      {/* Upload Setup Dialog */}
+      <UploadSetupDialog
+        isOpen={pendingUploadFile !== null}
+        file={pendingUploadFile}
+        onClose={() => setPendingUploadFile(null)}
+        onConfirm={handleUploadConfirm}
       />
 
       {/* Bulk Action Bar */}

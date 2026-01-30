@@ -504,6 +504,7 @@ export interface RecordingUploadOptions {
   recordedDate?: string;
   quality?: string;
   templateId?: string;
+  metadata?: Record<string, unknown>;
 }
 
 // Config Types
@@ -684,6 +685,9 @@ class ApiClient {
       if (options?.recordedDate) formData.append('recorded_date', options.recordedDate);
       if (options?.quality) formData.append('quality', options.quality);
       if (options?.templateId) formData.append('template_id', options.templateId);
+      if (options?.metadata && Object.keys(options.metadata).length > 0) {
+        formData.append('extra_metadata', JSON.stringify(options.metadata));
+      }
 
       const response = await fetch(`${this.baseUrl}/api/recordings/upload`, {
         method: 'POST',
