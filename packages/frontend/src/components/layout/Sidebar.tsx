@@ -131,18 +131,24 @@ export function Sidebar({ currentTab, onNavigate, theme, onCycleTheme, version, 
         ].join(' ')}
       >
         {/* Top: Brand + collapse toggle */}
-        <div className={`flex items-center h-14 border-b border-border shrink-0 ${collapsed ? 'md:justify-center md:px-0' : 'gap-3 px-4'}`}>
-          <button
-            onClick={() => { if (collapsed) setCollapsed(false); }}
-            className={`w-8 h-8 rounded-lg bg-primary flex items-center justify-center shrink-0 ${collapsed ? 'md:cursor-pointer' : 'cursor-default'}`}
-            aria-label={collapsed ? 'Expand sidebar' : undefined}
-            tabIndex={collapsed ? 0 : -1}
-          >
-            <span className="text-primary-foreground font-bold text-sm">V</span>
-          </button>
-          <div className={`overflow-hidden transition-all duration-300 ${collapsed ? 'md:w-0 md:opacity-0' : 'md:w-auto md:opacity-100'}`}>
-            <h1 className="text-base font-bold text-foreground whitespace-nowrap">Verbatim Studio</h1>
-          </div>
+        <div className={`flex items-center h-14 border-b border-border shrink-0 ${collapsed ? 'md:justify-center md:px-0' : 'gap-2 px-3'}`}>
+          {collapsed ? (
+            // Collapsed: show icon placeholder that expands sidebar on click
+            <button
+              onClick={() => setCollapsed(false)}
+              className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center shrink-0 cursor-pointer"
+              aria-label="Expand sidebar"
+            >
+              <span className="text-primary-foreground font-bold text-sm">V</span>
+            </button>
+          ) : (
+            // Expanded: show full logo
+            <img
+              src="/logo.png"
+              alt="Verbatim Studio"
+              className="h-8 object-contain"
+            />
+          )}
           {/* Desktop collapse toggle (hidden when collapsed — V logo expands instead) */}
           <button
             onClick={() => setCollapsed(true)}
