@@ -43,18 +43,24 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 
 async def seed_defaults(session: AsyncSession) -> None:
-    """Seed default project types and recording templates if they don't exist."""
+    """Seed or update default project types and recording templates."""
     from sqlalchemy import select
 
     from .defaults import DEFAULT_PROJECT_TYPES, DEFAULT_RECORDING_TEMPLATES
     from .models import ProjectType, RecordingTemplate
 
-    # Seed project types
+    # Seed/update project types
     for pt_data in DEFAULT_PROJECT_TYPES:
         result = await session.execute(
             select(ProjectType).where(ProjectType.name == pt_data["name"])
         )
-        if not result.scalar_one_or_none():
+        existing = result.scalar_one_or_none()
+        if existing:
+            # Update existing system defaults with latest schema
+            if existing.is_system:
+                existing.description = pt_data["description"]
+                existing.metadata_schema = pt_data["metadata_schema"]
+        else:
             pt = ProjectType(
                 name=pt_data["name"],
                 description=pt_data["description"],
@@ -63,12 +69,18 @@ async def seed_defaults(session: AsyncSession) -> None:
             )
             session.add(pt)
 
-    # Seed recording templates
+    # Seed/update recording templates
     for rt_data in DEFAULT_RECORDING_TEMPLATES:
         result = await session.execute(
             select(RecordingTemplate).where(RecordingTemplate.name == rt_data["name"])
         )
-        if not result.scalar_one_or_none():
+        existing = result.scalar_one_or_none()
+        if existing:
+            # Update existing system defaults with latest schema
+            if existing.is_system:
+                existing.description = rt_data["description"]
+                existing.metadata_schema = rt_data["metadata_schema"]
+        else:
             rt = RecordingTemplate(
                 name=rt_data["name"],
                 description=rt_data["description"],
