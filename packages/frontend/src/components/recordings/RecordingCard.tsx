@@ -97,17 +97,25 @@ export function RecordingCard({
   // Get projects for this recording
   const recordingProjects = allProjects.filter(p => recording.project_ids?.includes(p.id));
 
-  const isClickable = recording.status === 'completed';
+  // Clickable: completed -> view, pending -> transcribe
+  const isClickable = recording.status === 'completed' || recording.status === 'pending';
+  const handleCardClick = () => {
+    if (recording.status === 'completed') {
+      onView();
+    } else if (recording.status === 'pending') {
+      onTranscribe();
+    }
+  };
 
   return (
     <div className={cn("rounded-lg border bg-card p-4 shadow-sm", isSelected && "ring-2 ring-primary")}>
-      {/* Clickable header area - clicking goes to transcript for completed recordings */}
+      {/* Clickable header area - clicking goes to transcript for completed, transcribe for pending */}
       <div
         className={cn(
           "flex items-start justify-between gap-4",
           isClickable && "cursor-pointer hover:opacity-80 transition-opacity"
         )}
-        onClick={isClickable ? onView : undefined}
+        onClick={isClickable ? handleCardClick : undefined}
       >
         <div className="flex items-start gap-2.5 min-w-0 flex-1">
           {onSelectChange && (

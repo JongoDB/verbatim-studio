@@ -16,6 +16,7 @@ export interface RecordingSettings {
   quality: QualityPreset;
   audioBitsPerSecond: number;
   metadata: RecordingMetadata;
+  autoTranscribe: boolean;
 }
 
 interface RecordingSetupPanelProps {
@@ -49,6 +50,7 @@ function loadQuality(): QualityPreset {
 export function RecordingSetupPanel({ onStartRecording, onCancel }: RecordingSetupPanelProps) {
   const [quality, setQuality] = useState<QualityPreset>(loadQuality);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [autoTranscribe, setAutoTranscribe] = useState(true);
 
   // Metadata fields
   const [title, setTitle] = useState(generateDefaultTitle);
@@ -124,6 +126,7 @@ export function RecordingSetupPanel({ onStartRecording, onCancel }: RecordingSet
         location: location.trim(),
         recordedDate,
       },
+      autoTranscribe,
     });
   };
 
@@ -324,6 +327,22 @@ export function RecordingSetupPanel({ onStartRecording, onCancel }: RecordingSet
             </div>
           </div>
         )}
+      </div>
+
+      {/* Auto-transcribe checkbox */}
+      <div className="mb-4">
+        <label className="flex items-center gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={autoTranscribe}
+            onChange={(e) => setAutoTranscribe(e.target.checked)}
+            className="h-4 w-4 rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500"
+          />
+          <div>
+            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Transcribe after recording</span>
+            <p className="text-xs text-gray-500 dark:text-gray-400">Automatically start transcription when recording finishes</p>
+          </div>
+        </label>
       </div>
 
       {/* Action Buttons */}

@@ -229,11 +229,22 @@ export function RecordingsPage({ onViewTranscript }: RecordingsPageProps) {
       setError(null);
 
       try {
-        await api.recordings.upload(pendingUploadFile, {
+        const result = await api.recordings.upload(pendingUploadFile, {
           title: options.title,
           templateId: options.templateId,
           metadata: options.metadata,
         });
+
+        // Auto-transcribe if option is enabled
+        if (options.autoTranscribe && result.id) {
+          try {
+            await api.recordings.transcribe(result.id);
+          } catch {
+            // Don't fail the upload if transcription fails to start
+            console.error('Failed to start auto-transcription');
+          }
+        }
+
         await loadRecordings();
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to upload file');
@@ -334,7 +345,7 @@ export function RecordingsPage({ onViewTranscript }: RecordingsPageProps) {
       try {
         const file = new File([blob], filename, { type: blob.type });
         const meta = recordingSettings?.metadata;
-        await api.recordings.upload(file, {
+        const result = await api.recordings.upload(file, {
           title: meta?.title || undefined,
           description: meta?.description || undefined,
           tags: meta?.tags?.length ? meta.tags : undefined,
@@ -343,6 +354,16 @@ export function RecordingsPage({ onViewTranscript }: RecordingsPageProps) {
           recordedDate: meta?.recordedDate || undefined,
           quality: recordingSettings?.quality,
         });
+
+        // Auto-transcribe if option is enabled
+        if (recordingSettings?.autoTranscribe && result.id) {
+          try {
+            await api.recordings.transcribe(result.id);
+          } catch {
+            console.error('Failed to start auto-transcription');
+          }
+        }
+
         await loadRecordings();
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to upload recording');

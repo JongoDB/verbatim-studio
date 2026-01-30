@@ -6,6 +6,7 @@ export interface UploadOptions {
   title?: string;
   templateId?: string;
   metadata?: Record<string, unknown>;
+  autoTranscribe?: boolean;
 }
 
 interface UploadSetupDialogProps {
@@ -26,6 +27,7 @@ export function UploadSetupDialog({
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [metadata, setMetadata] = useState<Record<string, unknown>>({});
   const [loadingTemplates, setLoadingTemplates] = useState(false);
+  const [autoTranscribe, setAutoTranscribe] = useState(true);
   const dialogRef = useRef<HTMLDivElement>(null);
   const titleRef = useRef<HTMLInputElement>(null);
 
@@ -84,6 +86,7 @@ export function UploadSetupDialog({
       title: title.trim() || undefined,
       templateId: selectedTemplateId || undefined,
       metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
+      autoTranscribe,
     });
   };
 
@@ -205,6 +208,22 @@ export function UploadSetupDialog({
               />
             </div>
           )}
+
+          {/* Auto-transcribe checkbox */}
+          <div className="border-t border-border pt-4">
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={autoTranscribe}
+                onChange={(e) => setAutoTranscribe(e.target.checked)}
+                className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
+              />
+              <div>
+                <span className="text-sm font-medium text-foreground">Transcribe after upload</span>
+                <p className="text-xs text-muted-foreground">Automatically start transcription when upload completes</p>
+              </div>
+            </label>
+          </div>
         </div>
 
         {/* Footer */}
