@@ -1,109 +1,14 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { api, type DashboardStats, type Recording, type Project } from '@/lib/api';
-
-interface CreateProjectModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  onCreated: (project: Project) => void;
-}
-
-function CreateProjectModal({ isOpen, onClose, onCreated }: CreateProjectModalProps) {
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [isCreating, setIsCreating] = useState(false);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name.trim()) return;
-
-    setIsCreating(true);
-    try {
-      const newProject = await api.projects.create({
-        name: name.trim(),
-        description: description.trim() || null,
-      });
-      onCreated(newProject);
-      onClose();
-      setName('');
-      setDescription('');
-    } catch (err) {
-      console.error('Failed to create project:', err);
-    } finally {
-      setIsCreating(false);
-    }
-  };
-
-  if (!isOpen) return null;
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md mx-4 p-6">
-        <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
-          Create New Project
-        </h3>
-        <form onSubmit={handleSubmit}>
-          <div className="space-y-4">
-            <div>
-              <label htmlFor="projectName" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Project Name
-              </label>
-              <input
-                id="projectName"
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Enter project name"
-                className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                autoFocus
-                disabled={isCreating}
-              />
-            </div>
-            <div>
-              <label htmlFor="projectDescription" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Description (optional)
-              </label>
-              <textarea
-                id="projectDescription"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="Enter project description"
-                rows={3}
-                className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-                disabled={isCreating}
-              />
-            </div>
-          </div>
-          <div className="flex justify-end gap-3 mt-6">
-            <button
-              type="button"
-              onClick={() => {
-                onClose();
-                setName('');
-                setDescription('');
-              }}
-              className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
-              disabled={isCreating}
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={!name.trim() || isCreating}
-              className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isCreating ? 'Creating...' : 'Create Project'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
+import { CreateProjectDialog } from '@/components/projects/CreateProjectDialog';
+import { AudioRecorder } from '@/components/recordings/AudioRecorder';
+import { RecordingSetupPanel, type RecordingSettings } from '@/components/recordings/RecordingSetupPanel';
 
 interface DashboardProps {
   onNavigateToRecordings?: () => void;
   onNavigateToProjects?: () => void;
   onViewRecording?: (recordingId: string) => void;
+  onRecordingUploaded?: () => void;
 }
 
 function formatDuration(seconds: number): string {
@@ -195,13 +100,17 @@ function StatCard({
   );
 }
 
-export function Dashboard({ onNavigateToRecordings, onNavigateToProjects, onViewRecording }: DashboardProps) {
+export function Dashboard({ onNavigateToRecordings, onNavigateToProjects, onViewRecording, onRecordingUploaded }: DashboardProps) {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [recentRecordings, setRecentRecordings] = useState<Recording[]>([]);
   const [recentProjects, setRecentProjects] = useState<Project[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showCreateProject, setShowCreateProject] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [recordingPhase, setRecordingPhase] = useState<'none' | 'setup' | 'recording'>('none');
+  const [recordingSettings, setRecordingSettings] = useState<RecordingSettings | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleProjectCreated = useCallback((project: Project) => {
     setRecentProjects((prev) => [project, ...prev].slice(0, 5));
@@ -213,6 +122,75 @@ export function Dashboard({ onNavigateToRecordings, onNavigateToProjects, onView
         last_updated: project.updated_at,
       },
     } : prev);
+  }, []);
+
+  const refreshData = useCallback(async () => {
+    try {
+      const [statsData, recordingsData, projectsData] = await Promise.all([
+        api.stats.dashboard(),
+        api.recordings.list({ sortBy: 'created_at', sortOrder: 'desc', pageSize: 5 }),
+        api.projects.list(),
+      ]);
+      setStats(statsData);
+      setRecentRecordings(recordingsData.items.slice(0, 5));
+      const sortedProjects = [...projectsData.items].sort(
+        (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+      );
+      setRecentProjects(sortedProjects.slice(0, 5));
+    } catch {
+      // Ignore refresh errors
+    }
+  }, []);
+
+  const handleUpload = useCallback(async (file: File) => {
+    setIsUploading(true);
+    try {
+      await api.recordings.upload(file);
+      await refreshData();
+      onRecordingUploaded?.();
+    } catch (err) {
+      console.error('Failed to upload:', err);
+    } finally {
+      setIsUploading(false);
+    }
+  }, [onRecordingUploaded, refreshData]);
+
+  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      handleUpload(file);
+      e.target.value = '';
+    }
+  }, [handleUpload]);
+
+  const handleRecordingComplete = useCallback(async (blob: Blob, filename: string) => {
+    setRecordingPhase('none');
+    setIsUploading(true);
+    try {
+      const file = new File([blob], filename, { type: blob.type });
+      const meta = recordingSettings?.metadata;
+      await api.recordings.upload(file, {
+        title: meta?.title || undefined,
+        description: meta?.description || undefined,
+        tags: meta?.tags?.length ? meta.tags : undefined,
+        participants: meta?.participants?.length ? meta.participants : undefined,
+        location: meta?.location || undefined,
+        recordedDate: meta?.recordedDate || undefined,
+        quality: recordingSettings?.quality,
+      });
+      await refreshData();
+      onRecordingUploaded?.();
+    } catch (err) {
+      console.error('Failed to upload recording:', err);
+    } finally {
+      setIsUploading(false);
+      setRecordingSettings(null);
+    }
+  }, [recordingSettings, onRecordingUploaded, refreshData]);
+
+  const handleRecordingCancel = useCallback(() => {
+    setRecordingPhase('none');
+    setRecordingSettings(null);
   }, []);
 
   useEffect(() => {
@@ -272,14 +250,33 @@ export function Dashboard({ onNavigateToRecordings, onNavigateToProjects, onView
     <div className="space-y-6">
       {/* Quick Actions */}
       <div className="flex flex-wrap gap-3">
+        {/* Hidden file input for upload */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="audio/*,video/*"
+          className="hidden"
+          onChange={handleFileSelect}
+        />
         <button
-          onClick={onNavigateToRecordings}
-          className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors shadow-sm"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={isUploading}
+          className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-50"
         >
           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
             <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
           </svg>
-          Upload Recording
+          {isUploading ? 'Uploading...' : 'Upload Audio/Video'}
+        </button>
+        <button
+          onClick={() => setRecordingPhase('setup')}
+          disabled={isUploading || recordingPhase !== 'none'}
+          className="inline-flex items-center gap-2 px-4 py-2.5 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 transition-colors shadow-sm disabled:opacity-50"
+        >
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+          </svg>
+          Record Audio
         </button>
         <button
           onClick={() => setShowCreateProject(true)}
@@ -288,9 +285,28 @@ export function Dashboard({ onNavigateToRecordings, onNavigateToProjects, onView
           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
           </svg>
-          Create Project
+          New Project
         </button>
       </div>
+
+      {/* Recording Setup Panel or Recorder */}
+      {recordingPhase === 'setup' && (
+        <RecordingSetupPanel
+          onStartRecording={(settings) => {
+            setRecordingSettings(settings);
+            setRecordingPhase('recording');
+          }}
+          onCancel={handleRecordingCancel}
+        />
+      )}
+      {recordingPhase === 'recording' && (
+        <AudioRecorder
+          onRecordingComplete={handleRecordingComplete}
+          onCancel={handleRecordingCancel}
+          audioBitsPerSecond={recordingSettings?.audioBitsPerSecond}
+          autoStart
+        />
+      )}
 
       {/* Stats Grid */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -567,8 +583,8 @@ export function Dashboard({ onNavigateToRecordings, onNavigateToProjects, onView
         </div>
       )}
 
-      {/* Create Project Modal */}
-      <CreateProjectModal
+      {/* Create Project Dialog */}
+      <CreateProjectDialog
         isOpen={showCreateProject}
         onClose={() => setShowCreateProject(false)}
         onCreated={handleProjectCreated}
