@@ -117,3 +117,13 @@ async def root():
         "version": APP_VERSION,
         "mode": settings.MODE,
     }
+
+
+@app.get("/api/info")
+async def api_info():
+    """API info endpoint (accessible through Vite proxy)."""
+    return {
+        "name": "Verbatim Studio API",
+        "version": APP_VERSION,
+        "mode": settings.MODE,
+    }

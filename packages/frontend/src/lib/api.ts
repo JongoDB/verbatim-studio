@@ -1,5 +1,36 @@
-// Backend API URL - default to localhost for dev
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+// Backend API URL configuration
+// - In development with Vite proxy: use empty string (relative URLs)
+// - In production or with tunnel: uses same origin
+// - Override with VITE_API_URL if backend is on different host
+const API_BASE_URL = import.meta.env.VITE_API_URL ?? '';
+
+/**
+ * Get the WebSocket URL for a given API path.
+ * Automatically handles:
+ * - Protocol (ws:// vs wss:// based on current page protocol)
+ * - Host (uses current origin or VITE_API_URL if set)
+ */
+export function getWebSocketUrl(path: string): string {
+  const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+
+  if (API_BASE_URL) {
+    // If API_BASE_URL is set, use it (convert http(s) to ws(s))
+    const apiUrl = new URL(API_BASE_URL);
+    const apiWsProtocol = apiUrl.protocol === 'https:' ? 'wss:' : 'ws:';
+    return `${apiWsProtocol}//${apiUrl.host}${path}`;
+  }
+
+  // Use current origin (works with Vite proxy and tunnels)
+  return `${wsProtocol}//${window.location.host}${path}`;
+}
+
+/**
+ * Get the full API URL for a given path.
+ * Uses relative URLs when API_BASE_URL is not set.
+ */
+export function getApiUrl(path: string): string {
+  return `${API_BASE_URL}${path}`;
+}
 
 // Interfaces matching backend response models
 export interface RecordingTemplateInfo {
@@ -791,8 +822,8 @@ class ApiClient {
     ready: () => this.request<HealthStatus>('/health/ready'),
   };
 
-  // Root info
-  info = () => this.request<ApiInfo>('/');
+  // API info
+  info = () => this.request<ApiInfo>('/api/info');
 
   // Recordings
   recordings = {
