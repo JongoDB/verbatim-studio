@@ -11,6 +11,9 @@ const PROVIDERS = [
   { id: 'dropbox', name: 'Dropbox', icon: 'D' },
 ] as const;
 
+// OAuth callback URI - must match what's configured in the provider's developer console
+const OAUTH_REDIRECT_URI = 'http://localhost:9876/callback';
+
 export function OAuthCredentialsConfig({ onUpdate }: OAuthCredentialsConfigProps) {
   const [credentials, setCredentials] = useState<OAuthCredentialsResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -18,6 +21,25 @@ export function OAuthCredentialsConfig({ onUpdate }: OAuthCredentialsConfigProps
   const [editingProvider, setEditingProvider] = useState<string | null>(null);
   const [formData, setFormData] = useState({ client_id: '', client_secret: '' });
   const [saving, setSaving] = useState(false);
+  const [copiedUri, setCopiedUri] = useState(false);
+
+  const copyRedirectUri = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(OAUTH_REDIRECT_URI);
+      setCopiedUri(true);
+      setTimeout(() => setCopiedUri(false), 2000);
+    } catch {
+      // Fallback for older browsers
+      const input = document.createElement('input');
+      input.value = OAUTH_REDIRECT_URI;
+      document.body.appendChild(input);
+      input.select();
+      document.execCommand('copy');
+      document.body.removeChild(input);
+      setCopiedUri(true);
+      setTimeout(() => setCopiedUri(false), 2000);
+    }
+  }, []);
 
   const loadCredentials = useCallback(async () => {
     try {
@@ -159,6 +181,25 @@ export function OAuthCredentialsConfig({ onUpdate }: OAuthCredentialsConfigProps
               {/* Edit form */}
               {isEditing && (
                 <div className="mt-4 pt-4 border-t border-border space-y-3">
+                  {/* Redirect URI - for copying into provider's OAuth app config */}
+                  <div className="p-3 rounded-lg bg-muted/50 border border-border">
+                    <label className="block text-xs font-medium text-muted-foreground mb-1">
+                      Redirect URI (copy this into your OAuth app settings)
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <code className="flex-1 text-sm font-mono text-foreground bg-background px-2 py-1.5 rounded border border-border select-all">
+                        {OAUTH_REDIRECT_URI}
+                      </code>
+                      <button
+                        type="button"
+                        onClick={copyRedirectUri}
+                        className="px-3 py-1.5 text-sm font-medium rounded-lg border border-border hover:bg-muted shrink-0"
+                      >
+                        {copiedUri ? 'Copied!' : 'Copy'}
+                      </button>
+                    </div>
+                  </div>
+
                   <div>
                     <label className="block text-sm font-medium text-foreground mb-1">
                       Client ID
