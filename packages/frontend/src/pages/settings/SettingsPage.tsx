@@ -890,7 +890,7 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
                 <button
                   onClick={saveHfToken}
                   disabled={!hfTokenInput.trim() || txSaving}
-                  className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
                   Save
                 </button>
@@ -985,7 +985,7 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
                       {!model.downloaded && aiDownloading !== model.id && (
                         <button
                           onClick={() => handleDownloadModel(model.id)}
-                          className="px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+                          className="px-3 py-1.5 text-xs font-medium rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
                         >
                           Download
                         </button>
@@ -994,7 +994,7 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
                       {model.downloaded && !model.active && aiDownloading !== model.id && (
                         <button
                           onClick={() => handleActivateModel(model.id)}
-                          className="px-3 py-1.5 text-xs font-medium rounded-lg bg-green-600 text-white hover:bg-green-700 transition-colors"
+                          className="px-3 py-1.5 text-xs font-medium rounded-lg bg-success text-success-foreground hover:bg-success/90 transition-colors"
                         >
                           Activate
                         </button>
@@ -1003,7 +1003,7 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
                       {model.downloaded && aiDownloading !== model.id && (
                         <button
                           onClick={() => handleDeleteModel(model.id)}
-                          className="px-3 py-1.5 text-xs font-medium rounded-lg border border-red-300 dark:border-red-700 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                          className="px-3 py-1.5 text-xs font-medium rounded-lg border border-destructive/50 text-destructive hover:bg-destructive/10 transition-colors"
                         >
                           Delete
                         </button>
@@ -1123,7 +1123,7 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
           {!showAddLocation && (
             <button
               onClick={() => setShowAddLocation(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
@@ -1175,7 +1175,7 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
                 <button
                   onClick={handleAddStorageLocation}
                   disabled={storageSaving || !newLocationName.trim() || !newLocationPath.trim()}
-                  className="px-3 py-1.5 text-sm font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+                  className="px-3 py-1.5 text-sm font-medium rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
                 >
                   {storageSaving ? 'Adding...' : 'Add Location'}
                 </button>
@@ -1225,7 +1225,7 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
                       <button
                         onClick={handleUpdateStorageLocation}
                         disabled={storageSaving}
-                        className="px-3 py-1.5 text-sm font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+                        className="px-3 py-1.5 text-sm font-medium rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
                       >
                         {storageSaving ? 'Saving...' : 'Save'}
                       </button>
@@ -1691,7 +1691,7 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
                 <div className="flex gap-3">
                   <button
                     onClick={handleStartMigration}
-                    className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium"
+                    className="flex-1 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 text-sm font-medium"
                   >
                     Move Files
                   </button>

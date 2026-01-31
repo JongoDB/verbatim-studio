@@ -220,7 +220,7 @@ export function Sidebar({ currentTab, onNavigate, theme, onCycleTheme, version, 
                   {item.label}
                 </span>
                 {'badge' in item && item.badge && (
-                  <span className={`ml-1.5 px-1.5 py-0.5 text-[10px] font-semibold rounded bg-primary/10 text-primary overflow-hidden whitespace-nowrap transition-all duration-300 ${collapsed ? 'md:w-0 md:opacity-0 md:hidden' : 'md:w-auto md:opacity-100'}`}>
+                  <span className={`ml-1.5 px-1.5 py-0.5 text-[10px] font-semibold rounded bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 overflow-hidden whitespace-nowrap transition-all duration-300 ${collapsed ? 'md:w-0 md:opacity-0 md:hidden' : 'md:w-auto md:opacity-100'}`}>
                     {item.badge}
                   </span>
                 )}

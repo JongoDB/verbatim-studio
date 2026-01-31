@@ -406,7 +406,7 @@ export function TranscriptPage({ recordingId, onBack, initialSeekTime }: Transcr
           <p className="text-sm text-red-600/80 dark:text-red-400/80">{error}</p>
           <button
             onClick={loadData}
-            className="mt-4 inline-flex items-center gap-2 rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 transition-colors"
+            className="mt-4 inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
           >
             Try Again
           </button>

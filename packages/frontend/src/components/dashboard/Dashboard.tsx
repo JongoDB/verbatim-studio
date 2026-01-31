@@ -5,6 +5,7 @@ import { CreateProjectDialog } from '@/components/projects/CreateProjectDialog';
 import { AudioRecorder } from '@/components/recordings/AudioRecorder';
 import { RecordingSetupPanel, type RecordingSettings } from '@/components/recordings/RecordingSetupPanel';
 import { UploadSetupDialog, type UploadOptions } from '@/components/recordings/UploadSetupDialog';
+import { UploadDocumentDialog } from '@/components/documents/UploadDocumentDialog';
 
 interface DashboardProps {
   onNavigateToRecordings?: () => void;
@@ -93,6 +94,7 @@ export function Dashboard({ onNavigateToRecordings, onNavigateToProjects, onView
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showCreateProject, setShowCreateProject] = useState(false);
+  const [showUploadDocument, setShowUploadDocument] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [recordingPhase, setRecordingPhase] = useState<'none' | 'setup' | 'recording'>('none');
   const [recordingSettings, setRecordingSettings] = useState<RecordingSettings | null>(null);
@@ -280,7 +282,7 @@ export function Dashboard({ onNavigateToRecordings, onNavigateToProjects, onView
         <button
           onClick={() => fileInputRef.current?.click()}
           disabled={isUploading}
-          className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-50"
+          className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary text-primary-foreground rounded-lg font-medium hover:bg-primary/90 transition-colors shadow-sm disabled:opacity-50"
         >
           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
             <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
@@ -290,7 +292,7 @@ export function Dashboard({ onNavigateToRecordings, onNavigateToProjects, onView
         <button
           onClick={() => setRecordingPhase('setup')}
           disabled={isUploading || recordingPhase !== 'none'}
-          className="inline-flex items-center gap-2 px-4 py-2.5 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 transition-colors shadow-sm disabled:opacity-50"
+          className="inline-flex items-center gap-2 px-4 py-2.5 bg-destructive text-destructive-foreground rounded-lg font-medium hover:bg-destructive/90 transition-colors shadow-sm disabled:opacity-50"
         >
           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
             <path strokeLinecap="round" strokeLinejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
@@ -305,6 +307,15 @@ export function Dashboard({ onNavigateToRecordings, onNavigateToProjects, onView
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
           </svg>
           New Project
+        </button>
+        <button
+          onClick={() => setShowUploadDocument(true)}
+          className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 rounded-lg font-medium hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+        >
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+          Upload Document
         </button>
       </div>
 
@@ -592,7 +603,7 @@ export function Dashboard({ onNavigateToRecordings, onNavigateToProjects, onView
           </p>
           <button
             onClick={onNavigateToRecordings}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
               <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
@@ -615,6 +626,14 @@ export function Dashboard({ onNavigateToRecordings, onNavigateToProjects, onView
         file={pendingUploadFile}
         onClose={() => setPendingUploadFile(null)}
         onConfirm={handleUploadConfirm}
+      />
+
+      {/* Upload Document Dialog */}
+      <UploadDocumentDialog
+        open={showUploadDocument}
+        onClose={() => setShowUploadDocument(false)}
+        onUploaded={() => setShowUploadDocument(false)}
+        projects={recentProjects}
       />
     </div>
   );

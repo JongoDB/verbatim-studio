@@ -185,7 +185,7 @@ export function CommentsPanel({ segmentId, onCommentCountChange }: CommentsPanel
         <button
           onClick={handleAdd}
           disabled={!newText.trim() || submitting}
-          className="self-end px-2.5 py-1 text-xs font-medium rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          className="self-end px-2.5 py-1 text-xs font-medium rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           Add
         </button>

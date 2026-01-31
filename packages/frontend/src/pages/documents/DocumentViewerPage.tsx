@@ -313,7 +313,7 @@ export function DocumentViewerPage({ documentId, onBack }: DocumentViewerPagePro
             <p className="text-red-500">Processing failed: {document.error_message}</p>
             <button
               onClick={() => api.documents.reprocess(documentId)}
-              className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              className="mt-4 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90"
             >
               Retry Processing
             </button>

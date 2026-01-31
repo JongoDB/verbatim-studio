@@ -271,7 +271,7 @@ export function ProjectSelector({ selectedProjectId, onProjectChange }: ProjectS
                 <button
                   type="submit"
                   disabled={!newProjectName.trim() || isCreating}
-                  className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-4 py-2 text-sm font-medium text-primary-foreground bg-primary hover:bg-primary/90 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isCreating ? 'Creating...' : 'Create Project'}
                 </button>

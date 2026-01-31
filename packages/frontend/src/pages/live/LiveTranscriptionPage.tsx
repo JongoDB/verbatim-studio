@@ -434,7 +434,7 @@ export function LiveTranscriptionPage({ onNavigateToRecordings: _onNavigateToRec
             {connectionState === 'recording' ? (
               <button
                 onClick={stopRecording}
-                className="w-full py-3 rounded-lg bg-red-600 text-white font-medium hover:bg-red-700 transition-colors flex items-center justify-center gap-2"
+                className="w-full py-3 rounded-lg bg-destructive text-destructive-foreground font-medium hover:bg-destructive/90 transition-colors flex items-center justify-center gap-2"
               >
                 <span className="w-3 h-3 rounded-sm bg-white" />
                 Stop Recording
@@ -443,7 +443,7 @@ export function LiveTranscriptionPage({ onNavigateToRecordings: _onNavigateToRec
               <button
                 onClick={startRecording}
                 disabled={connectionState !== 'connected'}
-                className="w-full py-3 rounded-lg bg-purple-600 text-white font-medium hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                className="w-full py-3 rounded-lg bg-destructive text-destructive-foreground font-medium hover:bg-destructive/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />

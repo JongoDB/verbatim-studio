@@ -357,7 +357,7 @@ export function RecordingSetupPanel({ onStartRecording, onCancel }: RecordingSet
         <button
           type="button"
           onClick={handleStart}
-          className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-red-700 transition-colors"
+          className="inline-flex items-center gap-2 rounded-lg bg-destructive px-5 py-2.5 text-sm font-medium text-destructive-foreground hover:bg-destructive/90 transition-colors"
         >
           <svg
             className="w-4 h-4"
