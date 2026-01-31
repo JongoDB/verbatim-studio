@@ -24,6 +24,9 @@ logger = logging.getLogger(__name__)
 class GDriveAdapter(StorageAdapter):
     """Google Drive storage adapter using Drive API v3."""
 
+    # Default app folder name if none specified
+    DEFAULT_APP_FOLDER = "Verbatim Studio"
+
     def __init__(self, config: dict[str, Any]):
         """
         Initialize Google Drive adapter.
@@ -32,12 +35,16 @@ class GDriveAdapter(StorageAdapter):
             config: Configuration with oauth_tokens containing:
                 - access_token: OAuth access token
                 - refresh_token: OAuth refresh token
-                - folder_path: Optional folder path to use as root
+                - folder_path: Optional folder name to use as app root
+                - folder_id: Optional pre-resolved folder ID
         """
         self.config = config
         self._service = None
-        self._root_folder_id = config.get("folder_id") or "root"
-        self._folder_path = config.get("folder_path", "")
+        # folder_id is a cached ID of the app's root folder (created on first use)
+        self._root_folder_id = config.get("folder_id")
+        # folder_path is the name for the app's root folder
+        self._folder_path = config.get("folder_path") or self.DEFAULT_APP_FOLDER
+        self._root_initialized = False
 
         # Token info
         tokens = config.get("oauth_tokens", {})
@@ -87,14 +94,52 @@ class GDriveAdapter(StorageAdapter):
             self._service = build("drive", "v3", credentials=creds)
         return self._service
 
+    async def _ensure_root_folder(self) -> str:
+        """Ensure the app's root folder exists and return its ID.
+
+        With drive.file scope, we can only access files created by this app.
+        This creates the app's root folder if it doesn't exist.
+        """
+        if self._root_folder_id and self._root_initialized:
+            return self._root_folder_id
+
+        service = self._get_service()
+        folder_name = self._folder_path
+
+        # Search for existing app folder (created by this app)
+        query = (
+            f"name = '{folder_name}' and "
+            f"mimeType = 'application/vnd.google-apps.folder' and "
+            f"trashed = false"
+        )
+        results = service.files().list(q=query, fields="files(id, name)").execute()
+        files = results.get("files", [])
+
+        if files:
+            self._root_folder_id = files[0]["id"]
+            logger.info(f"Found existing app folder: {folder_name} ({self._root_folder_id})")
+        else:
+            # Create the app folder
+            file_metadata = {
+                "name": folder_name,
+                "mimeType": "application/vnd.google-apps.folder",
+            }
+            folder = service.files().create(body=file_metadata, fields="id").execute()
+            self._root_folder_id = folder["id"]
+            logger.info(f"Created app folder: {folder_name} ({self._root_folder_id})")
+
+        self._root_initialized = True
+        return self._root_folder_id
+
     async def _resolve_folder_path(self, path: str) -> str:
         """Resolve a folder path to a folder ID."""
+        root_id = await self._ensure_root_folder()
         if not path or path == "/":
-            return self._root_folder_id
+            return root_id
 
         # Split path and traverse
         parts = [p for p in path.split("/") if p]
-        current_id = self._root_folder_id
+        current_id = root_id
 
         service = self._get_service()
 
@@ -125,7 +170,7 @@ class GDriveAdapter(StorageAdapter):
         # Split into folder path and filename
         parts = path.rsplit("/", 1)
         if len(parts) == 1:
-            folder_id = self._root_folder_id
+            folder_id = await self._ensure_root_folder()
             filename = parts[0]
         else:
             folder_id = await self._resolve_folder_path(parts[0])
@@ -148,8 +193,9 @@ class GDriveAdapter(StorageAdapter):
         """Test connection to Google Drive."""
         try:
             service = self._get_service()
-            # Try to get info about root folder
-            service.files().get(fileId=self._root_folder_id, fields="id, name").execute()
+            # With drive.file scope, we can't access root folder metadata
+            # Instead, just verify we can make API calls by listing files
+            service.files().list(pageSize=1, fields="files(id)").execute()
             return True
         except Exception as e:
             logger.error(f"Google Drive connection test failed: {e}")
@@ -218,7 +264,7 @@ class GDriveAdapter(StorageAdapter):
             # Split path into folder and filename
             parts = path.rsplit("/", 1)
             if len(parts) == 1:
-                folder_id = self._root_folder_id
+                folder_id = await self._ensure_root_folder()
                 filename = parts[0]
             else:
                 # Ensure parent folder exists
@@ -310,10 +356,12 @@ class GDriveAdapter(StorageAdapter):
     async def ensure_directory(self, path: str) -> None:
         """Create directory and parents if they don't exist."""
         if not path or path == "/":
+            await self._ensure_root_folder()
             return
 
+        root_id = await self._ensure_root_folder()
         parts = [p for p in path.split("/") if p]
-        current_id = self._root_folder_id
+        current_id = root_id
         service = self._get_service()
 
         for part in parts:
