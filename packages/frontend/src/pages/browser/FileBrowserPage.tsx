@@ -1,8 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { api, type BrowseItem, type BrowseResponse } from '@/lib/api';
-import { FolderTree } from '@/components/browser/FolderTree';
+import { api, type BrowseItem, type BrowseResponse, type FolderTreeNode } from '@/lib/api';
 import { Breadcrumb } from '@/components/browser/Breadcrumb';
-import { BrowserItem } from '@/components/browser/BrowserItem';
 
 interface FileBrowserPageProps {
   initialFolderId?: string | null;
@@ -10,16 +8,156 @@ interface FileBrowserPageProps {
   onViewDocument: (documentId: string) => void;
 }
 
+type SortField = 'name' | 'updated_at' | 'size' | 'type';
+type SortOrder = 'asc' | 'desc';
+
+function formatDuration(seconds: number): string {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = Math.floor(seconds % 60);
+  if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+}
+
+function ItemIcon({ type, mimeType, size = 'md' }: { type: string; mimeType?: string; size?: 'sm' | 'md' }) {
+  const sizeClass = size === 'sm' ? 'w-5 h-5' : 'w-8 h-8';
+
+  if (type === 'folder') {
+    return (
+      <svg className={`${sizeClass} text-yellow-500`} fill="currentColor" viewBox="0 0 20 20">
+        <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
+      </svg>
+    );
+  }
+  if (type === 'recording') {
+    return (
+      <svg className={`${sizeClass} text-purple-500`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+      </svg>
+    );
+  }
+  const isPdf = mimeType === 'application/pdf';
+  const isImage = mimeType?.startsWith('image/');
+  if (isPdf) {
+    return (
+      <svg className={`${sizeClass} text-red-500`} fill="currentColor" viewBox="0 0 20 20">
+        <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" />
+      </svg>
+    );
+  }
+  if (isImage) {
+    return (
+      <svg className={`${sizeClass} text-green-500`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+      </svg>
+    );
+  }
+  return (
+    <svg className={`${sizeClass} text-blue-500`} fill="currentColor" viewBox="0 0 20 20">
+      <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" />
+    </svg>
+  );
+}
+
+// Move Dialog Component
+function MoveDialog({
+  item,
+  folders,
+  currentFolderId,
+  onMove,
+  onClose,
+}: {
+  item: BrowseItem;
+  folders: FolderTreeNode[];
+  currentFolderId: string | null;
+  onMove: (targetId: string | null) => void;
+  onClose: () => void;
+}) {
+  const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="fixed inset-0 bg-black/50" onClick={onClose} />
+      <div className="relative bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md mx-4">
+        <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+            Move "{item.name}"
+          </h3>
+        </div>
+        <div className="p-4 max-h-64 overflow-y-auto">
+          {/* Root option */}
+          <button
+            onClick={() => setSelectedFolder(null)}
+            className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left ${
+              selectedFolder === null
+                ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+                : 'hover:bg-gray-100 dark:hover:bg-gray-700'
+            } ${currentFolderId === null ? 'opacity-50 cursor-not-allowed' : ''}`}
+            disabled={currentFolderId === null}
+          >
+            <ItemIcon type="folder" size="sm" />
+            <span className="text-sm font-medium">My Files (Root)</span>
+          </button>
+
+          {/* Folders */}
+          {folders.map((folder) => (
+            <button
+              key={folder.id}
+              onClick={() => setSelectedFolder(folder.id)}
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left ${
+                selectedFolder === folder.id
+                  ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+                  : 'hover:bg-gray-100 dark:hover:bg-gray-700'
+              } ${currentFolderId === folder.id ? 'opacity-50 cursor-not-allowed' : ''}`}
+              disabled={currentFolderId === folder.id}
+            >
+              <ItemIcon type="folder" size="sm" />
+              <span className="text-sm">{folder.name}</span>
+              <span className="text-xs text-gray-400 ml-auto">{folder.item_count} items</span>
+            </button>
+          ))}
+        </div>
+        <div className="p-4 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-3">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => onMove(selectedFolder)}
+            disabled={selectedFolder === currentFolderId}
+            className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Move here
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function FileBrowserPage({ initialFolderId, onViewRecording, onViewDocument }: FileBrowserPageProps) {
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(initialFolderId ?? null);
   const [browseData, setBrowseData] = useState<BrowseResponse | null>(null);
+  const [folders, setFolders] = useState<FolderTreeNode[]>([]);
   const [loading, setLoading] = useState(true);
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
   const [searchInput, setSearchInput] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [sortField, setSortField] = useState<SortField>('name');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('asc');
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; item: BrowseItem } | null>(null);
+  const [moveItem, setMoveItem] = useState<BrowseItem | null>(null);
+  const [dragOverFolder, setDragOverFolder] = useState<string | null>(null);
 
   // Debounce search input
   useEffect(() => {
@@ -31,11 +169,17 @@ export function FileBrowserPage({ initialFolderId, onViewRecording, onViewDocume
     setLoading(true);
     setError(null);
     try {
-      const data = await api.browse.list({
-        parent_id: currentFolderId ?? undefined,
-        search: debouncedSearch || undefined,
-      });
+      const [data, treeData] = await Promise.all([
+        api.browse.list({
+          parent_id: currentFolderId ?? undefined,
+          search: debouncedSearch || undefined,
+          sort: sortField,
+          order: sortOrder,
+        }),
+        api.browse.tree(),
+      ]);
       setBrowseData(data);
+      setFolders(treeData.root.children);
       setSelectedItems(new Set());
     } catch (err) {
       console.error('Failed to load folder:', err);
@@ -43,7 +187,7 @@ export function FileBrowserPage({ initialFolderId, onViewRecording, onViewDocume
     } finally {
       setLoading(false);
     }
-  }, [currentFolderId, debouncedSearch]);
+  }, [currentFolderId, debouncedSearch, sortField, sortOrder]);
 
   useEffect(() => {
     loadFolder();
@@ -60,6 +204,15 @@ export function FileBrowserPage({ initialFolderId, onViewRecording, onViewDocume
       onViewRecording(item.id);
     } else if (item.type === 'document') {
       onViewDocument(item.id);
+    }
+  };
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortOrder('asc');
     }
   };
 
@@ -98,19 +251,15 @@ export function FileBrowserPage({ initialFolderId, onViewRecording, onViewDocume
     setContextMenu(null);
   };
 
-  const handleMove = async (item: BrowseItem) => {
+  const handleMove = async (item: BrowseItem, targetFolderId: string | null) => {
     if (item.type === 'folder') return;
-    const targetId = prompt('Enter target folder ID (empty for root):');
-    if (targetId !== null) {
-      try {
-        await api.browse.move(item.id, item.type as 'recording' | 'document', targetId || null);
-        loadFolder();
-      } catch (err) {
-        console.error('Failed to move:', err);
-        setError('Failed to move item');
-      }
+    try {
+      await api.browse.move(item.id, item.type as 'recording' | 'document', targetFolderId);
+      loadFolder();
+    } catch (err) {
+      console.error('Failed to move:', err);
+      setError('Failed to move item');
     }
-    setContextMenu(null);
   };
 
   const handleCopy = async (item: BrowseItem) => {
@@ -125,96 +274,182 @@ export function FileBrowserPage({ initialFolderId, onViewRecording, onViewDocume
     setContextMenu(null);
   };
 
-  return (
-    <div className="flex h-full">
-      {/* Sidebar with folder tree */}
-      <div className="w-56 border-r border-gray-200 dark:border-gray-700 overflow-y-auto">
-        <div className="p-3 border-b border-gray-200 dark:border-gray-700">
-          <h3 className="font-semibold text-gray-900 dark:text-gray-100">Folders</h3>
-        </div>
-        <FolderTree selectedFolderId={currentFolderId} onSelectFolder={handleNavigate} />
-      </div>
+  // Drag and drop handlers
+  const handleDragStart = (e: React.DragEvent, item: BrowseItem) => {
+    if (item.type === 'folder') {
+      e.preventDefault();
+      return;
+    }
+    e.dataTransfer.setData('application/json', JSON.stringify(item));
+    e.dataTransfer.effectAllowed = 'move';
+  };
 
-      {/* Main content */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Toolbar */}
-        <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center gap-4">
+  const handleDragOver = (e: React.DragEvent, folderId: string) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setDragOverFolder(folderId);
+  };
+
+  const handleDragLeave = () => {
+    setDragOverFolder(null);
+  };
+
+  const handleDrop = async (e: React.DragEvent, targetFolderId: string) => {
+    e.preventDefault();
+    setDragOverFolder(null);
+
+    try {
+      const item: BrowseItem = JSON.parse(e.dataTransfer.getData('application/json'));
+      if (item.type !== 'folder') {
+        await handleMove(item, targetFolderId);
+      }
+    } catch (err) {
+      console.error('Drop failed:', err);
+    }
+  };
+
+  const getItemSize = (item: BrowseItem): string => {
+    if (item.type === 'folder') return `${item.item_count ?? 0} items`;
+    if (item.type === 'recording') return item.duration_seconds ? formatDuration(item.duration_seconds) : '-';
+    return item.file_size_bytes ? formatSize(item.file_size_bytes) : '-';
+  };
+
+  const getItemType = (item: BrowseItem): string => {
+    if (item.type === 'folder') return 'Folder';
+    if (item.type === 'recording') return 'Recording';
+    if (item.mime_type?.includes('pdf')) return 'PDF';
+    if (item.mime_type?.startsWith('image/')) return 'Image';
+    return 'Document';
+  };
+
+  const SortIcon = ({ field }: { field: SortField }) => {
+    if (sortField !== field) return null;
+    return (
+      <svg className="w-4 h-4 ml-1 inline" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+          d={sortOrder === 'asc' ? 'M5 15l7-7 7 7' : 'M19 9l-7 7-7-7'}
+        />
+      </svg>
+    );
+  };
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Toolbar */}
+      <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+        <div className="flex items-center gap-4">
           <Breadcrumb items={browseData?.breadcrumb || []} onNavigate={handleNavigate} />
           <div className="flex-1" />
           <input
             type="text"
-            placeholder="Search..."
+            placeholder="Search files..."
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
-            className="px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700"
+            className="px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 w-64"
           />
-          <div className="flex border border-gray-300 dark:border-gray-600 rounded-lg overflow-hidden">
-            <button
-              onClick={() => setViewMode('grid')}
-              className={`p-1.5 ${viewMode === 'grid' ? 'bg-gray-100 dark:bg-gray-700' : ''}`}
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
-              </svg>
-            </button>
-            <button
-              onClick={() => setViewMode('list')}
-              className={`p-1.5 ${viewMode === 'list' ? 'bg-gray-100 dark:bg-gray-700' : ''}`}
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-              </svg>
-            </button>
-          </div>
         </div>
+      </div>
 
-        {/* Error banner */}
-        {error && (
-          <div className="mx-4 mt-4 p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg flex items-center justify-between">
-            <span className="text-red-700 dark:text-red-300 text-sm">{error}</span>
-            <button
-              onClick={() => setError(null)}
-              className="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-200"
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
+      {/* Error banner */}
+      {error && (
+        <div className="mx-6 mt-4 p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg flex items-center justify-between">
+          <span className="text-red-700 dark:text-red-300 text-sm">{error}</span>
+          <button onClick={() => setError(null)} className="text-red-500 hover:text-red-700">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      )}
+
+      {/* Table */}
+      <div className="flex-1 overflow-auto">
+        {loading ? (
+          <div className="flex items-center justify-center h-full">
+            <svg className="w-8 h-8 animate-spin text-blue-500" viewBox="0 0 24 24" fill="none">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
           </div>
-        )}
-
-        {/* Items */}
-        <div className="flex-1 overflow-y-auto p-4">
-          {loading ? (
-            <div className="flex items-center justify-center h-full">
-              <svg className="w-8 h-8 animate-spin text-blue-500" viewBox="0 0 24 24" fill="none">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-              </svg>
-            </div>
-          ) : browseData?.items.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-gray-500">
-              <svg className="w-16 h-16 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-              </svg>
-              <p>This folder is empty</p>
-            </div>
-          ) : (
-            <div className={viewMode === 'grid' ? 'grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4' : 'space-y-1'}>
+        ) : browseData?.items.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full text-gray-500">
+            <svg className="w-16 h-16 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+            </svg>
+            <p>This folder is empty</p>
+          </div>
+        ) : (
+          <table className="w-full">
+            <thead className="sticky top-0 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+              <tr>
+                <th
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700"
+                  onClick={() => handleSort('name')}
+                >
+                  Name <SortIcon field="name" />
+                </th>
+                <th
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 w-40"
+                  onClick={() => handleSort('updated_at')}
+                >
+                  Modified <SortIcon field="updated_at" />
+                </th>
+                <th
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 w-32"
+                  onClick={() => handleSort('size')}
+                >
+                  Size <SortIcon field="size" />
+                </th>
+                <th
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 w-28"
+                  onClick={() => handleSort('type')}
+                >
+                  Type <SortIcon field="type" />
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
               {browseData?.items.map((item) => (
-                <BrowserItem
+                <tr
                   key={`${item.type}-${item.id}`}
-                  item={item}
-                  viewMode={viewMode}
-                  selected={selectedItems.has(item.id)}
-                  onSelect={() => setSelectedItems(new Set([item.id]))}
-                  onOpen={() => handleOpen(item)}
+                  draggable={item.type !== 'folder'}
+                  onDragStart={(e) => handleDragStart(e, item)}
+                  onDragOver={item.type === 'folder' ? (e) => handleDragOver(e, item.id) : undefined}
+                  onDragLeave={item.type === 'folder' ? handleDragLeave : undefined}
+                  onDrop={item.type === 'folder' ? (e) => handleDrop(e, item.id) : undefined}
+                  onClick={() => setSelectedItems(new Set([item.id]))}
+                  onDoubleClick={() => handleOpen(item)}
                   onContextMenu={(e) => handleContextMenu(e, item)}
-                />
+                  className={`cursor-pointer transition-colors ${
+                    selectedItems.has(item.id)
+                      ? 'bg-blue-50 dark:bg-blue-900/20'
+                      : dragOverFolder === item.id
+                      ? 'bg-blue-100 dark:bg-blue-900/40'
+                      : 'hover:bg-gray-50 dark:hover:bg-gray-800'
+                  }`}
+                >
+                  <td className="px-6 py-3">
+                    <div className="flex items-center gap-3">
+                      <ItemIcon type={item.type} mimeType={item.mime_type} />
+                      <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                        {item.name}
+                      </span>
+                    </div>
+                  </td>
+                  <td className="px-6 py-3 text-sm text-gray-500 dark:text-gray-400">
+                    {item.updated_at ? new Date(item.updated_at).toLocaleDateString() : '-'}
+                  </td>
+                  <td className="px-6 py-3 text-sm text-gray-500 dark:text-gray-400">
+                    {getItemSize(item)}
+                  </td>
+                  <td className="px-6 py-3 text-sm text-gray-500 dark:text-gray-400">
+                    {getItemType(item)}
+                  </td>
+                </tr>
               ))}
-            </div>
-          )}
-        </div>
+            </tbody>
+          </table>
+        )}
       </div>
 
       {/* Context menu */}
@@ -226,7 +461,7 @@ export function FileBrowserPage({ initialFolderId, onViewRecording, onViewDocume
             style={{ left: contextMenu.x, top: contextMenu.y }}
           >
             <button
-              onClick={() => handleOpen(contextMenu.item)}
+              onClick={() => { handleOpen(contextMenu.item); setContextMenu(null); }}
               className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
             >
               Open
@@ -243,10 +478,10 @@ export function FileBrowserPage({ initialFolderId, onViewRecording, onViewDocume
                   onClick={() => handleCopy(contextMenu.item)}
                   className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
                 >
-                  Copy here
+                  Make a copy
                 </button>
                 <button
-                  onClick={() => handleMove(contextMenu.item)}
+                  onClick={() => { setMoveItem(contextMenu.item); setContextMenu(null); }}
                   className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
                 >
                   Move to...
@@ -262,6 +497,20 @@ export function FileBrowserPage({ initialFolderId, onViewRecording, onViewDocume
             </button>
           </div>
         </>
+      )}
+
+      {/* Move dialog */}
+      {moveItem && (
+        <MoveDialog
+          item={moveItem}
+          folders={folders}
+          currentFolderId={currentFolderId}
+          onMove={(targetId) => {
+            handleMove(moveItem, targetId);
+            setMoveItem(null);
+          }}
+          onClose={() => setMoveItem(null)}
+        />
       )}
     </div>
   );
