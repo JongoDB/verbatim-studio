@@ -18,9 +18,19 @@ export function DocumentViewerPage({ documentId, onBack }: DocumentViewerPagePro
         const doc = await api.documents.get(documentId);
         setDocument(doc);
 
-        if (doc.status === 'completed') {
-          const contentRes = await api.documents.getContent(documentId);
-          setContent(contentRes.content);
+        // Only fetch text content for non-visual documents (not PDFs or images)
+        // PDFs and images are displayed directly via iframe/img tags
+        const isPdf = doc.mime_type === 'application/pdf';
+        const isImage = doc.mime_type.startsWith('image/');
+
+        if (doc.status === 'completed' && !isPdf && !isImage) {
+          try {
+            const contentRes = await api.documents.getContent(documentId);
+            setContent(contentRes.content);
+          } catch {
+            // Content extraction may not be available for all document types
+            setContent(null);
+          }
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load document');
