@@ -112,4 +112,14 @@ async def _run_migrations(conn) -> None:
     """Run schema migrations that create_all doesn't handle (column drops, renames, etc)."""
     # Note: Recording.project_id FK is now the standard pattern (single project per recording).
     # The project_recordings junction table is kept for backward compatibility during migration.
-    pass
+
+    # Run file browser migration (adds storage_locations table and FK columns)
+    from migrations.migrate_file_browser import migrate as migrate_file_browser
+    await migrate_file_browser()
+
+    # Run storage subtype migration (adds subtype and status columns)
+    # This is synchronous sqlite3, run it via run_sync
+    from pathlib import Path
+    from migrations.add_storage_subtype import migrate as migrate_storage_subtype
+    db_path = Path(__file__).parent.parent / "verbatim.db"
+    await conn.run_sync(lambda _: migrate_storage_subtype(db_path))
