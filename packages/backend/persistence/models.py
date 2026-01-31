@@ -142,6 +142,7 @@ class Recording(Base):
     tags: Mapped[list[Tag]] = relationship(
         secondary="recording_tags", back_populates="recordings"
     )
+    notes: Mapped[list["Note"]] = relationship(back_populates="recording", cascade="all, delete-orphan")
 
 
 class Transcript(Base):
@@ -344,7 +345,7 @@ class Note(Base):
     created_at: Mapped[datetime] = mapped_column(default=func.now())
     updated_at: Mapped[datetime] = mapped_column(default=func.now(), onupdate=func.now())
 
-    recording: Mapped["Recording | None"] = relationship()
+    recording: Mapped["Recording | None"] = relationship(back_populates="notes")
     document: Mapped["Document | None"] = relationship(back_populates="notes")
 
 
