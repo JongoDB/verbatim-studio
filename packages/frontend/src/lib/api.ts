@@ -9,6 +9,7 @@ const API_BASE_URL = import.meta.env.VITE_API_URL ?? '';
  * Automatically handles:
  * - Protocol (ws:// vs wss:// based on current page protocol)
  * - Host (uses current origin or VITE_API_URL if set)
+ * - Development mode: connects directly to backend (Vite WS proxy unreliable)
  */
 export function getWebSocketUrl(path: string): string {
   const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -20,7 +21,13 @@ export function getWebSocketUrl(path: string): string {
     return `${apiWsProtocol}//${apiUrl.host}${path}`;
   }
 
-  // Use current origin (works with Vite proxy and tunnels)
+  // In development (Vite dev server), connect directly to backend
+  // Vite's WebSocket proxy is unreliable for non-HMR WebSockets
+  if (import.meta.env.DEV && window.location.port === '5173') {
+    return `ws://127.0.0.1:8000${path}`;
+  }
+
+  // Production: use same origin (assumes reverse proxy handles WS)
   return `${wsProtocol}//${window.location.host}${path}`;
 }
 

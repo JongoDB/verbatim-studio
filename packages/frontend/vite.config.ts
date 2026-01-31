@@ -17,10 +17,13 @@ export default defineConfig({
   server: {
     port: 5173,
     strictPort: true,
+    host: true, // Listen on all interfaces
+    allowedHosts: true, // Allow any hostname (for tunnels, Electron, etc.)
     proxy: {
       '/api': {
         target: 'http://127.0.0.1:8000',
         changeOrigin: true,
+        ws: true,
       },
       '/health': {
         target: 'http://127.0.0.1:8000',
