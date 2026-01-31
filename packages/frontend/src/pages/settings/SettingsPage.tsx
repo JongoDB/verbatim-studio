@@ -898,11 +898,11 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
       {/* ===== AI TAB ===== */}
       {activeTab === 'ai' && (
         <>
-      {/* AI / Language Model Section */}
+      {/* Large Language Model Section */}
       <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
         <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">AI / Language Model</h2>
+            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Large Language Model</h2>
             {aiModels.some((m) => m.active) ? (
               <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300">
                 <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
