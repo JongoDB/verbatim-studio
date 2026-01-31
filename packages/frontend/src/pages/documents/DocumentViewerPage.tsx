@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { api, type Document } from '@/lib/api';
 
 interface DocumentViewerPageProps {
@@ -143,8 +145,8 @@ export function DocumentViewerPage({ documentId, onBack }: DocumentViewerPagePro
             )}
 
             {!isPdf && !isImage && content && (
-              <div className="p-6 prose dark:prose-invert max-w-none">
-                <pre className="whitespace-pre-wrap text-sm">{content}</pre>
+              <div className="p-6 prose dark:prose-invert max-w-none overflow-auto">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
               </div>
             )}
           </>

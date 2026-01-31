@@ -90,12 +90,80 @@ class DocumentProcessor:
         """Process DOCX using python-docx."""
         try:
             from docx import Document as DocxDocument
+            from docx.oxml.ns import qn
+
             doc = DocxDocument(file_path)
-            paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
-            text = "\n\n".join(paragraphs)
+            markdown_parts = []
+            text_parts = []
+
+            # Helper to extract text from textboxes in a paragraph
+            def extract_textbox_text(para) -> str:
+                """Extract text from textboxes/shapes in a paragraph."""
+                texts = []
+                seen = set()
+                for run in para.runs:
+                    # Look for textboxContent elements
+                    for txbx in run._element.findall('.//' + qn('w:txbxContent')):
+                        txbx_text = []
+                        for t_elem in txbx.findall('.//' + qn('w:t')):
+                            if t_elem.text:
+                                txbx_text.append(t_elem.text)
+                        full_text = ''.join(txbx_text).strip()
+                        # Avoid duplicates (some DOCX have mirrored textboxes)
+                        if full_text and full_text not in seen:
+                            seen.add(full_text)
+                            texts.append(full_text)
+                return ' '.join(texts).strip()
+
+            # Iterate through document body to preserve order of paragraphs and tables
+            for element in doc.element.body:
+                if element.tag.endswith('p'):
+                    # It's a paragraph
+                    for para in doc.paragraphs:
+                        if para._element is element:
+                            # First check for textbox content (titles, etc.)
+                            textbox_text = extract_textbox_text(para)
+                            if textbox_text:
+                                # Textbox content is often a title
+                                markdown_parts.append(f"# {textbox_text}")
+                                text_parts.append(textbox_text)
+
+                            # Then check regular paragraph text (skip if same as textbox)
+                            para_text = para.text.strip()
+                            if para_text and para_text != textbox_text:
+                                # Check if it's a heading style
+                                if para.style and para.style.name.startswith('Heading'):
+                                    level = para.style.name[-1] if para.style.name[-1].isdigit() else '2'
+                                    markdown_parts.append(f"{'#' * int(level)} {para_text}")
+                                else:
+                                    markdown_parts.append(para_text)
+                                text_parts.append(para_text)
+                            break
+                elif element.tag.endswith('tbl'):
+                    # It's a table
+                    for table in doc.tables:
+                        if table._element is element:
+                            table_md = self._table_to_markdown(table)
+                            if table_md:
+                                markdown_parts.append(table_md)
+                                # Plain text version
+                                for row in table.rows:
+                                    row_text = " | ".join(cell.text.strip() for cell in row.cells)
+                                    if row_text.replace("|", "").strip():
+                                        text_parts.append(row_text)
+                            break
+
+            # Extract footer content
+            for section in doc.sections:
+                footer = section.footer
+                for para in footer.paragraphs:
+                    if para.text.strip():
+                        markdown_parts.append(f"*{para.text}*")
+                        text_parts.append(para.text)
+
             return {
-                "text": text,
-                "markdown": text,
+                "text": "\n\n".join(text_parts),
+                "markdown": "\n\n".join(markdown_parts),
                 "page_count": None,
                 "metadata": {"format": "docx"},
             }
@@ -105,6 +173,20 @@ class DocumentProcessor:
         except Exception as e:
             logger.error(f"DOCX processing failed: {e}")
             return {"text": "", "markdown": "", "page_count": None, "metadata": {}}
+
+    def _table_to_markdown(self, table) -> str:
+        """Convert a DOCX table to markdown format."""
+        rows = []
+        for i, row in enumerate(table.rows):
+            cells = [cell.text.strip().replace('\n', ' ') for cell in row.cells]
+            # Skip completely empty rows
+            if not any(cells):
+                continue
+            rows.append("| " + " | ".join(cells) + " |")
+            # Add header separator after first row
+            if i == 0:
+                rows.append("| " + " | ".join("---" for _ in cells) + " |")
+        return "\n".join(rows) if rows else ""
 
     def _process_xlsx(self, file_path: Path) -> dict:
         """Process XLSX using openpyxl."""
