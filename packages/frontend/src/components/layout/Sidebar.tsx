@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 
 type Theme = 'light' | 'dark' | 'system';
 
-type NavKey = 'dashboard' | 'recordings' | 'projects' | 'live' | 'search' | 'documents' | 'settings';
+type NavKey = 'dashboard' | 'recordings' | 'projects' | 'live' | 'search' | 'documents' | 'browser' | 'settings';
 
 interface SidebarProps {
   currentTab: NavKey;

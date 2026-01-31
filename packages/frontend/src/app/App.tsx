@@ -8,6 +8,7 @@ import { TranscriptPage } from '@/pages/transcript/TranscriptPage';
 import { SearchPage } from '@/pages/search/SearchPage';
 import { DocumentsPage } from '@/pages/documents/DocumentsPage';
 import { DocumentViewerPage } from '@/pages/documents/DocumentViewerPage';
+import { FileBrowserPage } from '@/pages/browser/FileBrowserPage';
 import { LiveTranscriptionPage } from '@/pages/live/LiveTranscriptionPage';
 import { SearchBox } from '@/components/search/SearchBox';
 import { Dashboard } from '@/components/dashboard/Dashboard';
@@ -30,7 +31,8 @@ type NavigationState =
   | { type: 'settings' }
   | { type: 'transcript'; recordingId: string; initialSeekTime?: number }
   | { type: 'documents' }
-  | { type: 'document-viewer'; documentId: string };
+  | { type: 'document-viewer'; documentId: string }
+  | { type: 'browser'; folderId?: string | null };
 
 // Map navigation state to URL path
 function navigationToPath(nav: NavigationState): string {
@@ -46,6 +48,7 @@ function navigationToPath(nav: NavigationState): string {
     case 'transcript': return `/recordings/${nav.recordingId}`;
     case 'documents': return '/documents';
     case 'document-viewer': return `/documents/${nav.documentId}`;
+    case 'browser': return nav.folderId ? `/browser/${nav.folderId}` : '/browser';
   }
 }
 
@@ -77,6 +80,11 @@ function pathToNavigation(path: string): NavigationState {
 
   const documentMatch = cleanPath.match(/^\/documents\/([^/]+)$/);
   if (documentMatch) return { type: 'document-viewer', documentId: documentMatch[1] };
+
+  if (cleanPath === '/browser') return { type: 'browser' };
+
+  const browserMatch = cleanPath.match(/^\/browser\/([^/]+)$/);
+  if (browserMatch) return { type: 'browser', folderId: browserMatch[1] };
 
   // Default to dashboard for unknown paths
   return { type: 'dashboard' };
@@ -174,6 +182,10 @@ export function App() {
     setNavigation({ type: 'document-viewer', documentId });
   }, []);
 
+  const handleNavigateToBrowser = useCallback((folderId?: string | null) => {
+    setNavigation({ type: 'browser', folderId });
+  }, []);
+
   // Map navigation types to sidebar tabs
   const currentTab = (() => {
     switch (navigation.type) {
@@ -185,8 +197,10 @@ export function App() {
       case 'documents':
       case 'document-viewer':
         return 'documents';
+      case 'browser':
+        return 'browser';
       default:
-        return navigation.type as 'dashboard' | 'recordings' | 'projects' | 'live' | 'search' | 'settings' | 'documents';
+        return navigation.type as 'dashboard' | 'recordings' | 'projects' | 'live' | 'search' | 'settings' | 'documents' | 'browser';
     }
   })();
 
@@ -370,6 +384,7 @@ export function App() {
           else if (tab === 'live') handleNavigateToLive();
           else if (tab === 'search') handleNavigateToSearch();
           else if (tab === 'documents') handleNavigateToDocuments();
+          else if (tab === 'browser') handleNavigateToBrowser();
           else if (tab === 'settings') handleNavigateToSettings();
         }}
         theme={theme}
@@ -436,6 +451,13 @@ export function App() {
               <DocumentViewerPage
                 documentId={navigation.documentId}
                 onBack={handleNavigateToDocuments}
+              />
+            )}
+            {navigation.type === 'browser' && (
+              <FileBrowserPage
+                initialFolderId={navigation.folderId}
+                onViewRecording={(id) => setNavigation({ type: 'transcript', recordingId: id })}
+                onViewDocument={(id) => setNavigation({ type: 'document-viewer', documentId: id })}
               />
             )}
             {navigation.type === 'transcript' && (
