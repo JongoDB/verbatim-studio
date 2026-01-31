@@ -258,8 +258,12 @@ async def delete_document(
 async def download_document_file(
     db: Annotated[AsyncSession, Depends(get_db)],
     document_id: str,
+    inline: Annotated[bool, Query(description="Display inline instead of download")] = False,
 ) -> FileResponse:
-    """Download the original document file."""
+    """Download or view the original document file.
+
+    Use inline=true to display in browser (for iframe embedding).
+    """
     doc = await db.get(Document, document_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
@@ -268,10 +272,14 @@ async def download_document_file(
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="File not found on disk")
 
+    # For inline viewing (iframe), use content-disposition: inline
+    content_disposition = "inline" if inline else "attachment"
+
     return FileResponse(
         path=file_path,
         filename=doc.filename,
         media_type=doc.mime_type,
+        content_disposition_type=content_disposition,
     )
 
 

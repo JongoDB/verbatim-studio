@@ -1401,7 +1401,8 @@ class ApiClient {
       return this.request<{ content: string; format: string }>(`/api/documents/${id}/content?format=${format}`);
     },
 
-    getFileUrl: (id: string): string => `${this.baseUrl}/api/documents/${id}/file`,
+    getFileUrl: (id: string, inline: boolean = false): string =>
+      `${this.baseUrl}/api/documents/${id}/file${inline ? '?inline=true' : ''}`,
 
     reprocess: async (id: string): Promise<void> => {
       await this.request<void>(`/api/documents/${id}/process`, { method: 'POST' });
