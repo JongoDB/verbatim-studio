@@ -145,7 +145,7 @@ async def upload_document(
     file_path = f"documents/{doc_id}/{safe_filename}"
 
     # Save to storage
-    storage_service.save_file(file_path, content)
+    await storage_service.save_file(file_path, content)
 
     # Create document record
     doc = Document(
