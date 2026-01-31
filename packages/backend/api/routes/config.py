@@ -7,6 +7,13 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from core.config import settings
+from core.oauth_credentials import (
+    OAUTH_PROVIDERS,
+    PROVIDER_INFO,
+    delete_oauth_credentials,
+    get_oauth_credentials,
+    save_oauth_credentials,
+)
 from core.transcription_settings import (
     PRESETS,
     VALID_BATCH_SIZES,
@@ -260,3 +267,78 @@ async def update_transcription_config(
     await save_transcription_settings(updates)
     effective = await get_transcription_settings()
     return _build_response(effective)
+
+
+# --- OAuth Credentials ---
+
+
+class OAuthProviderInfo(BaseModel):
+    """OAuth provider credential info."""
+
+    client_id: str
+    has_secret: bool
+    configured: bool
+    name: str
+    setup_url: str
+    docs_url: str
+
+
+class OAuthCredentialsResponse(BaseModel):
+    """OAuth credentials for all providers."""
+
+    gdrive: OAuthProviderInfo | None = None
+    onedrive: OAuthProviderInfo | None = None
+    dropbox: OAuthProviderInfo | None = None
+
+
+class OAuthCredentialsUpdate(BaseModel):
+    """Update OAuth credentials for a provider."""
+
+    client_id: str
+    client_secret: str
+
+
+@router.get("/oauth-credentials", response_model=OAuthCredentialsResponse)
+async def get_oauth_credentials_endpoint() -> OAuthCredentialsResponse:
+    """Get OAuth credentials status for all providers.
+
+    Returns client_id and whether secret is configured (never exposes actual secret).
+    """
+    creds = await get_oauth_credentials()
+    return OAuthCredentialsResponse(**creds)
+
+
+@router.get("/oauth-credentials/{provider}", response_model=OAuthProviderInfo)
+async def get_oauth_credentials_for_provider(provider: str) -> OAuthProviderInfo:
+    """Get OAuth credentials status for a specific provider."""
+    if provider not in OAUTH_PROVIDERS:
+        raise HTTPException(400, f"Invalid provider: {provider}. Must be one of: {OAUTH_PROVIDERS}")
+
+    creds = await get_oauth_credentials(provider)
+    return OAuthProviderInfo(**creds)
+
+
+@router.put("/oauth-credentials/{provider}", response_model=OAuthProviderInfo)
+async def update_oauth_credentials_endpoint(
+    provider: str,
+    body: OAuthCredentialsUpdate,
+) -> OAuthProviderInfo:
+    """Set OAuth credentials for a provider."""
+    if provider not in OAUTH_PROVIDERS:
+        raise HTTPException(400, f"Invalid provider: {provider}. Must be one of: {OAUTH_PROVIDERS}")
+
+    if not body.client_id or not body.client_secret:
+        raise HTTPException(400, "Both client_id and client_secret are required")
+
+    result = await save_oauth_credentials(provider, body.client_id, body.client_secret)
+    return OAuthProviderInfo(**result)
+
+
+@router.delete("/oauth-credentials/{provider}")
+async def delete_oauth_credentials_endpoint(provider: str) -> dict[str, bool]:
+    """Delete OAuth credentials for a provider."""
+    if provider not in OAUTH_PROVIDERS:
+        raise HTTPException(400, f"Invalid provider: {provider}. Must be one of: {OAUTH_PROVIDERS}")
+
+    deleted = await delete_oauth_credentials(provider)
+    return {"deleted": deleted}
