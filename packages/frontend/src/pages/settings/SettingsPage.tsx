@@ -1,5 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { api, type ArchiveInfo, type TranscriptionSettings, type AIModel, type AIModelDownloadEvent, type SystemInfo, type StorageLocation, type MigrationStatus } from '@/lib/api';
+import { api, type ArchiveInfo, type TranscriptionSettings, type AIModel, type AIModelDownloadEvent, type SystemInfo, type StorageLocation, type MigrationStatus, type StorageType, type StorageSubtype, type StorageLocationConfig } from '@/lib/api';
+import { StorageTypeSelector } from '@/components/storage/StorageTypeSelector';
+import { StorageSubtypeSelector } from '@/components/storage/StorageSubtypeSelector';
+import { StorageConfigForm } from '@/components/storage/StorageConfigForm';
 import { TIMEZONE_OPTIONS, getStoredTimezone, setStoredTimezone, type TimezoneValue } from '@/lib/utils';
 
 interface SettingsPageProps {
@@ -105,10 +108,14 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
   const [storageLocations, setStorageLocations] = useState<StorageLocation[]>([]);
   const [showAddLocation, setShowAddLocation] = useState(false);
   const [newLocationName, setNewLocationName] = useState('');
-  const [newLocationPath, setNewLocationPath] = useState('');
+  const [newLocationType, setNewLocationType] = useState<StorageType>('local');
+  const [newLocationSubtype, setNewLocationSubtype] = useState<StorageSubtype>(null);
+  const [newLocationConfig, setNewLocationConfig] = useState<StorageLocationConfig>({});
   const [storageSaving, setStorageSaving] = useState(false);
   const [storageError, setStorageError] = useState<string | null>(null);
   const [editingLocation, setEditingLocation] = useState<StorageLocation | null>(null);
+  const [testingConnection, setTestingConnection] = useState(false);
+  const [connectionTestResult, setConnectionTestResult] = useState<{ success: boolean; message: string } | null>(null);
 
   // Migration state
   const [showMigrationDialog, setShowMigrationDialog] = useState(false);
@@ -288,19 +295,50 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
   }, [refreshAiModels]);
 
   // Storage location handlers
+  const resetAddLocationForm = useCallback(() => {
+    setNewLocationName('');
+    setNewLocationType('local');
+    setNewLocationSubtype(null);
+    setNewLocationConfig({});
+    setConnectionTestResult(null);
+    setStorageError(null);
+  }, []);
+
+  const handleTestConnection = useCallback(async () => {
+    setTestingConnection(true);
+    setConnectionTestResult(null);
+    try {
+      const result = await api.storageLocations.test({
+        type: newLocationType,
+        subtype: newLocationSubtype,
+        config: newLocationConfig,
+      });
+      setConnectionTestResult({ success: result.success, message: result.error || (result.success ? 'Connection successful' : 'Connection failed') });
+    } catch (err) {
+      setConnectionTestResult({ success: false, message: err instanceof Error ? err.message : 'Test failed' });
+    } finally {
+      setTestingConnection(false);
+    }
+  }, [newLocationType, newLocationSubtype, newLocationConfig]);
+
   const handleAddStorageLocation = useCallback(async () => {
-    if (!newLocationName.trim() || !newLocationPath.trim()) return;
+    if (!newLocationName.trim()) return;
+    // Validate config based on type
+    if (newLocationType === 'local' && !newLocationConfig.path?.trim()) return;
+    if (newLocationType === 'network' && !newLocationSubtype) return;
+    if (newLocationType === 'cloud' && !newLocationSubtype) return;
+
     setStorageSaving(true);
     setStorageError(null);
     try {
       await api.storageLocations.create({
         name: newLocationName.trim(),
-        type: 'local',
-        config: { path: newLocationPath.trim() },
+        type: newLocationType,
+        subtype: newLocationSubtype,
+        config: newLocationConfig,
         is_default: storageLocations.length === 0,
       });
-      setNewLocationName('');
-      setNewLocationPath('');
+      resetAddLocationForm();
       setShowAddLocation(false);
       loadStorageLocations();
     } catch (err) {
@@ -308,7 +346,7 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
     } finally {
       setStorageSaving(false);
     }
-  }, [newLocationName, newLocationPath, storageLocations.length, loadStorageLocations]);
+  }, [newLocationName, newLocationType, newLocationSubtype, newLocationConfig, storageLocations.length, loadStorageLocations, resetAddLocationForm]);
 
   const handleUpdateStorageLocation = useCallback(async () => {
     if (!editingLocation) return;
@@ -1142,39 +1180,89 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
 
           {/* Add new location form */}
           {showAddLocation && (
-            <div className="p-4 rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-900/10 space-y-3">
+            <div className="p-4 rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-900/10 space-y-4">
               <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">Add New Storage Location</h3>
+
+              {/* Name input */}
               <div>
-                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Name</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Name</label>
                 <input
                   type="text"
                   value={newLocationName}
                   onChange={(e) => setNewLocationName(e.target.value)}
-                  placeholder="e.g., External Drive"
+                  placeholder="e.g., My Cloud Storage"
                   className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 py-2 px-3 text-sm text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 />
               </div>
+
+              {/* Storage type selector */}
               <div>
-                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Path</label>
-                <input
-                  type="text"
-                  value={newLocationPath}
-                  onChange={(e) => setNewLocationPath(e.target.value)}
-                  placeholder="e.g., /Volumes/External/VerbatimMedia"
-                  className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 py-2 px-3 text-sm font-mono text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Storage Type</label>
+                <StorageTypeSelector
+                  value={newLocationType}
+                  onChange={(type) => {
+                    setNewLocationType(type);
+                    setNewLocationSubtype(null);
+                    setNewLocationConfig({});
+                    setConnectionTestResult(null);
+                  }}
                 />
-                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Enter the full path to a folder. It will be created if it doesn't exist.</p>
               </div>
-              <div className="flex gap-2 justify-end">
+
+              {/* Subtype selector (for network/cloud) */}
+              {newLocationType !== 'local' && (
+                <StorageSubtypeSelector
+                  storageType={newLocationType}
+                  value={newLocationSubtype}
+                  onChange={(subtype) => {
+                    setNewLocationSubtype(subtype);
+                    setNewLocationConfig({});
+                    setConnectionTestResult(null);
+                  }}
+                />
+              )}
+
+              {/* Configuration form */}
+              {(newLocationType === 'local' || newLocationSubtype) && (
+                <StorageConfigForm
+                  storageType={newLocationType}
+                  subtype={newLocationSubtype}
+                  config={newLocationConfig}
+                  onChange={setNewLocationConfig}
+                />
+              )}
+
+              {/* Connection test result */}
+              {connectionTestResult && (
+                <div className={`p-3 rounded-lg text-sm ${
+                  connectionTestResult.success
+                    ? 'bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-green-600 dark:text-green-400'
+                    : 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400'
+                }`}>
+                  {connectionTestResult.success ? '✓ ' : '✗ '}{connectionTestResult.message}
+                </div>
+              )}
+
+              {/* Actions */}
+              <div className="flex gap-2 justify-end pt-2">
                 <button
-                  onClick={() => { setShowAddLocation(false); setNewLocationName(''); setNewLocationPath(''); }}
+                  onClick={() => { setShowAddLocation(false); resetAddLocationForm(); }}
                   className="px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
                 >
                   Cancel
                 </button>
+                {(newLocationType !== 'local' && newLocationSubtype) && (
+                  <button
+                    onClick={handleTestConnection}
+                    disabled={testingConnection}
+                    className="px-3 py-1.5 text-sm font-medium rounded-lg border border-blue-500 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 disabled:opacity-50"
+                  >
+                    {testingConnection ? 'Testing...' : 'Test Connection'}
+                  </button>
+                )}
                 <button
                   onClick={handleAddStorageLocation}
-                  disabled={storageSaving || !newLocationName.trim() || !newLocationPath.trim()}
+                  disabled={storageSaving || !newLocationName.trim() || (newLocationType === 'local' && !newLocationConfig.path?.trim()) || (newLocationType !== 'local' && !newLocationSubtype)}
                   className="px-3 py-1.5 text-sm font-medium rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
                 >
                   {storageSaving ? 'Adding...' : 'Add Location'}
