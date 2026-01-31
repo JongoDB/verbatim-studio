@@ -7,6 +7,7 @@ import { ProjectAnalyticsPage } from '@/pages/projects/ProjectAnalyticsPage';
 import { TranscriptPage } from '@/pages/transcript/TranscriptPage';
 import { SearchPage } from '@/pages/search/SearchPage';
 import { DocumentsPage } from '@/pages/documents/DocumentsPage';
+import { DocumentViewerPage } from '@/pages/documents/DocumentViewerPage';
 import { LiveTranscriptionPage } from '@/pages/live/LiveTranscriptionPage';
 import { SearchBox } from '@/components/search/SearchBox';
 import { Dashboard } from '@/components/dashboard/Dashboard';
@@ -430,6 +431,12 @@ export function App() {
             )}
             {navigation.type === 'documents' && (
               <DocumentsPage onViewDocument={handleViewDocument} />
+            )}
+            {navigation.type === 'document-viewer' && (
+              <DocumentViewerPage
+                documentId={navigation.documentId}
+                onBack={handleNavigateToDocuments}
+              />
             )}
             {navigation.type === 'transcript' && (
               <TranscriptPage
