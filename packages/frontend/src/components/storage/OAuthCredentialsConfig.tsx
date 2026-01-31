@@ -22,10 +22,17 @@ const SETUP_GUIDE = `## Google Drive
 
 ## Microsoft OneDrive
 
-1. [Create App Registration](https://portal.azure.com/#blade/Microsoft_AAD_RegisteredApps/ApplicationsListBlade) → New registration
-2. Authentication → Add all 4 redirect URIs (Web)
-3. Certificates & secrets → New client secret → Copy **Value**
-4. Overview → Copy **Application (client) ID**
+1. [Create App Registration](https://portal.azure.com/#blade/Microsoft_AAD_RegisteredApps/ApplicationsListBlade) → New registration → Name it, select "Personal + Work accounts"
+2. [Authentication](https://portal.azure.com/#blade/Microsoft_AAD_RegisteredApps/ApplicationsListBlade) → Your app → Authentication → Add platform → Web → Add all 4 redirect URIs
+3. [Certificates & secrets](https://portal.azure.com/#blade/Microsoft_AAD_RegisteredApps/ApplicationsListBlade) → Your app → Certificates & secrets → New client secret → Copy **Value** immediately
+4. [API permissions](https://portal.azure.com/#blade/Microsoft_AAD_RegisteredApps/ApplicationsListBlade) → Your app → API permissions → Add \`Files.ReadWrite\` (Microsoft Graph)
+5. Overview → Copy **Application (client) ID**
+
+**Troubleshooting**
+
+- \`AADSTS50011\` → Redirect URI mismatch, add all 4 URIs exactly as shown
+- \`AADSTS7000215\` → Invalid client secret, create a new one and copy the **Value** (not ID)
+- \`AADSTS65001\` → Missing permissions, add \`Files.ReadWrite\` scope
 
 ---
 
@@ -183,8 +190,7 @@ export function OAuthCredentialsConfig({ onUpdate }: OAuthCredentialsConfigProps
           <span className="text-xs font-normal text-blue-600 dark:text-blue-400 group-hover:underline">(click to view)</span>
         </p>
         <p className="text-blue-700 dark:text-blue-300">
-          Configure OAuth app credentials to enable cloud storage.
-          <strong className="block mt-1">Important:</strong> For Google Drive, you must enable the Drive API in Google Cloud Console.
+          Step-by-step instructions for Google Drive, OneDrive, and Dropbox.
         </p>
       </button>
 
