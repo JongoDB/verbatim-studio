@@ -35,6 +35,10 @@ def migrate(db_path: Path) -> None:
         else:
             logger.debug("subtype column already exists")
 
+        # Refresh column list before checking for status
+        cursor.execute("PRAGMA table_info(storage_locations)")
+        columns = [col[1] for col in cursor.fetchall()]
+
         # Add status column for health tracking
         if "status" not in columns:
             cursor.execute(
