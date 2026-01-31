@@ -104,8 +104,8 @@ async def migrate(db_path: str | None = None):
             default_id = str(uuid.uuid4())
             config_json = json.dumps({"path": str(settings.MEDIA_DIR)})
             await conn.execute(text("""
-                INSERT INTO storage_locations (id, name, type, config, is_default, is_active)
-                VALUES (:id, 'Local Storage', 'local', :config, 1, 1)
+                INSERT INTO storage_locations (id, name, type, config, is_default, is_active, status, subtype, created_at, updated_at)
+                VALUES (:id, 'Local Storage', 'local', :config, 1, 1, 'healthy', NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
             """), {"id": default_id, "config": config_json})
             logger.info("Created default local storage location")
 
