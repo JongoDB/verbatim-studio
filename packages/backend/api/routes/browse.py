@@ -251,17 +251,33 @@ async def move_item(
     db: Annotated[AsyncSession, Depends(get_db)],
     request: MoveRequest,
 ) -> MessageResponse:
-    """Move an item to a different folder."""
-    # Validate target folder exists
+    """Move an item to a different folder (updates DB and moves file on disk)."""
+    from pathlib import Path
+
+    # Validate target folder exists and get its name
+    target_project_name = None
     if request.target_project_id:
         target = await db.get(Project, request.target_project_id)
         if not target:
             raise HTTPException(status_code=404, detail="Target folder not found")
+        target_project_name = target.name
 
     if request.item_type == "recording":
         item = await db.get(Recording, request.item_id)
         if not item:
             raise HTTPException(status_code=404, detail="Recording not found")
+
+        # Move file on disk
+        if item.file_path:
+            try:
+                old_path = Path(item.file_path)
+                if old_path.exists():
+                    new_path = await storage_service.move_to_project(old_path, target_project_name)
+                    item.file_path = str(new_path)
+                    item.file_name = new_path.name
+            except Exception as e:
+                logger.warning(f"Failed to move file on disk: {e}")
+
         item.project_id = request.target_project_id
         await db.commit()
         await db.refresh(item)
@@ -271,6 +287,18 @@ async def move_item(
         item = await db.get(Document, request.item_id)
         if not item:
             raise HTTPException(status_code=404, detail="Document not found")
+
+        # Move file on disk
+        if item.file_path:
+            try:
+                old_path = Path(item.file_path)
+                if old_path.exists():
+                    new_path = await storage_service.move_to_project(old_path, target_project_name)
+                    item.file_path = str(new_path)
+                    item.filename = new_path.name
+            except Exception as e:
+                logger.warning(f"Failed to move file on disk: {e}")
+
         item.project_id = request.target_project_id
         await db.commit()
         await db.refresh(item)
@@ -306,6 +334,9 @@ async def _copy_recording(
     target_project_id: str | None,
 ) -> MessageResponse:
     """Copy a recording with its transcript and notes."""
+    from pathlib import Path
+    import aiofiles
+
     # Load recording with relationships
     result = await db.execute(
         select(Recording)
@@ -320,15 +351,34 @@ async def _copy_recording(
         raise HTTPException(status_code=404, detail="Recording not found")
 
     new_id = generate_uuid()
+    new_title = f"{original.title} (Copy)"
 
-    # Copy file
+    # Get target project name for path
+    target_project_name = None
+    if target_project_id:
+        target = await db.get(Project, target_project_id)
+        if target:
+            target_project_name = target.name
+
+    # Copy file to new human-readable path
+    new_file_path = None
+    new_file_name = original.file_name
     try:
-        source_path = storage_service.get_full_path(original.file_path)
-        new_file_path = f"recordings/{new_id}/{original.file_name}"
-        await storage_service.copy_file(source_path, new_file_path)
-    except FileNotFoundError:
-        logger.warning(f"Source file not found: {original.file_path}")
-        new_file_path = original.file_path  # Keep original path if file missing
+        source_path = Path(original.file_path)
+        if source_path.exists():
+            async with aiofiles.open(source_path, "rb") as f:
+                content = await f.read()
+            new_path = await storage_service.save_upload(
+                content=content,
+                title=new_title,
+                filename=original.file_name,
+                project_name=target_project_name,
+            )
+            new_file_path = str(new_path)
+            new_file_name = new_path.name
+        else:
+            logger.warning(f"Source file not found: {original.file_path}")
+            new_file_path = original.file_path
     except Exception as e:
         logger.error(f"Failed to copy file: {e}")
         raise HTTPException(status_code=500, detail="Failed to copy file")
@@ -336,9 +386,9 @@ async def _copy_recording(
     # Create recording copy
     new_recording = Recording(
         id=new_id,
-        title=f"{original.title} (Copy)",
+        title=new_title,
         file_path=new_file_path,
-        file_name=original.file_name,
+        file_name=new_file_name,
         file_size=original.file_size,
         duration_seconds=original.duration_seconds,
         mime_type=original.mime_type,
@@ -400,6 +450,9 @@ async def _copy_document(
     target_project_id: str | None,
 ) -> MessageResponse:
     """Copy a document with its notes."""
+    from pathlib import Path
+    import aiofiles
+
     result = await db.execute(
         select(Document)
         .options(selectinload(Document.notes))
@@ -410,15 +463,34 @@ async def _copy_document(
         raise HTTPException(status_code=404, detail="Document not found")
 
     new_id = generate_uuid()
+    new_title = f"{original.title} (Copy)"
 
-    # Copy file
+    # Get target project name for path
+    target_project_name = None
+    if target_project_id:
+        target = await db.get(Project, target_project_id)
+        if target:
+            target_project_name = target.name
+
+    # Copy file to new human-readable path
+    new_file_path = None
+    new_filename = original.filename
     try:
-        source_path = storage_service.get_full_path(original.file_path)
-        new_file_path = f"documents/{new_id}/{original.filename}"
-        await storage_service.copy_file(source_path, new_file_path)
-    except FileNotFoundError:
-        logger.warning(f"Source file not found: {original.file_path}")
-        new_file_path = original.file_path
+        source_path = Path(original.file_path)
+        if source_path.exists():
+            async with aiofiles.open(source_path, "rb") as f:
+                content = await f.read()
+            new_path = await storage_service.save_upload(
+                content=content,
+                title=new_title,
+                filename=original.filename,
+                project_name=target_project_name,
+            )
+            new_file_path = str(new_path)
+            new_filename = new_path.name
+        else:
+            logger.warning(f"Source file not found: {original.file_path}")
+            new_file_path = original.file_path
     except Exception as e:
         logger.error(f"Failed to copy file: {e}")
         raise HTTPException(status_code=500, detail="Failed to copy file")
@@ -426,8 +498,8 @@ async def _copy_document(
     # Create document copy
     new_document = Document(
         id=new_id,
-        title=f"{original.title} (Copy)",
-        filename=original.filename,
+        title=new_title,
+        filename=new_filename,
         file_path=new_file_path,
         mime_type=original.mime_type,
         file_size_bytes=original.file_size_bytes,
@@ -463,15 +535,48 @@ async def rename_item(
     db: Annotated[AsyncSession, Depends(get_db)],
     request: RenameRequest,
 ) -> MessageResponse:
-    """Rename an item."""
+    """Rename an item (updates DB and renames file/folder on disk)."""
+    from pathlib import Path
+
     if not request.new_name.strip():
         raise HTTPException(status_code=400, detail="Name cannot be empty")
+
+    new_name = request.new_name.strip()
 
     if request.item_type == "folder":
         item = await db.get(Project, request.item_id)
         if not item:
             raise HTTPException(status_code=404, detail="Folder not found")
-        item.name = request.new_name.strip()
+
+        old_name = item.name
+
+        # Rename folder on disk and update all file paths
+        try:
+            new_folder = await storage_service.rename_project_folder(old_name, new_name)
+
+            # Update file paths for all items in this project
+            recordings = await db.execute(
+                select(Recording).where(Recording.project_id == request.item_id)
+            )
+            for rec in recordings.scalars():
+                if rec.file_path:
+                    old_path = Path(rec.file_path)
+                    new_path = new_folder / old_path.name
+                    rec.file_path = str(new_path)
+
+            documents = await db.execute(
+                select(Document).where(Document.project_id == request.item_id)
+            )
+            for doc in documents.scalars():
+                if doc.file_path:
+                    old_path = Path(doc.file_path)
+                    new_path = new_folder / old_path.name
+                    doc.file_path = str(new_path)
+
+        except Exception as e:
+            logger.warning(f"Failed to rename folder on disk: {e}")
+
+        item.name = new_name
         await db.commit()
         await db.refresh(item)
         return MessageResponse(message="Renamed successfully", item=_project_to_item(item))
@@ -480,7 +585,19 @@ async def rename_item(
         item = await db.get(Recording, request.item_id)
         if not item:
             raise HTTPException(status_code=404, detail="Recording not found")
-        item.title = request.new_name.strip()
+
+        # Rename file on disk
+        if item.file_path:
+            try:
+                old_path = Path(item.file_path)
+                if old_path.exists():
+                    new_path = await storage_service.rename_item(old_path, new_name)
+                    item.file_path = str(new_path)
+                    item.file_name = new_path.name
+            except Exception as e:
+                logger.warning(f"Failed to rename file on disk: {e}")
+
+        item.title = new_name
         await db.commit()
         await db.refresh(item)
         return MessageResponse(message="Renamed successfully", item=_recording_to_item(item))
@@ -489,7 +606,19 @@ async def rename_item(
         item = await db.get(Document, request.item_id)
         if not item:
             raise HTTPException(status_code=404, detail="Document not found")
-        item.title = request.new_name.strip()
+
+        # Rename file on disk
+        if item.file_path:
+            try:
+                old_path = Path(item.file_path)
+                if old_path.exists():
+                    new_path = await storage_service.rename_item(old_path, new_name)
+                    item.file_path = str(new_path)
+                    item.filename = new_path.name
+            except Exception as e:
+                logger.warning(f"Failed to rename file on disk: {e}")
+
+        item.title = new_name
         await db.commit()
         await db.refresh(item)
         return MessageResponse(message="Renamed successfully", item=_document_to_item(item))
@@ -505,34 +634,64 @@ async def delete_item(
     item_id: str,
     recursive: Annotated[bool, Query(description="Delete folder contents")] = False,
 ) -> MessageResponse:
-    """Delete an item."""
+    """Delete an item (removes from DB and deletes file from disk)."""
+    from pathlib import Path
+
     if item_type == "folder":
         project = await db.get(Project, item_id)
         if not project:
             raise HTTPException(status_code=404, detail="Folder not found")
 
-        # Check if folder has contents
-        rec_count = await db.scalar(
-            select(func.count(Recording.id)).where(Recording.project_id == item_id)
-        )
-        doc_count = await db.scalar(
-            select(func.count(Document.id)).where(Document.project_id == item_id)
-        )
+        project_name = project.name
 
-        if (rec_count or 0) + (doc_count or 0) > 0 and not recursive:
+        # Check if folder has contents
+        rec_result = await db.execute(
+            select(Recording).where(Recording.project_id == item_id)
+        )
+        recordings = list(rec_result.scalars())
+
+        doc_result = await db.execute(
+            select(Document).where(Document.project_id == item_id)
+        )
+        documents = list(doc_result.scalars())
+
+        if (len(recordings) + len(documents)) > 0 and not recursive:
             raise HTTPException(
                 status_code=400,
                 detail="Folder is not empty. Use recursive=true to delete contents."
             )
 
-        # If recursive, move contents to root instead of deleting them
+        # If recursive, move contents to root (both DB and disk)
         if recursive:
-            await db.execute(
-                update(Recording).where(Recording.project_id == item_id).values(project_id=None)
-            )
-            await db.execute(
-                update(Document).where(Document.project_id == item_id).values(project_id=None)
-            )
+            for rec in recordings:
+                if rec.file_path:
+                    try:
+                        old_path = Path(rec.file_path)
+                        if old_path.exists():
+                            new_path = await storage_service.move_to_project(old_path, None)
+                            rec.file_path = str(new_path)
+                            rec.file_name = new_path.name
+                    except Exception as e:
+                        logger.warning(f"Failed to move recording file to root: {e}")
+                rec.project_id = None
+
+            for doc in documents:
+                if doc.file_path:
+                    try:
+                        old_path = Path(doc.file_path)
+                        if old_path.exists():
+                            new_path = await storage_service.move_to_project(old_path, None)
+                            doc.file_path = str(new_path)
+                            doc.filename = new_path.name
+                    except Exception as e:
+                        logger.warning(f"Failed to move document file to root: {e}")
+                doc.project_id = None
+
+        # Delete project folder from disk if empty
+        try:
+            await storage_service.delete_project_folder_if_empty(project_name)
+        except Exception as e:
+            logger.warning(f"Failed to delete project folder: {e}")
 
         await db.delete(project)
         await db.commit()
@@ -543,12 +702,12 @@ async def delete_item(
         if not recording:
             raise HTTPException(status_code=404, detail="Recording not found")
 
-        # Delete file
-        try:
-            file_path = storage_service.get_full_path(recording.file_path)
-            await storage_service.delete_file(file_path)
-        except Exception as e:
-            logger.warning(f"Failed to delete file: {e}")
+        # Delete file from disk (file_path is already the full path)
+        if recording.file_path:
+            try:
+                await storage_service.delete_file(recording.file_path)
+            except Exception as e:
+                logger.warning(f"Failed to delete file: {e}")
 
         await db.delete(recording)
         await db.commit()
@@ -559,12 +718,12 @@ async def delete_item(
         if not document:
             raise HTTPException(status_code=404, detail="Document not found")
 
-        # Delete file
-        try:
-            file_path = storage_service.get_full_path(document.file_path)
-            await storage_service.delete_file(file_path)
-        except Exception as e:
-            logger.warning(f"Failed to delete file: {e}")
+        # Delete file from disk (file_path is already the full path)
+        if document.file_path:
+            try:
+                await storage_service.delete_file(document.file_path)
+            except Exception as e:
+                logger.warning(f"Failed to delete file: {e}")
 
         await db.delete(document)
         await db.commit()
