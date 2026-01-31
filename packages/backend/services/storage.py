@@ -201,6 +201,34 @@ class StorageService:
 
         return full_path
 
+    async def copy_file(self, source_path: Path | str, dest_relative_path: str) -> Path:
+        """Copy a file to a new location.
+
+        Args:
+            source_path: Full path to source file
+            dest_relative_path: Relative destination path like "recordings/{id}/{filename}"
+
+        Returns:
+            Full path where the file was copied.
+        """
+        source = Path(source_path)
+        if not source.exists():
+            raise FileNotFoundError(f"Source file not found: {source}")
+
+        # Get destination full path using existing method
+        dest_path = self.get_full_path(dest_relative_path)
+
+        # Ensure directory exists
+        await aiofiles.os.makedirs(dest_path.parent, exist_ok=True)
+
+        # Copy file content
+        async with aiofiles.open(source, "rb") as src:
+            content = await src.read()
+        async with aiofiles.open(dest_path, "wb") as dst:
+            await dst.write(content)
+
+        return dest_path
+
 
 # Default storage service instance
 storage_service = StorageService()
