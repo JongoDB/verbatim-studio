@@ -19,7 +19,7 @@ os.environ["VERBATIM_DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
 from api.main import app
 from persistence.database import get_db
 # Import all models to ensure their tables are created
-from persistence.models import Base, Project, Recording, Transcript, Segment, Speaker, Job, Setting
+from persistence.models import Base, Project, Recording, Transcript, Segment, Speaker, Job, Setting, StorageLocation
 
 
 # Create test database engine

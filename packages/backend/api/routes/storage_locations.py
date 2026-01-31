@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import shutil
+import time
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, status
@@ -12,6 +13,9 @@ from sqlalchemy.exc import IntegrityError
 
 from persistence.database import async_session
 from persistence.models import StorageLocation
+from services.encryption import encrypt_config, SENSITIVE_FIELDS
+from storage import StorageError, StorageAuthError, StorageUnavailableError
+from storage.factory import get_adapter
 
 logger = logging.getLogger(__name__)
 
@@ -24,8 +28,49 @@ _migration_progress: dict[str, dict] = {}
 class StorageLocationConfig(BaseModel):
     """Storage location configuration (varies by type)."""
 
-    path: str | None = None  # For local storage
-    # Future: bucket, region, credentials for cloud storage
+    # Local storage
+    path: str | None = None
+
+    # Network storage (SMB/NFS)
+    server: str | None = None
+    share: str | None = None
+    username: str | None = None
+    password: str | None = None
+    domain: str | None = None
+    mount_path: str | None = None
+
+    # Cloud storage (S3/Azure/GCS)
+    bucket: str | None = None
+    region: str | None = None
+    prefix: str | None = None
+    access_key: str | None = None
+    secret_key: str | None = None
+    endpoint_url: str | None = None
+
+    # Azure-specific
+    account_name: str | None = None
+    account_key: str | None = None
+    container: str | None = None
+    connection_string: str | None = None
+
+    # Google Cloud-specific
+    project_id: str | None = None
+    credentials_json: str | None = None
+
+
+def mask_sensitive_config(config: dict) -> dict:
+    """Mask sensitive fields in config for API responses."""
+    if not config:
+        return config
+
+    result = {}
+    for key, value in config.items():
+        if key in SENSITIVE_FIELDS and value is not None:
+            # Show that a value exists without revealing it
+            result[key] = "********"
+        else:
+            result[key] = value
+    return result
 
 
 class StorageLocationResponse(BaseModel):
@@ -34,6 +79,8 @@ class StorageLocationResponse(BaseModel):
     id: str
     name: str
     type: str
+    subtype: str | None = None
+    status: str | None = None
     config: StorageLocationConfig
     is_default: bool
     is_active: bool
@@ -42,11 +89,15 @@ class StorageLocationResponse(BaseModel):
 
     @classmethod
     def from_model(cls, loc: StorageLocation) -> "StorageLocationResponse":
+        # Mask sensitive fields in the config
+        masked_config = mask_sensitive_config(loc.config or {})
         return cls(
             id=loc.id,
             name=loc.name,
             type=loc.type,
-            config=StorageLocationConfig(**(loc.config or {})),
+            subtype=getattr(loc, 'subtype', None),
+            status=getattr(loc, 'status', None),
+            config=StorageLocationConfig(**masked_config),
             is_default=loc.is_default,
             is_active=loc.is_active,
             created_at=loc.created_at.isoformat() if loc.created_at else "",
@@ -66,8 +117,25 @@ class StorageLocationCreate(BaseModel):
 
     name: str
     type: str = "local"
+    subtype: str | None = None
     config: StorageLocationConfig
     is_default: bool = False
+
+
+class TestConnectionRequest(BaseModel):
+    """Request to test a storage connection."""
+
+    type: str
+    subtype: str | None = None
+    config: StorageLocationConfig
+
+
+class TestConnectionResponse(BaseModel):
+    """Response from testing a storage connection."""
+
+    success: bool
+    error: str | None = None
+    latency_ms: float | None = None
 
 
 class StorageLocationUpdate(BaseModel):
@@ -77,6 +145,40 @@ class StorageLocationUpdate(BaseModel):
     config: StorageLocationConfig | None = None
     is_default: bool | None = None
     is_active: bool | None = None
+
+
+@router.post("/test", response_model=TestConnectionResponse)
+async def test_connection(body: TestConnectionRequest) -> TestConnectionResponse:
+    """Test a storage connection before saving."""
+
+    class MockLocation:
+        """Mock location object for testing connections."""
+
+        def __init__(self, type_: str, subtype: str | None, config: dict):
+            self.type = type_
+            self.subtype = subtype
+            self.config = config
+
+    config_dict = body.config.model_dump(exclude_none=True)
+    mock_loc = MockLocation(body.type, body.subtype, config_dict)
+
+    try:
+        start = time.monotonic()
+        adapter = get_adapter(mock_loc)
+        await adapter.test_connection()
+        elapsed = (time.monotonic() - start) * 1000
+        return TestConnectionResponse(success=True, latency_ms=elapsed)
+    except StorageAuthError as e:
+        return TestConnectionResponse(success=False, error=f"Authentication failed: {e}")
+    except StorageUnavailableError as e:
+        return TestConnectionResponse(success=False, error=f"Cannot connect: {e}")
+    except StorageError as e:
+        return TestConnectionResponse(success=False, error=str(e))
+    except ValueError as e:
+        return TestConnectionResponse(success=False, error=str(e))
+    except Exception as e:
+        logger.exception("Connection test failed")
+        return TestConnectionResponse(success=False, error=f"Unexpected error: {e}")
 
 
 @router.get("", response_model=StorageLocationListResponse)
@@ -137,10 +239,15 @@ async def create_storage_location(body: StorageLocationCreate) -> StorageLocatio
                 .values(is_default=False)
             )
 
+        # Encrypt sensitive fields in config before storing
+        raw_config = body.config.model_dump(exclude_none=True)
+        encrypted_config = encrypt_config(raw_config)
+
         location = StorageLocation(
             name=body.name,
             type=body.type,
-            config=body.config.model_dump(exclude_none=True),
+            subtype=body.subtype,
+            config=encrypted_config,
             is_default=body.is_default,
             is_active=True,
         )
@@ -184,7 +291,9 @@ async def update_storage_location(
                             status_code=status.HTTP_400_BAD_REQUEST,
                             detail=f"Cannot create directory: {e}",
                         )
-            location.config = body.config.model_dump(exclude_none=True)
+            # Encrypt sensitive fields before storing
+            raw_config = body.config.model_dump(exclude_none=True)
+            location.config = encrypt_config(raw_config)
 
         if body.is_active is not None:
             location.is_active = body.is_active
