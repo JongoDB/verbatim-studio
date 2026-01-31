@@ -75,6 +75,14 @@ class CopyRequest(BaseModel):
     target_project_id: str | None
 
 
+class RenameRequest(BaseModel):
+    """Request to rename an item."""
+
+    item_id: str
+    item_type: Literal["folder", "recording", "document"]
+    new_name: str
+
+
 class MessageResponse(BaseModel):
     """Generic message response."""
 
@@ -448,3 +456,43 @@ async def _copy_document(
     await db.refresh(new_document)
 
     return MessageResponse(message="Copied successfully", item=_document_to_item(new_document))
+
+
+@router.post("/rename", response_model=MessageResponse)
+async def rename_item(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    request: RenameRequest,
+) -> MessageResponse:
+    """Rename an item."""
+    if not request.new_name.strip():
+        raise HTTPException(status_code=400, detail="Name cannot be empty")
+
+    if request.item_type == "folder":
+        item = await db.get(Project, request.item_id)
+        if not item:
+            raise HTTPException(status_code=404, detail="Folder not found")
+        item.name = request.new_name.strip()
+        await db.commit()
+        await db.refresh(item)
+        return MessageResponse(message="Renamed successfully", item=_project_to_item(item))
+
+    elif request.item_type == "recording":
+        item = await db.get(Recording, request.item_id)
+        if not item:
+            raise HTTPException(status_code=404, detail="Recording not found")
+        item.title = request.new_name.strip()
+        await db.commit()
+        await db.refresh(item)
+        return MessageResponse(message="Renamed successfully", item=_recording_to_item(item))
+
+    elif request.item_type == "document":
+        item = await db.get(Document, request.item_id)
+        if not item:
+            raise HTTPException(status_code=404, detail="Document not found")
+        item.title = request.new_name.strip()
+        await db.commit()
+        await db.refresh(item)
+        return MessageResponse(message="Renamed successfully", item=_document_to_item(item))
+
+    else:
+        raise HTTPException(status_code=400, detail="Invalid item type")
