@@ -654,16 +654,19 @@ class StorageService:
         safe_name = self._pm.sanitize_name(project_name)
 
         if storage_type == "cloud":
-            # For cloud: check if folder has any files
+            # For cloud: use adapter's delete_folder method
             try:
-                files = await adapter.list_files(safe_name)
-                if not files:
-                    # Empty folder - in Google Drive, empty folders are auto-managed
-                    logger.info(f"Cloud folder {safe_name} is empty")
-                    return True
-                return False
+                if hasattr(adapter, "delete_folder"):
+                    return await adapter.delete_folder(safe_name, delete_contents=False)
+                else:
+                    # Fallback for adapters without delete_folder
+                    files = await adapter.list_files(safe_name)
+                    if not files:
+                        logger.info(f"Cloud folder {safe_name} is empty")
+                        return True
+                    return False
             except Exception as e:
-                logger.warning(f"Could not check cloud folder {safe_name}: {e}")
+                logger.warning(f"Could not delete cloud folder {safe_name}: {e}")
                 return False
         else:
             storage_root = await get_active_storage_path()
@@ -671,6 +674,100 @@ class StorageService:
                 storage_root = self.media_dir
             folder_path = storage_root / safe_name
             return await self._pm.delete_folder_if_empty(folder_path)
+
+    async def delete_project_folder(
+        self, project_name: str, delete_contents: bool = False
+    ) -> bool:
+        """Delete a project folder.
+
+        Args:
+            project_name: The project name.
+            delete_contents: If True, delete folder and all contents.
+                           If False, only delete if empty.
+
+        Returns:
+            True if folder was deleted, False otherwise.
+        """
+        adapter, storage_type, _ = await self._get_adapter_info()
+        safe_name = self._pm.sanitize_name(project_name)
+
+        if storage_type == "cloud":
+            try:
+                if hasattr(adapter, "delete_folder"):
+                    return await adapter.delete_folder(safe_name, delete_contents=delete_contents)
+                else:
+                    logger.warning(f"Adapter does not support delete_folder")
+                    return False
+            except Exception as e:
+                logger.warning(f"Could not delete cloud folder {safe_name}: {e}")
+                return False
+        else:
+            storage_root = await get_active_storage_path()
+            if storage_root is None:
+                storage_root = self.media_dir
+            folder_path = storage_root / safe_name
+
+            if delete_contents:
+                # Delete folder and all contents
+                import shutil
+                try:
+                    if folder_path.exists():
+                        shutil.rmtree(folder_path)
+                        logger.info(f"Deleted folder with contents: {folder_path}")
+                        return True
+                    return True
+                except Exception as e:
+                    logger.warning(f"Could not delete folder {folder_path}: {e}")
+                    return False
+            else:
+                return await self._pm.delete_folder_if_empty(folder_path)
+
+    async def move_project_files_to_root(self, project_name: str) -> int:
+        """Move all files from a project folder to the storage root.
+
+        Args:
+            project_name: The project name.
+
+        Returns:
+            Number of files moved.
+        """
+        adapter, storage_type, _ = await self._get_adapter_info()
+        safe_name = self._pm.sanitize_name(project_name)
+
+        if storage_type == "cloud":
+            try:
+                if hasattr(adapter, "move_files_to_parent"):
+                    return await adapter.move_files_to_parent(safe_name)
+                else:
+                    logger.warning(f"Adapter does not support move_files_to_parent")
+                    return 0
+            except Exception as e:
+                logger.warning(f"Could not move files from cloud folder {safe_name}: {e}")
+                return 0
+        else:
+            storage_root = await get_active_storage_path()
+            if storage_root is None:
+                storage_root = self.media_dir
+            folder_path = storage_root / safe_name
+
+            moved_count = 0
+            if folder_path.exists():
+                for item in folder_path.iterdir():
+                    if item.is_file():
+                        try:
+                            new_path = storage_root / item.name
+                            # Handle name conflicts
+                            counter = 1
+                            while new_path.exists():
+                                stem = item.stem
+                                suffix = item.suffix
+                                new_path = storage_root / f"{stem}_{counter}{suffix}"
+                                counter += 1
+                            item.rename(new_path)
+                            moved_count += 1
+                        except Exception as e:
+                            logger.warning(f"Could not move file {item}: {e}")
+            return moved_count
 
 
 # Default storage service instance

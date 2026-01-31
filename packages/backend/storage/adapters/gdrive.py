@@ -389,3 +389,101 @@ class GDriveAdapter(StorageAdapter):
                     service.files().create(body=file_metadata, fields="id").execute()
                 )
                 current_id = folder["id"]
+
+    async def delete_folder(self, path: str, delete_contents: bool = False) -> bool:
+        """Delete a folder.
+
+        Args:
+            path: Path to the folder relative to app root.
+            delete_contents: If True, delete folder and all contents.
+                           If False, only delete if empty.
+
+        Returns:
+            True if folder was deleted, False if not empty and delete_contents=False.
+        """
+        try:
+            folder_id = await self._resolve_folder_path(path)
+            service = self._get_service()
+
+            # Check folder contents
+            query = f"'{folder_id}' in parents and trashed = false"
+            results = service.files().list(q=query, fields="files(id)").execute()
+            files = results.get("files", [])
+
+            if files and not delete_contents:
+                logger.info(f"Folder {path} is not empty, skipping delete")
+                return False
+
+            if files and delete_contents:
+                # Delete all contents first
+                for file in files:
+                    try:
+                        service.files().delete(fileId=file["id"]).execute()
+                    except Exception as e:
+                        logger.warning(f"Failed to delete file {file['id']}: {e}")
+
+            # Delete the folder itself
+            service.files().delete(fileId=folder_id).execute()
+            logger.info(f"Deleted folder: {path}")
+            return True
+
+        except StorageNotFoundError:
+            logger.info(f"Folder {path} not found, nothing to delete")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to delete folder {path}: {e}")
+            raise StorageConnectionError(f"Failed to delete folder: {e}")
+
+    async def move_files_to_parent(self, folder_path: str) -> int:
+        """Move all files from a folder to its parent folder.
+
+        Args:
+            folder_path: Path to the folder whose contents should be moved.
+
+        Returns:
+            Number of files moved.
+        """
+        try:
+            folder_id = await self._resolve_folder_path(folder_path)
+            service = self._get_service()
+
+            # Determine parent folder
+            path_parts = [p for p in folder_path.split("/") if p]
+            if len(path_parts) <= 1:
+                # Moving to root
+                parent_id = await self._ensure_root_folder()
+            else:
+                parent_path = "/".join(path_parts[:-1])
+                parent_id = await self._resolve_folder_path(parent_path)
+
+            # List all files in the folder
+            query = f"'{folder_id}' in parents and trashed = false"
+            results = service.files().list(
+                q=query, fields="files(id, name)"
+            ).execute()
+            files = results.get("files", [])
+
+            moved_count = 0
+            for file in files:
+                try:
+                    # Move file by updating its parent
+                    service.files().update(
+                        fileId=file["id"],
+                        addParents=parent_id,
+                        removeParents=folder_id,
+                        fields="id"
+                    ).execute()
+                    moved_count += 1
+                    logger.debug(f"Moved file {file['name']} to parent folder")
+                except Exception as e:
+                    logger.warning(f"Failed to move file {file['id']}: {e}")
+
+            logger.info(f"Moved {moved_count} files from {folder_path} to parent")
+            return moved_count
+
+        except StorageNotFoundError:
+            logger.info(f"Folder {folder_path} not found")
+            return 0
+        except Exception as e:
+            logger.error(f"Failed to move files from {folder_path}: {e}")
+            raise StorageConnectionError(f"Failed to move files: {e}")

@@ -33,6 +33,7 @@ export function ProjectsPage({ onNavigateToProject }: ProjectsPageProps) {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteFilesChoice, setDeleteFilesChoice] = useState<boolean | null>(null);
   const [typeManagerOpen, setTypeManagerOpen] = useState(false);
 
   // Form state
@@ -154,11 +155,12 @@ export function ProjectsPage({ onNavigateToProject }: ProjectsPageProps) {
     }
   };
 
-  const handleDeleteProject = async () => {
+  const handleDeleteProject = async (deleteFiles: boolean) => {
     if (!selectedProject) return;
     try {
-      await api.projects.delete(selectedProject.id);
+      await api.projects.delete(selectedProject.id, { deleteFiles });
       setDeleteDialogOpen(false);
+      setDeleteFilesChoice(null);
       setSelectedProject(null);
       loadData();
     } catch (error) {
@@ -610,6 +612,7 @@ export function ProjectsPage({ onNavigateToProject }: ProjectsPageProps) {
           onClick={(e) => {
             if ((e.target as HTMLElement).classList.contains('bg-black/50')) {
               setDeleteDialogOpen(false);
+              setDeleteFilesChoice(null);
             }
           }}
         >
@@ -618,19 +621,57 @@ export function ProjectsPage({ onNavigateToProject }: ProjectsPageProps) {
               <h2 className="text-lg font-semibold text-foreground">Delete Project</h2>
               <p className="text-sm text-muted-foreground mt-2">
                 Are you sure you want to delete "{selectedProject?.name}"?
-                Recordings in this project will be unassigned.
               </p>
+              {selectedProject && selectedProject.recording_count > 0 && (
+                <div className="mt-4 space-y-3">
+                  <p className="text-sm font-medium text-foreground">
+                    This project contains {selectedProject.recording_count} recording{selectedProject.recording_count !== 1 ? 's' : ''}. What would you like to do?
+                  </p>
+                  <div className="space-y-2">
+                    <label className="flex items-start gap-3 p-3 rounded-lg border border-border hover:bg-muted/50 cursor-pointer transition-colors">
+                      <input
+                        type="radio"
+                        name="deleteChoice"
+                        checked={deleteFilesChoice === false}
+                        onChange={() => setDeleteFilesChoice(false)}
+                        className="mt-0.5"
+                      />
+                      <div>
+                        <p className="text-sm font-medium text-foreground">Keep files</p>
+                        <p className="text-xs text-muted-foreground">Move recordings to storage root and unassign from project</p>
+                      </div>
+                    </label>
+                    <label className="flex items-start gap-3 p-3 rounded-lg border border-destructive/50 hover:bg-destructive/10 cursor-pointer transition-colors">
+                      <input
+                        type="radio"
+                        name="deleteChoice"
+                        checked={deleteFilesChoice === true}
+                        onChange={() => setDeleteFilesChoice(true)}
+                        className="mt-0.5"
+                      />
+                      <div>
+                        <p className="text-sm font-medium text-destructive">Delete all files</p>
+                        <p className="text-xs text-muted-foreground">Permanently delete all recordings and documents in this project</p>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+              )}
             </div>
             <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-border">
               <button
-                onClick={() => setDeleteDialogOpen(false)}
+                onClick={() => {
+                  setDeleteDialogOpen(false);
+                  setDeleteFilesChoice(null);
+                }}
                 className="px-4 py-2 text-sm font-medium rounded-lg border border-border text-foreground hover:bg-muted transition-colors"
               >
                 Cancel
               </button>
               <button
-                onClick={handleDeleteProject}
-                className="px-4 py-2 text-sm font-medium rounded-lg bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors"
+                onClick={() => handleDeleteProject(deleteFilesChoice === true)}
+                disabled={selectedProject && selectedProject.recording_count > 0 && deleteFilesChoice === null}
+                className="px-4 py-2 text-sm font-medium rounded-lg bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Delete
               </button>

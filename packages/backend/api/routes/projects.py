@@ -331,8 +331,15 @@ async def update_project(
 async def delete_project(
     db: Annotated[AsyncSession, Depends(get_db)],
     project_id: str,
+    delete_files: Annotated[bool, Query(description="Delete all files in project folder")] = False,
 ) -> MessageResponse:
-    """Delete a project. Files are moved to storage root, then folder deleted."""
+    """Delete a project.
+
+    Args:
+        project_id: The project ID to delete.
+        delete_files: If True, delete all files in the project folder.
+                     If False (default), move files to storage root.
+    """
     result = await db.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()
 
@@ -341,47 +348,80 @@ async def delete_project(
 
     project_name = project.name
 
-    # Move recordings to root and clear project_id
-    rec_result = await db.execute(
-        select(Recording).where(Recording.project_id == project_id)
-    )
-    for rec in rec_result.scalars():
-        if rec.file_path:
-            try:
-                old_path = Path(rec.file_path)
-                if old_path.exists():
-                    new_path = await storage_service.move_to_project(old_path, None)
+    if delete_files:
+        # Delete all recordings and their files
+        rec_result = await db.execute(
+            select(Recording).where(Recording.project_id == project_id)
+        )
+        for rec in rec_result.scalars():
+            if rec.file_path:
+                try:
+                    await storage_service.delete_file(rec.file_path)
+                except Exception as e:
+                    logger.warning(f"Could not delete file for recording {rec.id}: {e}")
+            await db.delete(rec)
+
+        # Delete all documents and their files
+        doc_result = await db.execute(
+            select(Document).where(Document.project_id == project_id)
+        )
+        for doc in doc_result.scalars():
+            if doc.file_path:
+                try:
+                    await storage_service.delete_file(doc.file_path)
+                except Exception as e:
+                    logger.warning(f"Could not delete file for document {doc.id}: {e}")
+            await db.delete(doc)
+
+        # Delete project
+        await db.delete(project)
+        await db.commit()
+
+        # Delete project folder with any remaining contents
+        try:
+            await storage_service.delete_project_folder(project_name, delete_contents=True)
+        except Exception as e:
+            logger.warning(f"Could not delete folder for project: {e}")
+
+        return MessageResponse(message="Project and all files deleted", id=project_id)
+    else:
+        # Move recordings to root and clear project_id
+        rec_result = await db.execute(
+            select(Recording).where(Recording.project_id == project_id)
+        )
+        for rec in rec_result.scalars():
+            if rec.file_path:
+                try:
+                    new_path = await storage_service.move_to_project(rec.file_path, None)
                     rec.file_path = str(new_path)
-            except Exception as e:
-                logger.warning(f"Could not move file for recording {rec.id}: {e}")
-        rec.project_id = None
+                except Exception as e:
+                    logger.warning(f"Could not move file for recording {rec.id}: {e}")
+            rec.project_id = None
 
-    # Move documents to root and clear project_id
-    doc_result = await db.execute(
-        select(Document).where(Document.project_id == project_id)
-    )
-    for doc in doc_result.scalars():
-        if doc.file_path:
-            try:
-                old_path = Path(doc.file_path)
-                if old_path.exists():
-                    new_path = await storage_service.move_to_project(old_path, None)
+        # Move documents to root and clear project_id
+        doc_result = await db.execute(
+            select(Document).where(Document.project_id == project_id)
+        )
+        for doc in doc_result.scalars():
+            if doc.file_path:
+                try:
+                    new_path = await storage_service.move_to_project(doc.file_path, None)
                     doc.file_path = str(new_path)
-            except Exception as e:
-                logger.warning(f"Could not move file for document {doc.id}: {e}")
-        doc.project_id = None
+                except Exception as e:
+                    logger.warning(f"Could not move file for document {doc.id}: {e}")
+            doc.project_id = None
 
-    # Delete project
-    await db.delete(project)
-    await db.commit()
+        # Delete project
+        await db.delete(project)
+        await db.commit()
 
-    # Delete project folder if empty
-    try:
-        await storage_service.delete_project_folder_if_empty(project_name)
-    except Exception as e:
-        logger.warning(f"Could not delete folder for project: {e}")
+        # Delete project folder (should be empty now)
+        try:
+            await storage_service.delete_project_folder(project_name, delete_contents=False)
+        except Exception as e:
+            logger.warning(f"Could not delete folder for project: {e}")
 
-    return MessageResponse(message="Project deleted", id=project_id)
+        return MessageResponse(message="Project deleted, files moved to root", id=project_id)
 
 
 @router.post("/{project_id}/recordings/{recording_id}", response_model=MessageResponse)

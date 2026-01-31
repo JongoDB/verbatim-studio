@@ -1493,8 +1493,8 @@ class ApiClient {
         body: JSON.stringify(data),
       }),
 
-    delete: (id: string) =>
-      this.request<MessageResponse>(`/api/projects/${id}`, {
+    delete: (id: string, options?: { deleteFiles?: boolean }) =>
+      this.request<MessageResponse>(`/api/projects/${id}${options?.deleteFiles ? '?delete_files=true' : ''}`, {
         method: 'DELETE',
       }),
 

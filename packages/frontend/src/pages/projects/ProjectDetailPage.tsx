@@ -32,6 +32,7 @@ export function ProjectDetailPage({
   // Dialogs
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [deleteFilesChoice, setDeleteFilesChoice] = useState<boolean | null>(null);
   const [showAddRecordingDialog, setShowAddRecordingDialog] = useState(false);
 
   // Edit form
@@ -91,11 +92,12 @@ export function ProjectDetailPage({
     }
   };
 
-  const handleDeleteProject = async () => {
+  const handleDeleteProject = async (deleteFiles: boolean) => {
     if (!project) return;
     try {
-      await api.projects.delete(project.id);
+      await api.projects.delete(project.id, { deleteFiles });
       setShowDeleteDialog(false);
+      setDeleteFilesChoice(null);
       onBack();
     } catch (error) {
       console.error('Failed to delete project:', error);
@@ -367,6 +369,7 @@ export function ProjectDetailPage({
           onClick={(e) => {
             if ((e.target as HTMLElement).classList.contains('bg-black/50')) {
               setShowDeleteDialog(false);
+              setDeleteFilesChoice(null);
             }
           }}
         >
@@ -375,19 +378,57 @@ export function ProjectDetailPage({
               <h2 className="text-lg font-semibold text-foreground">Delete Project</h2>
               <p className="text-sm text-muted-foreground mt-2">
                 Are you sure you want to delete "{project.name}"?
-                Recordings in this project will be unassigned, not deleted.
               </p>
+              {recordings.length > 0 && (
+                <div className="mt-4 space-y-3">
+                  <p className="text-sm font-medium text-foreground">
+                    This project contains {recordings.length} recording{recordings.length !== 1 ? 's' : ''}. What would you like to do?
+                  </p>
+                  <div className="space-y-2">
+                    <label className="flex items-start gap-3 p-3 rounded-lg border border-border hover:bg-muted/50 cursor-pointer transition-colors">
+                      <input
+                        type="radio"
+                        name="deleteChoice"
+                        checked={deleteFilesChoice === false}
+                        onChange={() => setDeleteFilesChoice(false)}
+                        className="mt-0.5"
+                      />
+                      <div>
+                        <p className="text-sm font-medium text-foreground">Keep files</p>
+                        <p className="text-xs text-muted-foreground">Move recordings to storage root and unassign from project</p>
+                      </div>
+                    </label>
+                    <label className="flex items-start gap-3 p-3 rounded-lg border border-destructive/50 hover:bg-destructive/10 cursor-pointer transition-colors">
+                      <input
+                        type="radio"
+                        name="deleteChoice"
+                        checked={deleteFilesChoice === true}
+                        onChange={() => setDeleteFilesChoice(true)}
+                        className="mt-0.5"
+                      />
+                      <div>
+                        <p className="text-sm font-medium text-destructive">Delete all files</p>
+                        <p className="text-xs text-muted-foreground">Permanently delete all recordings and documents in this project</p>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+              )}
             </div>
             <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-border">
               <button
-                onClick={() => setShowDeleteDialog(false)}
+                onClick={() => {
+                  setShowDeleteDialog(false);
+                  setDeleteFilesChoice(null);
+                }}
                 className="px-4 py-2 text-sm font-medium rounded-lg border border-border text-foreground hover:bg-muted transition-colors"
               >
                 Cancel
               </button>
               <button
-                onClick={handleDeleteProject}
-                className="px-4 py-2 text-sm font-medium rounded-lg bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors"
+                onClick={() => handleDeleteProject(deleteFilesChoice === true)}
+                disabled={recordings.length > 0 && deleteFilesChoice === null}
+                className="px-4 py-2 text-sm font-medium rounded-lg bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Delete
               </button>
