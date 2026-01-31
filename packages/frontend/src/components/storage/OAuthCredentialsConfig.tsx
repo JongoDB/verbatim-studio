@@ -6,9 +6,27 @@ interface OAuthCredentialsConfigProps {
 }
 
 const PROVIDERS = [
-  { id: 'gdrive', name: 'Google Drive', icon: 'G' },
-  { id: 'onedrive', name: 'Microsoft OneDrive', icon: 'M' },
-  { id: 'dropbox', name: 'Dropbox', icon: 'D' },
+  {
+    id: 'gdrive',
+    name: 'Google Drive',
+    icon: 'G',
+    manageUrl: 'https://myaccount.google.com/connections',
+    manageLabel: 'Manage Google access',
+  },
+  {
+    id: 'onedrive',
+    name: 'Microsoft OneDrive',
+    icon: 'M',
+    manageUrl: 'https://account.live.com/consent/Manage',
+    manageLabel: 'Manage Microsoft access',
+  },
+  {
+    id: 'dropbox',
+    name: 'Dropbox',
+    icon: 'D',
+    manageUrl: 'https://www.dropbox.com/account/connected_apps',
+    manageLabel: 'Manage Dropbox access',
+  },
 ] as const;
 
 // OAuth callback URIs - the backend tries these ports in order if one is busy
@@ -122,7 +140,7 @@ export function OAuthCredentialsConfig({ onUpdate }: OAuthCredentialsConfigProps
       </p>
 
       <div className="space-y-3">
-        {PROVIDERS.map(({ id, name, icon }) => {
+        {PROVIDERS.map(({ id, name, icon, manageUrl, manageLabel }) => {
           const creds = credentials?.[id as keyof OAuthCredentialsResponse];
           const isEditing = editingProvider === id;
 
@@ -167,6 +185,14 @@ export function OAuthCredentialsConfig({ onUpdate }: OAuthCredentialsConfigProps
                       Get credentials
                     </a>
                   )}
+                  <a
+                    href={manageUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-muted-foreground hover:text-foreground hover:underline"
+                  >
+                    {manageLabel}
+                  </a>
                   {creds?.configured && (
                     <button
                       onClick={() => handleDelete(id)}
