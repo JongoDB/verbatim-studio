@@ -5,7 +5,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -493,6 +493,82 @@ async def rename_item(
         await db.commit()
         await db.refresh(item)
         return MessageResponse(message="Renamed successfully", item=_document_to_item(item))
+
+    else:
+        raise HTTPException(status_code=400, detail="Invalid item type")
+
+
+@router.delete("/{item_type}/{item_id}", response_model=MessageResponse)
+async def delete_item(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    item_type: Literal["folder", "recording", "document"],
+    item_id: str,
+    recursive: Annotated[bool, Query(description="Delete folder contents")] = False,
+) -> MessageResponse:
+    """Delete an item."""
+    if item_type == "folder":
+        project = await db.get(Project, item_id)
+        if not project:
+            raise HTTPException(status_code=404, detail="Folder not found")
+
+        # Check if folder has contents
+        rec_count = await db.scalar(
+            select(func.count(Recording.id)).where(Recording.project_id == item_id)
+        )
+        doc_count = await db.scalar(
+            select(func.count(Document.id)).where(Document.project_id == item_id)
+        )
+
+        if (rec_count or 0) + (doc_count or 0) > 0 and not recursive:
+            raise HTTPException(
+                status_code=400,
+                detail="Folder is not empty. Use recursive=true to delete contents."
+            )
+
+        # If recursive, move contents to root instead of deleting them
+        if recursive:
+            await db.execute(
+                update(Recording).where(Recording.project_id == item_id).values(project_id=None)
+            )
+            await db.execute(
+                update(Document).where(Document.project_id == item_id).values(project_id=None)
+            )
+
+        await db.delete(project)
+        await db.commit()
+        return MessageResponse(message="Folder deleted")
+
+    elif item_type == "recording":
+        recording = await db.get(Recording, item_id)
+        if not recording:
+            raise HTTPException(status_code=404, detail="Recording not found")
+
+        # Delete file
+        try:
+            file_path = storage_service.get_full_path(recording.file_path)
+            await storage_service.delete_file(file_path)
+        except Exception as e:
+            logger.warning(f"Failed to delete file: {e}")
+
+        await db.delete(recording)
+        await db.commit()
+        return MessageResponse(message="Recording deleted")
+
+    elif item_type == "document":
+        document = await db.get(Document, item_id)
+        if not document:
+            raise HTTPException(status_code=404, detail="Document not found")
+
+        # Delete file
+        try:
+            file_path = storage_service.get_full_path(document.file_path)
+            await storage_service.delete_file(file_path)
+        except Exception as e:
+            logger.warning(f"Failed to delete file: {e}")
+
+        await db.delete(document)
+        await db.commit()
+        return MessageResponse(message="Document deleted")
 
     else:
         raise HTTPException(status_code=400, detail="Invalid item type")
