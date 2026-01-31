@@ -42,6 +42,21 @@ class BrowseResponse(BaseModel):
     total: int
 
 
+class FolderTreeNode(BaseModel):
+    """A node in the folder tree."""
+
+    id: str
+    name: str
+    item_count: int
+    children: list["FolderTreeNode"] = []
+
+
+class FolderTreeResponse(BaseModel):
+    """Response for folder tree."""
+
+    root: FolderTreeNode
+
+
 def _project_to_item(project: Project, item_count: int = 0) -> BrowseItem:
     return BrowseItem(
         id=project.id,
@@ -153,3 +168,46 @@ async def browse(
         items=items,
         total=len(items),
     )
+
+
+@router.get("/tree", response_model=FolderTreeResponse)
+async def get_folder_tree(
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> FolderTreeResponse:
+    """Get folder hierarchy for sidebar navigation."""
+    # Get all projects
+    result = await db.execute(select(Project).order_by(Project.name))
+    projects = result.scalars().all()
+
+    children = []
+    for project in projects:
+        # Count items
+        rec_count = await db.scalar(
+            select(func.count(Recording.id)).where(Recording.project_id == project.id)
+        )
+        doc_count = await db.scalar(
+            select(func.count(Document.id)).where(Document.project_id == project.id)
+        )
+        children.append(FolderTreeNode(
+            id=project.id,
+            name=project.name,
+            item_count=(rec_count or 0) + (doc_count or 0),
+            children=[],  # No nested folders yet
+        ))
+
+    # Count root items
+    root_rec = await db.scalar(
+        select(func.count(Recording.id)).where(Recording.project_id.is_(None))
+    )
+    root_doc = await db.scalar(
+        select(func.count(Document.id)).where(Document.project_id.is_(None))
+    )
+
+    root = FolderTreeNode(
+        id="",
+        name="My Files",
+        item_count=(root_rec or 0) + (root_doc or 0) + len(children),
+        children=children,
+    )
+
+    return FolderTreeResponse(root=root)
