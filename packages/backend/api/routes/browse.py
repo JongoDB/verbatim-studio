@@ -7,9 +7,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from persistence import get_db
-from persistence.models import Document, Project, Recording
+from persistence.models import Document, Note, Project, Recording, Segment, Transcript, generate_uuid
+from services.storage import storage_service
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +65,14 @@ class MoveRequest(BaseModel):
     item_id: str
     item_type: Literal["recording", "document"]
     target_project_id: str | None  # null = move to root
+
+
+class CopyRequest(BaseModel):
+    """Request to copy an item."""
+
+    item_id: str
+    item_type: Literal["recording", "document"]
+    target_project_id: str | None
 
 
 class MessageResponse(BaseModel):
@@ -260,3 +270,181 @@ async def move_item(
 
     else:
         raise HTTPException(status_code=400, detail="Invalid item type")
+
+
+@router.post("/copy", response_model=MessageResponse)
+async def copy_item(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    request: CopyRequest,
+) -> MessageResponse:
+    """Copy an item to a folder. Creates independent copy with file duplication."""
+    # Validate target folder exists
+    if request.target_project_id:
+        target = await db.get(Project, request.target_project_id)
+        if not target:
+            raise HTTPException(status_code=404, detail="Target folder not found")
+
+    if request.item_type == "recording":
+        return await _copy_recording(db, request.item_id, request.target_project_id)
+    elif request.item_type == "document":
+        return await _copy_document(db, request.item_id, request.target_project_id)
+    else:
+        raise HTTPException(status_code=400, detail="Invalid item type")
+
+
+async def _copy_recording(
+    db: AsyncSession,
+    recording_id: str,
+    target_project_id: str | None,
+) -> MessageResponse:
+    """Copy a recording with its transcript and notes."""
+    # Load recording with relationships
+    result = await db.execute(
+        select(Recording)
+        .options(
+            selectinload(Recording.transcript).selectinload(Transcript.segments),
+            selectinload(Recording.notes),
+        )
+        .where(Recording.id == recording_id)
+    )
+    original = result.scalar_one_or_none()
+    if not original:
+        raise HTTPException(status_code=404, detail="Recording not found")
+
+    new_id = generate_uuid()
+
+    # Copy file
+    try:
+        source_path = storage_service.get_full_path(original.file_path)
+        new_file_path = f"recordings/{new_id}/{original.file_name}"
+        await storage_service.copy_file(source_path, new_file_path)
+    except FileNotFoundError:
+        logger.warning(f"Source file not found: {original.file_path}")
+        new_file_path = original.file_path  # Keep original path if file missing
+    except Exception as e:
+        logger.error(f"Failed to copy file: {e}")
+        raise HTTPException(status_code=500, detail="Failed to copy file")
+
+    # Create recording copy
+    new_recording = Recording(
+        id=new_id,
+        title=f"{original.title} (Copy)",
+        file_path=new_file_path,
+        file_name=original.file_name,
+        file_size=original.file_size,
+        duration_seconds=original.duration_seconds,
+        mime_type=original.mime_type,
+        metadata_=original.metadata_.copy() if original.metadata_ else {},
+        status=original.status,
+        project_id=target_project_id,
+        source_id=original.id,
+        template_id=original.template_id,
+    )
+    db.add(new_recording)
+
+    # Copy transcript if exists
+    if original.transcript:
+        new_transcript = Transcript(
+            id=generate_uuid(),
+            recording_id=new_id,
+            language=original.transcript.language,
+            model_used=original.transcript.model_used,
+            confidence_avg=original.transcript.confidence_avg,
+            word_count=original.transcript.word_count,
+        )
+        db.add(new_transcript)
+
+        # Copy segments
+        for seg in original.transcript.segments:
+            new_segment = Segment(
+                id=generate_uuid(),
+                transcript_id=new_transcript.id,
+                segment_index=seg.segment_index,
+                start_time=seg.start_time,
+                end_time=seg.end_time,
+                text=seg.text,
+                speaker=seg.speaker,
+                confidence=seg.confidence,
+                edited=seg.edited,
+            )
+            db.add(new_segment)
+
+    # Copy notes
+    for note in original.notes:
+        new_note = Note(
+            id=generate_uuid(),
+            recording_id=new_id,
+            content=note.content,
+            anchor_type=note.anchor_type,
+            anchor_data=note.anchor_data.copy() if note.anchor_data else {},
+        )
+        db.add(new_note)
+
+    await db.commit()
+    await db.refresh(new_recording)
+
+    return MessageResponse(message="Copied successfully", item=_recording_to_item(new_recording))
+
+
+async def _copy_document(
+    db: AsyncSession,
+    document_id: str,
+    target_project_id: str | None,
+) -> MessageResponse:
+    """Copy a document with its notes."""
+    result = await db.execute(
+        select(Document)
+        .options(selectinload(Document.notes))
+        .where(Document.id == document_id)
+    )
+    original = result.scalar_one_or_none()
+    if not original:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    new_id = generate_uuid()
+
+    # Copy file
+    try:
+        source_path = storage_service.get_full_path(original.file_path)
+        new_file_path = f"documents/{new_id}/{original.filename}"
+        await storage_service.copy_file(source_path, new_file_path)
+    except FileNotFoundError:
+        logger.warning(f"Source file not found: {original.file_path}")
+        new_file_path = original.file_path
+    except Exception as e:
+        logger.error(f"Failed to copy file: {e}")
+        raise HTTPException(status_code=500, detail="Failed to copy file")
+
+    # Create document copy
+    new_document = Document(
+        id=new_id,
+        title=f"{original.title} (Copy)",
+        filename=original.filename,
+        file_path=new_file_path,
+        mime_type=original.mime_type,
+        file_size_bytes=original.file_size_bytes,
+        project_id=target_project_id,
+        source_id=original.id,
+        status=original.status,
+        extracted_text=original.extracted_text,
+        extracted_markdown=original.extracted_markdown,
+        page_count=original.page_count,
+        metadata_=original.metadata_.copy() if original.metadata_ else {},
+    )
+    db.add(new_document)
+
+    # Copy notes
+    for note in original.notes:
+        new_note = Note(
+            id=generate_uuid(),
+            document_id=new_id,
+            content=note.content,
+            anchor_type=note.anchor_type,
+            anchor_data=note.anchor_data.copy() if note.anchor_data else {},
+        )
+        db.add(new_note)
+
+    await db.commit()
+    await db.refresh(new_document)
+
+    return MessageResponse(message="Copied successfully", item=_document_to_item(new_document))
