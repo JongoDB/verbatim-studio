@@ -25,6 +25,11 @@ dependencies = [
     # Credential encryption
     "keyring>=25.0.0",
     "cryptography>=46.0.0",
+    # OAuth providers
+    "aiohttp>=3.9.0",
+    "google-api-python-client>=2.0.0",
+    "google-auth-oauthlib>=1.0.0",
+    "google-auth>=2.0.0",
 ]
 
 [project.optional-dependencies]
