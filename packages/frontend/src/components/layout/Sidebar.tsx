@@ -2,9 +2,11 @@ import { useCallback, useEffect, useState } from 'react';
 
 type Theme = 'light' | 'dark' | 'system';
 
+type NavKey = 'dashboard' | 'recordings' | 'projects' | 'live' | 'search' | 'documents' | 'settings';
+
 interface SidebarProps {
-  currentTab: 'dashboard' | 'recordings' | 'projects' | 'live' | 'search' | 'settings';
-  onNavigate: (tab: 'dashboard' | 'recordings' | 'projects' | 'live' | 'search' | 'settings') => void;
+  currentTab: NavKey;
+  onNavigate: (tab: NavKey) => void;
   theme: Theme;
   onCycleTheme: () => void;
   version: string;
@@ -61,6 +63,15 @@ const NAV_ITEMS = [
       </svg>
     ),
   },
+  {
+    key: 'documents' as const,
+    label: 'Documents',
+    icon: (
+      <svg className="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+      </svg>
+    ),
+  },
 ];
 
 // Settings icon for bottom section
@@ -83,7 +94,7 @@ export function Sidebar({ currentTab, onNavigate, theme, onCycleTheme, version, 
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  const handleNavigate = useCallback((tab: 'dashboard' | 'recordings' | 'projects' | 'live' | 'search' | 'settings') => {
+  const handleNavigate = useCallback((tab: NavKey) => {
     onNavigate(tab);
     setMobileOpen(false);
   }, [onNavigate]);

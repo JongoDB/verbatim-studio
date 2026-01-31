@@ -6,6 +6,7 @@ import { ProjectDetailPage } from '@/pages/projects/ProjectDetailPage';
 import { ProjectAnalyticsPage } from '@/pages/projects/ProjectAnalyticsPage';
 import { TranscriptPage } from '@/pages/transcript/TranscriptPage';
 import { SearchPage } from '@/pages/search/SearchPage';
+import { DocumentsPage } from '@/pages/documents/DocumentsPage';
 import { LiveTranscriptionPage } from '@/pages/live/LiveTranscriptionPage';
 import { SearchBox } from '@/components/search/SearchBox';
 import { Dashboard } from '@/components/dashboard/Dashboard';
@@ -26,7 +27,9 @@ type NavigationState =
   | { type: 'live' }
   | { type: 'search' }
   | { type: 'settings' }
-  | { type: 'transcript'; recordingId: string; initialSeekTime?: number };
+  | { type: 'transcript'; recordingId: string; initialSeekTime?: number }
+  | { type: 'documents' }
+  | { type: 'document-viewer'; documentId: string };
 
 // Map navigation state to URL path
 function navigationToPath(nav: NavigationState): string {
@@ -40,6 +43,8 @@ function navigationToPath(nav: NavigationState): string {
     case 'search': return '/search';
     case 'settings': return '/settings';
     case 'transcript': return `/recordings/${nav.recordingId}`;
+    case 'documents': return '/documents';
+    case 'document-viewer': return `/documents/${nav.documentId}`;
   }
 }
 
@@ -66,6 +71,11 @@ function pathToNavigation(path: string): NavigationState {
   // /projects/:id -> project detail
   const projectMatch = cleanPath.match(/^\/projects\/([^/]+)$/);
   if (projectMatch) return { type: 'project-detail', projectId: projectMatch[1] };
+
+  if (cleanPath === '/documents') return { type: 'documents' };
+
+  const documentMatch = cleanPath.match(/^\/documents\/([^/]+)$/);
+  if (documentMatch) return { type: 'document-viewer', documentId: documentMatch[1] };
 
   // Default to dashboard for unknown paths
   return { type: 'dashboard' };
@@ -155,6 +165,14 @@ export function App() {
     setNavigation({ type: 'project-analytics', projectId });
   }, []);
 
+  const handleNavigateToDocuments = useCallback(() => {
+    setNavigation({ type: 'documents' });
+  }, []);
+
+  const handleViewDocument = useCallback((documentId: string) => {
+    setNavigation({ type: 'document-viewer', documentId });
+  }, []);
+
   // Map navigation types to sidebar tabs
   const currentTab = (() => {
     switch (navigation.type) {
@@ -163,8 +181,11 @@ export function App() {
       case 'project-detail':
       case 'project-analytics':
         return 'projects';
+      case 'documents':
+      case 'document-viewer':
+        return 'documents';
       default:
-        return navigation.type as 'dashboard' | 'recordings' | 'projects' | 'live' | 'search' | 'settings';
+        return navigation.type as 'dashboard' | 'recordings' | 'projects' | 'live' | 'search' | 'settings' | 'documents';
     }
   })();
 
@@ -347,6 +368,7 @@ export function App() {
           else if (tab === 'projects') handleNavigateToProjects();
           else if (tab === 'live') handleNavigateToLive();
           else if (tab === 'search') handleNavigateToSearch();
+          else if (tab === 'documents') handleNavigateToDocuments();
           else if (tab === 'settings') handleNavigateToSettings();
         }}
         theme={theme}
@@ -405,6 +427,9 @@ export function App() {
             )}
             {navigation.type === 'search' && (
               <SearchPage onResultClick={handleSearchResult} />
+            )}
+            {navigation.type === 'documents' && (
+              <DocumentsPage onViewDocument={handleViewDocument} />
             )}
             {navigation.type === 'transcript' && (
               <TranscriptPage
