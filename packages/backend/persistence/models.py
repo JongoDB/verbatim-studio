@@ -66,9 +66,7 @@ class Project(Base):
     updated_at: Mapped[datetime] = mapped_column(default=func.now(), onupdate=func.now())
 
     project_type: Mapped[ProjectType | None] = relationship(back_populates="projects")
-    recordings: Mapped[list["Recording"]] = relationship(
-        secondary="project_recordings", back_populates="projects"
-    )
+    recordings: Mapped[list["Recording"]] = relationship(back_populates="project")
 
 
 class Tag(Base):
@@ -121,6 +119,15 @@ class Recording(Base):
     template_id: Mapped[str | None] = mapped_column(
         ForeignKey("recording_templates.id", ondelete="SET NULL")
     )
+    project_id: Mapped[str | None] = mapped_column(
+        ForeignKey("projects.id", ondelete="SET NULL")
+    )
+    source_id: Mapped[str | None] = mapped_column(
+        ForeignKey("recordings.id", ondelete="SET NULL")
+    )
+    storage_location_id: Mapped[str | None] = mapped_column(
+        ForeignKey("storage_locations.id", ondelete="SET NULL")
+    )
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     file_path: Mapped[str] = mapped_column(String(512), nullable=False)
     file_name: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -132,9 +139,9 @@ class Recording(Base):
     created_at: Mapped[datetime] = mapped_column(default=func.now())
     updated_at: Mapped[datetime] = mapped_column(default=func.now(), onupdate=func.now())
 
-    projects: Mapped[list[Project]] = relationship(
-        secondary="project_recordings", back_populates="recordings"
-    )
+    project: Mapped[Project | None] = relationship(back_populates="recordings")
+    source: Mapped["Recording | None"] = relationship(remote_side=[id])
+    storage_location: Mapped["StorageLocation | None"] = relationship()
     template: Mapped[RecordingTemplate | None] = relationship(back_populates="recordings")
     transcript: Mapped["Transcript | None"] = relationship(
         back_populates="recording", uselist=False, cascade="all, delete-orphan"
