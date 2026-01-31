@@ -1015,14 +1015,114 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
       {/* About Section */}
       <div className="mt-6 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
         <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-700">
-          <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">About</h2>
+          <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">About Verbatim Studio</h2>
         </div>
-        <div className="px-5 py-4 text-sm text-gray-600 dark:text-gray-400">
-          <p><strong>Verbatim Studio</strong> - Privacy-first transcription for professionals</p>
-          <p className="mt-2">
-            All processing happens locally on your machine. Your recordings and transcripts
-            never leave your computer.
-          </p>
+        <div className="px-5 py-4 space-y-4">
+          <div>
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              <strong className="text-gray-900 dark:text-gray-100">Transcription you can trust.</strong> Verbatim Studio is a privacy-first transcription platform designed for researchers, journalists, legal professionals, and anyone who needs accurate, secure transcription.
+            </p>
+            <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+              All processing happens locally on your machine. Your recordings and transcripts never leave your computer.
+            </p>
+          </div>
+
+          {/* Current Features */}
+          <div className="pt-3 border-t border-gray-200 dark:border-gray-700">
+            <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-2">Current Features</h3>
+            <ul className="text-sm text-gray-600 dark:text-gray-400 space-y-1.5">
+              <li className="flex items-start gap-2">
+                <svg className="w-4 h-4 text-green-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+                <span><strong>Local AI Transcription</strong> — WhisperX and MLX Whisper engines with speaker diarization</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <svg className="w-4 h-4 text-green-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+                <span><strong>Live Transcription</strong> — Real-time transcription from microphone input</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <svg className="w-4 h-4 text-green-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+                <span><strong>AI Assistant (Max)</strong> — Chat with your transcripts, ask questions, get summaries</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <svg className="w-4 h-4 text-green-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+                <span><strong>Semantic Search</strong> — Find content by meaning, not just keywords</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <svg className="w-4 h-4 text-green-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+                <span><strong>Project Organization</strong> — Group recordings into projects with types and tags</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <svg className="w-4 h-4 text-green-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+                <span><strong>Export Options</strong> — TXT, SRT, VTT, JSON, and full backup archives</span>
+              </li>
+            </ul>
+          </div>
+
+          {/* Coming Soon */}
+          <div className="pt-3 border-t border-gray-200 dark:border-gray-700">
+            <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-2">Coming Soon</h3>
+            <ul className="text-sm text-gray-600 dark:text-gray-400 space-y-1.5">
+              <li className="flex items-start gap-2">
+                <svg className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span><strong>Document Management</strong> — Upload PDFs, images, and notes with OCR</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <svg className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span><strong>Desktop App</strong> — Native Electron application for macOS, Windows, and Linux</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <svg className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span><strong>Video Support</strong> — Transcribe video files with visual timeline sync</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <svg className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span><strong>Team Collaboration</strong> — Share projects securely with end-to-end encryption</span>
+              </li>
+            </ul>
+          </div>
+
+          {/* Links */}
+          <div className="pt-3 border-t border-gray-200 dark:border-gray-700 flex gap-4 text-sm">
+            <a
+              href="https://github.com/JongoDB/verbatim-studio"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
+            >
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                <path fillRule="evenodd" clipRule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" />
+              </svg>
+              GitHub
+            </a>
+            <a
+              href="https://github.com/JongoDB/verbatim-studio/issues"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-600 dark:text-blue-400 hover:underline"
+            >
+              Report an Issue
+            </a>
+          </div>
         </div>
       </div>
         </>

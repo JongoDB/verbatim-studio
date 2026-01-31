@@ -138,12 +138,17 @@ export function Sidebar({ currentTab, onNavigate, theme, onCycleTheme, version, 
               />
             </button>
           ) : (
-            // Expanded: show full logo (invert in dark mode to make text visible)
-            <img
-              src="/logo.png"
-              alt="Verbatim Studio"
-              className="h-8 object-contain dark:invert dark:hue-rotate-180"
-            />
+            // Expanded: show full logo with tagline
+            <div className="flex flex-col">
+              <img
+                src="/logo.png"
+                alt="Verbatim Studio"
+                className="h-8 object-contain dark:invert dark:hue-rotate-180"
+              />
+              <span className="text-[10px] text-muted-foreground tracking-wide mt-0.5">
+                Transcription you can trust
+              </span>
+            </div>
           )}
           {/* Desktop collapse toggle (hidden when collapsed — V logo expands instead) */}
           <button
