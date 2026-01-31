@@ -9,8 +9,11 @@ interface SidebarProps {
   onCycleTheme: () => void;
   version: string;
   health: { status: string } | null;
+  collapsed: boolean;
+  onCollapsedChange: (collapsed: boolean) => void;
 }
 
+// Main nav items (top section)
 const NAV_ITEMS = [
   {
     key: 'dashboard' as const,
@@ -58,29 +61,18 @@ const NAV_ITEMS = [
       </svg>
     ),
   },
-  {
-    key: 'settings' as const,
-    label: 'Settings',
-    icon: (
-      <svg className="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-        <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-      </svg>
-    ),
-  },
 ];
 
-export function Sidebar({ currentTab, onNavigate, theme, onCycleTheme, version, health }: SidebarProps) {
-  const [collapsed, setCollapsed] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return false;
-    return localStorage.getItem('sidebar-collapsed') === 'true';
-  });
-  const [mobileOpen, setMobileOpen] = useState(false);
+// Settings icon for bottom section
+const SETTINGS_ICON = (
+  <svg className="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+    <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+  </svg>
+);
 
-  // Persist collapsed state
-  useEffect(() => {
-    localStorage.setItem('sidebar-collapsed', String(collapsed));
-  }, [collapsed]);
+export function Sidebar({ currentTab, onNavigate, theme, onCycleTheme, version, health, collapsed, onCollapsedChange }: SidebarProps) {
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   // Close mobile drawer on Escape
   useEffect(() => {
@@ -125,8 +117,8 @@ export function Sidebar({ currentTab, onNavigate, theme, onCycleTheme, version, 
           // Mobile: slide in/out, always w-60
           mobileOpen ? 'translate-x-0' : '-translate-x-full',
           'w-60',
-          // Desktop: static positioning, responsive width
-          'md:translate-x-0 md:static md:z-auto',
+          // Desktop: fixed positioning (stays in place), responsive width
+          'md:translate-x-0',
           collapsed ? 'md:w-16' : 'md:w-60',
         ].join(' ')}
       >
@@ -135,7 +127,7 @@ export function Sidebar({ currentTab, onNavigate, theme, onCycleTheme, version, 
           {collapsed ? (
             // Collapsed: show icon that expands sidebar on click
             <button
-              onClick={() => setCollapsed(false)}
+              onClick={() => onCollapsedChange(false)}
               className="w-10 h-10 flex items-center justify-center shrink-0 cursor-pointer hover:opacity-80 transition-opacity"
               aria-label="Expand sidebar"
             >
@@ -155,7 +147,7 @@ export function Sidebar({ currentTab, onNavigate, theme, onCycleTheme, version, 
           )}
           {/* Desktop collapse toggle (hidden when collapsed — V logo expands instead) */}
           <button
-            onClick={() => setCollapsed(true)}
+            onClick={() => onCollapsedChange(true)}
             className={`hidden ${collapsed ? '' : 'md:flex'} ml-auto p-1.5 rounded-md hover:bg-muted transition-colors`}
             aria-label="Collapse sidebar"
           >
@@ -218,8 +210,30 @@ export function Sidebar({ currentTab, onNavigate, theme, onCycleTheme, version, 
           })}
         </nav>
 
-        {/* Bottom: Theme, version, health */}
-        <div className="px-3 py-4 border-t border-border space-y-3 shrink-0">
+        {/* Bottom: Settings, Theme, version, health */}
+        <div className="px-3 py-4 border-t border-border space-y-1 shrink-0">
+          {/* Settings */}
+          <button
+            onClick={() => handleNavigate('settings')}
+            className={[
+              'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
+              'relative group',
+              currentTab === 'settings'
+                ? 'bg-muted text-foreground'
+                : 'text-muted-foreground hover:text-foreground hover:bg-muted/50',
+            ].join(' ')}
+          >
+            <span className="shrink-0">{SETTINGS_ICON}</span>
+            <span className={`overflow-hidden whitespace-nowrap transition-all duration-300 ${collapsed ? 'md:w-0 md:opacity-0' : 'md:w-auto md:opacity-100'}`}>
+              Settings
+            </span>
+            {collapsed && (
+              <span className="hidden md:block absolute left-full ml-2 px-2 py-1 rounded-md bg-foreground text-background text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-200 z-50">
+                Settings
+              </span>
+            )}
+          </button>
+
           {/* Theme toggle */}
           <button
             onClick={onCycleTheme}

@@ -104,6 +104,17 @@ export function App() {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [attachedTranscripts, setAttachedTranscripts] = useState<AttachedTranscript[]>([]);
 
+  // Sidebar collapsed state (persisted to localStorage)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return localStorage.getItem('sidebar-collapsed') === 'true';
+  });
+
+  // Persist sidebar collapsed state
+  useEffect(() => {
+    localStorage.setItem('sidebar-collapsed', String(sidebarCollapsed));
+  }, [sidebarCollapsed]);
+
   const handleViewTranscript = useCallback((recordingId: string) => {
     setNavigation({ type: 'transcript', recordingId });
   }, []);
@@ -342,10 +353,12 @@ export function App() {
         onCycleTheme={cycleTheme}
         version={apiInfo?.version || APP_VERSION}
         health={health}
+        collapsed={sidebarCollapsed}
+        onCollapsedChange={setSidebarCollapsed}
       />
 
-      {/* Content Area */}
-      <div className="flex-1 flex flex-col min-h-screen overflow-hidden">
+      {/* Content Area - offset by sidebar width on desktop */}
+      <div className={`flex-1 flex flex-col min-h-screen overflow-hidden transition-[margin] duration-300 ${sidebarCollapsed ? 'md:ml-16' : 'md:ml-60'}`}>
         {/* Content header with search */}
         <header className="h-14 border-b border-border bg-card flex items-center px-4 md:px-6 gap-4 shrink-0">
           <div className="w-8 md:hidden" />
