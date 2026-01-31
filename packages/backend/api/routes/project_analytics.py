@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from persistence.database import get_db
-from persistence.models import Project, ProjectRecording, Recording, RecordingTag, Segment, Tag, Transcript
+from persistence.models import Project, Recording, RecordingTag, Segment, Tag, Transcript
 
 router = APIRouter(prefix="/projects", tags=["project-analytics"])
 
@@ -104,8 +104,7 @@ async def get_project_analytics(
     # Get all recordings for this project with transcripts and segments
     result = await db.execute(
         select(Recording)
-        .join(ProjectRecording, ProjectRecording.recording_id == Recording.id)
-        .where(ProjectRecording.project_id == project_id)
+        .where(Recording.project_id == project_id)
         .options(
             selectinload(Recording.transcript).selectinload(Transcript.segments)
         )
