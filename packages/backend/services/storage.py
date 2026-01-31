@@ -132,6 +132,75 @@ class StorageService:
         path = Path(file_path)
         return await aiofiles.os.path.exists(path)
 
+    async def save_file(self, relative_path: str, content: bytes) -> Path:
+        """Save a file to a relative path under media directory.
+
+        Args:
+            relative_path: Relative path like "documents/{id}/{filename}"
+            content: File content as bytes.
+
+        Returns:
+            Full path where the file was saved.
+        """
+        # Sanitize path to prevent traversal
+        # Split path and sanitize each component
+        parts = relative_path.replace("\\", "/").split("/")
+        safe_parts = []
+        for part in parts:
+            safe_part = Path(part).name
+            if safe_part and safe_part not in (".", ".."):
+                safe_parts.append(safe_part)
+
+        if not safe_parts:
+            raise ValueError("Invalid file path")
+
+        file_path = self.media_dir.joinpath(*safe_parts)
+
+        # Safety check: ensure within media_dir
+        try:
+            file_path.resolve().relative_to(self.media_dir.resolve())
+        except ValueError:
+            raise ValueError("Path traversal detected")
+
+        # Ensure directory exists
+        await aiofiles.os.makedirs(file_path.parent, exist_ok=True)
+
+        # Write file
+        async with aiofiles.open(file_path, "wb") as f:
+            await f.write(content)
+
+        return file_path
+
+    def get_full_path(self, relative_path: str) -> Path:
+        """Get full path for a relative path under media directory.
+
+        Args:
+            relative_path: Relative path like "documents/{id}/{filename}"
+
+        Returns:
+            Full Path object.
+        """
+        # Sanitize and construct path
+        parts = relative_path.replace("\\", "/").split("/")
+        safe_parts = []
+        for part in parts:
+            safe_part = Path(part).name
+            if safe_part and safe_part not in (".", ".."):
+                safe_parts.append(safe_part)
+
+        if not safe_parts:
+            raise ValueError("Invalid file path")
+
+        full_path = self.media_dir.joinpath(*safe_parts)
+
+        # Safety check
+        try:
+            full_path.resolve().relative_to(self.media_dir.resolve())
+        except ValueError:
+            raise ValueError("Path traversal detected")
+
+        return full_path
+
 
 # Default storage service instance
 storage_service = StorageService()

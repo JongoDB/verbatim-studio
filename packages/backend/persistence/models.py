@@ -142,6 +142,7 @@ class Recording(Base):
     tags: Mapped[list[Tag]] = relationship(
         secondary="recording_tags", back_populates="recordings"
     )
+    notes: Mapped[list["Note"]] = relationship(back_populates="recording", cascade="all, delete-orphan")
 
 
 class Transcript(Base):
@@ -286,3 +287,84 @@ class SegmentEmbedding(Base):
     created_at: Mapped[datetime] = mapped_column(default=func.now())
 
     segment: Mapped["Segment"] = relationship()
+
+
+class Document(Base):
+    """Document model for uploaded files (PDF, Office docs, images)."""
+
+    __tablename__ = "documents"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    file_path: Mapped[str] = mapped_column(String(500), nullable=False)
+    mime_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    file_size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    project_id: Mapped[str | None] = mapped_column(
+        ForeignKey("projects.id", ondelete="SET NULL")
+    )
+
+    # Processing state
+    status: Mapped[str] = mapped_column(String(20), default="pending")
+    error_message: Mapped[str | None] = mapped_column(Text)
+
+    # Extracted content
+    extracted_text: Mapped[str | None] = mapped_column(Text)
+    extracted_markdown: Mapped[str | None] = mapped_column(Text)
+    page_count: Mapped[int | None] = mapped_column(Integer)
+
+    # Metadata
+    metadata_: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(default=func.now(), onupdate=func.now())
+
+    project: Mapped["Project | None"] = relationship()
+    notes: Mapped[list["Note"]] = relationship(back_populates="document", cascade="all, delete-orphan")
+
+
+class Note(Base):
+    """Note attached to a recording or document with contextual anchor."""
+
+    __tablename__ = "notes"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+
+    # Polymorphic attachment (one of these set)
+    recording_id: Mapped[str | None] = mapped_column(
+        ForeignKey("recordings.id", ondelete="CASCADE")
+    )
+    document_id: Mapped[str | None] = mapped_column(
+        ForeignKey("documents.id", ondelete="CASCADE")
+    )
+
+    # Context anchoring
+    anchor_type: Mapped[str] = mapped_column(String(20), nullable=False)  # timestamp, page, paragraph
+    anchor_data: Mapped[dict] = mapped_column(JSON, nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(default=func.now(), onupdate=func.now())
+
+    recording: Mapped["Recording | None"] = relationship(back_populates="notes")
+    document: Mapped["Document | None"] = relationship(back_populates="notes")
+
+
+class DocumentEmbedding(Base):
+    """Embedding vector for a document chunk."""
+
+    __tablename__ = "document_embeddings"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    document_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("documents.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    chunk_text: Mapped[str] = mapped_column(Text, nullable=False)
+    chunk_metadata: Mapped[dict] = mapped_column(JSON, default=dict)  # {page: 3, heading: "..."}
+    embedding: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    model_used: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(default=func.now())
+
+    document: Mapped["Document"] = relationship()

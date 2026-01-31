@@ -521,6 +521,44 @@ export interface RecordingUploadOptions {
   metadata?: Record<string, unknown>;
 }
 
+// Document Types
+export interface Document {
+  id: string;
+  title: string;
+  filename: string;
+  file_path: string;
+  mime_type: string;
+  file_size_bytes: number;
+  project_id: string | null;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  error_message: string | null;
+  page_count: number | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DocumentListResponse {
+  items: Document[];
+  total: number;
+}
+
+export interface Note {
+  id: string;
+  content: string;
+  recording_id: string | null;
+  document_id: string | null;
+  anchor_type: 'timestamp' | 'page' | 'paragraph' | 'selection';
+  anchor_data: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface NoteListResponse {
+  items: Note[];
+  total: number;
+}
+
 // Config Types
 export interface WhisperXStatus {
   mode: 'local' | 'external';
@@ -1250,6 +1288,91 @@ class ApiClient {
       this.request<MessageResponse>(`/api/recording-templates/${id}`, {
         method: 'DELETE',
       }),
+  };
+
+  // Documents
+  documents = {
+    list: async (params?: { project_id?: string; status?: string; search?: string }): Promise<DocumentListResponse> => {
+      const searchParams = new URLSearchParams();
+      if (params?.project_id) searchParams.set('project_id', params.project_id);
+      if (params?.status) searchParams.set('status', params.status);
+      if (params?.search) searchParams.set('search', params.search);
+      const query = searchParams.toString();
+      return this.request<DocumentListResponse>(`/api/documents${query ? `?${query}` : ''}`);
+    },
+
+    get: async (id: string): Promise<Document> => {
+      return this.request<Document>(`/api/documents/${id}`);
+    },
+
+    upload: async (file: File, title?: string, projectId?: string): Promise<Document> => {
+      const formData = new FormData();
+      formData.append('file', file);
+      if (title) formData.append('title', title);
+      if (projectId) formData.append('project_id', projectId);
+
+      const response = await fetch(`${this.baseUrl}/api/documents`, {
+        method: 'POST',
+        body: formData,
+      });
+      if (!response.ok) throw new Error('Failed to upload document');
+      return response.json();
+    },
+
+    update: async (id: string, data: { title?: string; project_id?: string | null }): Promise<Document> => {
+      return this.request<Document>(`/api/documents/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      });
+    },
+
+    delete: async (id: string): Promise<void> => {
+      await this.request<void>(`/api/documents/${id}`, { method: 'DELETE' });
+    },
+
+    getContent: async (id: string, format: 'text' | 'markdown' = 'markdown'): Promise<{ content: string; format: string }> => {
+      return this.request<{ content: string; format: string }>(`/api/documents/${id}/content?format=${format}`);
+    },
+
+    getFileUrl: (id: string): string => `${this.baseUrl}/api/documents/${id}/file`,
+
+    reprocess: async (id: string): Promise<void> => {
+      await this.request<void>(`/api/documents/${id}/process`, { method: 'POST' });
+    },
+  };
+
+  // Notes
+  notes = {
+    list: async (params: { recording_id?: string; document_id?: string }): Promise<NoteListResponse> => {
+      const searchParams = new URLSearchParams();
+      if (params.recording_id) searchParams.set('recording_id', params.recording_id);
+      if (params.document_id) searchParams.set('document_id', params.document_id);
+      return this.request<NoteListResponse>(`/api/notes?${searchParams.toString()}`);
+    },
+
+    create: async (data: {
+      content: string;
+      recording_id?: string;
+      document_id?: string;
+      anchor_type: string;
+      anchor_data: Record<string, unknown>;
+    }): Promise<Note> => {
+      return this.request<Note>('/api/notes', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      });
+    },
+
+    update: async (id: string, data: { content?: string; anchor_type?: string; anchor_data?: Record<string, unknown> }): Promise<Note> => {
+      return this.request<Note>(`/api/notes/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      });
+    },
+
+    delete: async (id: string): Promise<void> => {
+      await this.request<void>(`/api/notes/${id}`, { method: 'DELETE' });
+    },
   };
 
   // Config
