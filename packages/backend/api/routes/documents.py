@@ -5,15 +5,16 @@ from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from persistence import get_db
-from persistence.models import Document, Project
-from services.storage import storage_service
+from persistence.models import Document, Project, StorageLocation
+from services.storage import storage_service, get_active_storage_location
+from storage.factory import get_adapter
 
 logger = logging.getLogger(__name__)
 
@@ -155,6 +156,10 @@ async def upload_document(
     else:
         doc_title = safe_filename.rsplit(".", 1)[0]
 
+    # Get active storage location for storing location ID
+    storage_location = await get_active_storage_location()
+    storage_location_id = storage_location.id if storage_location else None
+
     # Save to storage with human-readable path
     file_path = await storage_service.save_upload(
         content=content,
@@ -163,19 +168,30 @@ async def upload_document(
         project_name=project_name,
     )
 
-    # Derive final title from actual filename (handles collision suffix)
-    # e.g., "POCs local (1).pdf" -> "POCs local (1)"
-    final_title = file_path.stem  # filename without extension
+    # Derive final title and filename from actual path
+    # Handle both Path (local) and string (cloud) returns
+    if isinstance(file_path, Path):
+        final_title = file_path.stem  # filename without extension
+        final_filename = file_path.name  # Actual filename (may have collision suffix)
+    else:
+        # Cloud storage returns relative path string
+        filename = file_path.split("/")[-1]
+        final_filename = filename
+        if "." in filename:
+            final_title = filename.rsplit(".", 1)[0]
+        else:
+            final_title = filename
 
     # Create document record
     doc = Document(
         id=doc_id,
         title=final_title,
-        filename=file_path.name,  # Actual filename (may have collision suffix)
-        file_path=str(file_path),  # Full path
+        filename=final_filename,
+        file_path=str(file_path),  # Full path or cloud path
         mime_type=mime_type,
         file_size_bytes=file_size,
         project_id=project_id,
+        storage_location_id=storage_location_id,
         status="pending",
     )
     db.add(doc)
@@ -378,12 +394,12 @@ async def get_document_properties(
     )
 
 
-@router.get("/{document_id}/file")
+@router.get("/{document_id}/file", response_model=None)
 async def download_document_file(
     db: Annotated[AsyncSession, Depends(get_db)],
     document_id: str,
     inline: Annotated[bool, Query(description="Display inline instead of download")] = False,
-) -> FileResponse:
+):
     """Download or view the original document file.
 
     Use inline=true to display in browser (for iframe embedding).
@@ -392,6 +408,32 @@ async def download_document_file(
     doc = await db.get(Document, document_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
+
+    # Check if document is in cloud storage
+    if doc.storage_location_id:
+        location_result = await db.execute(
+            select(StorageLocation).where(StorageLocation.id == doc.storage_location_id)
+        )
+        location = location_result.scalar_one_or_none()
+
+        if location and location.type == "cloud":
+            # Use storage adapter to read from cloud
+            try:
+                adapter = get_adapter(location)
+                content = await adapter.read_file(doc.file_path)
+                content_disposition = "inline" if inline else "attachment"
+                return Response(
+                    content=content,
+                    media_type=doc.mime_type,
+                    headers={
+                        "Content-Disposition": f'{content_disposition}; filename="{doc.filename}"',
+                    },
+                )
+            except Exception as e:
+                logger.error(f"Failed to read cloud file: {e}")
+                raise HTTPException(
+                    status_code=404, detail="File not found in cloud storage"
+                )
 
     # For inline viewing of Office documents, use the PDF preview if available
     if inline and doc.metadata_.get("preview_path"):

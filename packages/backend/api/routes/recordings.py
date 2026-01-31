@@ -9,16 +9,17 @@ from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import distinct, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from persistence import get_db
-from persistence.models import Job, Project, Recording, RecordingTag, RecordingTemplate, Speaker, Tag, Transcript
+from persistence.models import Job, Project, Recording, RecordingTag, RecordingTemplate, Speaker, StorageLocation, Tag, Transcript
 from services.jobs import job_queue
-from services.storage import storage_service
+from services.storage import storage_service, get_storage_adapter, get_active_storage_location
+from storage.factory import get_adapter
 
 logger = logging.getLogger(__name__)
 
@@ -548,6 +549,11 @@ async def upload_recording(
 
     # Save file to storage with human-readable path
     try:
+        # Get active storage location for storing location ID
+        storage_location = await get_active_storage_location()
+        if storage_location:
+            recording.storage_location_id = storage_location.id
+
         file_path = await storage_service.save_upload(
             content=content,
             title=recording.title,
@@ -555,14 +561,25 @@ async def upload_recording(
             project_name=project_name,
         )
         recording.file_path = str(file_path)
-        recording.file_name = file_path.name  # Update to actual filename (may have collision suffix)
-        recording.title = file_path.stem  # Update title to match actual filename (handles collision suffix)
 
-        # Extract audio from video files for playback and transcription
-        if _is_video(content_type):
-            extracted = await _extract_audio_from_video(file_path)
-            if extracted is None:
-                logger.warning("Could not extract audio from video %s — ffmpeg may not be installed", safe_filename)
+        # Handle both Path (local) and string (cloud) returns
+        if isinstance(file_path, Path):
+            recording.file_name = file_path.name  # Update to actual filename (may have collision suffix)
+            recording.title = file_path.stem  # Update title to match actual filename (handles collision suffix)
+
+            # Extract audio from video files for playback and transcription (local only)
+            if _is_video(content_type):
+                extracted = await _extract_audio_from_video(file_path)
+                if extracted is None:
+                    logger.warning("Could not extract audio from video %s — ffmpeg may not be installed", safe_filename)
+        else:
+            # Cloud storage returns relative path string
+            filename = file_path.split("/")[-1]
+            recording.file_name = filename
+            if "." in filename:
+                recording.title = filename.rsplit(".", 1)[0]
+            else:
+                recording.title = filename
 
         await db.commit()
     except Exception:
@@ -896,11 +913,11 @@ async def get_recording_properties(
     )
 
 
-@router.get("/{recording_id}/audio")
+@router.get("/{recording_id}/audio", response_model=None)
 async def stream_audio(
     recording_id: str,
     db: Annotated[AsyncSession, Depends(get_db)],
-) -> FileResponse:
+):
     """Stream the audio file for a recording.
 
     Args:
@@ -922,6 +939,34 @@ async def stream_audio(
             detail=f"Recording not found: {recording_id}",
         )
 
+    # Check if recording is in cloud storage
+    if recording.storage_location_id:
+        location_result = await db.execute(
+            select(StorageLocation).where(StorageLocation.id == recording.storage_location_id)
+        )
+        location = location_result.scalar_one_or_none()
+
+        if location and location.type == "cloud":
+            # Use storage adapter to read from cloud
+            try:
+                adapter = get_adapter(location)
+                content = await adapter.read_file(recording.file_path)
+                media_type = recording.mime_type or "audio/mpeg"
+                return Response(
+                    content=content,
+                    media_type=media_type,
+                    headers={
+                        "Content-Disposition": f'inline; filename="{recording.file_name}"',
+                    },
+                )
+            except Exception as e:
+                logger.error(f"Failed to read cloud file: {e}")
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Audio file not found in cloud storage",
+                )
+
+    # Local storage - check file exists
     file_path = Path(recording.file_path)
     if not file_path.exists():
         raise HTTPException(

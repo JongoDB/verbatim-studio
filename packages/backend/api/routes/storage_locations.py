@@ -57,6 +57,11 @@ class StorageLocationConfig(BaseModel):
     project_id: str | None = None
     credentials_json: str | None = None
 
+    # OAuth tokens for cloud providers (gdrive, onedrive, dropbox)
+    oauth_tokens: dict | None = None
+    folder_id: str | None = None
+    folder_path: str | None = None
+
 
 def mask_sensitive_config(config: dict) -> dict:
     """Mask sensitive fields in config for API responses."""
@@ -66,8 +71,12 @@ def mask_sensitive_config(config: dict) -> dict:
     result = {}
     for key, value in config.items():
         if key in SENSITIVE_FIELDS and value is not None:
-            # Show that a value exists without revealing it
-            result[key] = "********"
+            # For dict fields like oauth_tokens, use a marker dict
+            # For string fields, use masked string
+            if isinstance(value, dict):
+                result[key] = {"_masked": True}
+            else:
+                result[key] = "********"
         else:
             result[key] = value
     return result

@@ -1,5 +1,39 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api, type OAuthCredentialsResponse } from '@/lib/api';
+import { MarkdownModal } from '@/components/ui/MarkdownModal';
+
+const SETUP_GUIDE = `## Google Drive
+
+1. [Create a Google Cloud Project](https://console.cloud.google.com/projectcreate)
+2. [Enable the Drive API](https://console.cloud.google.com/apis/library/drive.googleapis.com) ← **Required**
+3. [Configure OAuth Consent](https://console.cloud.google.com/apis/credentials/consent) → External → Add scope \`drive.file\`
+4. [Add yourself as test user](https://console.cloud.google.com/apis/credentials/consent) → Test users → Add your email
+5. [Create OAuth Credentials](https://console.cloud.google.com/apis/credentials) → OAuth client ID → Web application
+6. Add all 4 redirect URIs below, copy Client ID & Secret
+
+**Troubleshooting**
+
+- \`access_denied\` → [Verify test user](https://console.cloud.google.com/apis/credentials/consent) is added
+- \`API not enabled\` → [Enable Drive API](https://console.cloud.google.com/apis/library/drive.googleapis.com)
+- \`Invalid redirect URI\` → Add all 4 URIs exactly as shown
+
+---
+
+## Microsoft OneDrive
+
+1. [Create App Registration](https://portal.azure.com/#blade/Microsoft_AAD_RegisteredApps/ApplicationsListBlade) → New registration
+2. Authentication → Add all 4 redirect URIs (Web)
+3. Certificates & secrets → New client secret → Copy **Value**
+4. Overview → Copy **Application (client) ID**
+
+---
+
+## Dropbox
+
+1. [Create App](https://www.dropbox.com/developers/apps/create) → Scoped access → Full Dropbox
+2. Settings → Add all 4 redirect URIs
+3. Copy **App key** and **App secret**
+`;
 
 interface OAuthCredentialsConfigProps {
   onUpdate?: () => void;
@@ -45,6 +79,7 @@ export function OAuthCredentialsConfig({ onUpdate }: OAuthCredentialsConfigProps
   const [formData, setFormData] = useState({ client_id: '', client_secret: '' });
   const [saving, setSaving] = useState(false);
   const [copiedUri, setCopiedUri] = useState(false);
+  const [showGuide, setShowGuide] = useState(false);
 
   const copyRedirectUris = useCallback(async () => {
     const urisText = OAUTH_REDIRECT_URIS.join('\n');
@@ -135,9 +170,29 @@ export function OAuthCredentialsConfig({ onUpdate }: OAuthCredentialsConfigProps
         </div>
       )}
 
-      <p className="text-sm text-muted-foreground">
-        Configure OAuth app credentials to enable cloud storage connections. You'll need to register an app with each provider.
-      </p>
+      <button
+        onClick={() => setShowGuide(true)}
+        className="w-full p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 text-sm text-left hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors group"
+      >
+        <p className="text-blue-800 dark:text-blue-200 font-medium mb-1 flex items-center gap-2">
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          Setup Guide
+          <span className="text-xs font-normal text-blue-600 dark:text-blue-400 group-hover:underline">(click to view)</span>
+        </p>
+        <p className="text-blue-700 dark:text-blue-300">
+          Configure OAuth app credentials to enable cloud storage.
+          <strong className="block mt-1">Important:</strong> For Google Drive, you must enable the Drive API in Google Cloud Console.
+        </p>
+      </button>
+
+      <MarkdownModal
+        isOpen={showGuide}
+        onClose={() => setShowGuide(false)}
+        title="Cloud Storage Setup Guide"
+        content={SETUP_GUIDE}
+      />
 
       <div className="space-y-3">
         {PROVIDERS.map(({ id, name, icon, manageUrl, manageLabel }) => {

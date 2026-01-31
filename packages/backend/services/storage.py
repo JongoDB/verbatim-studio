@@ -4,8 +4,11 @@ Implements filesystem-as-UI pattern where:
 - Projects are folders on disk
 - Recordings/documents are files in those folders
 - Files without a project live at the storage root
+
+Supports multiple storage backends through adapters (local, cloud, network).
 """
 
+import logging
 from pathlib import Path
 
 import aiofiles
@@ -14,28 +17,83 @@ import aiofiles.os
 from core.config import settings
 from services.path_manager import PathManager, path_manager as default_path_manager
 
+logger = logging.getLogger(__name__)
 
-async def get_active_storage_path() -> Path:
-    """Get the path of the currently active storage location.
 
-    Returns the configured storage location path from the database,
-    or falls back to settings.MEDIA_DIR if none is configured.
+async def get_active_storage_location():
+    """Get the default active storage location from database.
+
+    Prioritizes the default storage location, falling back to any active location.
+
+    Returns:
+        StorageLocation model or None if no active location.
     """
     from persistence.database import async_session
     from persistence.models import StorageLocation
     from sqlalchemy import select
 
     async with async_session() as session:
+        # First try to get the default storage location
         result = await session.execute(
-            select(StorageLocation).where(StorageLocation.is_active == True)
+            select(StorageLocation).where(
+                StorageLocation.is_default == True,
+                StorageLocation.is_active == True,
+            )
         )
         location = result.scalar_one_or_none()
+        if location:
+            return location
 
-        if location and location.config and location.config.get("path"):
-            path = Path(location.config["path"])
-            # Ensure directory exists
-            path.mkdir(parents=True, exist_ok=True)
-            return path
+        # Fall back to any active storage location
+        result = await session.execute(
+            select(StorageLocation).where(StorageLocation.is_active == True).limit(1)
+        )
+        return result.scalar_one_or_none()
+
+
+async def get_storage_adapter():
+    """Get the appropriate storage adapter for the active location.
+
+    Returns:
+        StorageAdapter instance for the active storage location,
+        or a LocalAdapter for the default media directory.
+    """
+    from storage.factory import get_adapter
+    from storage.adapters.local import LocalAdapter
+
+    location = await get_active_storage_location()
+
+    if location:
+        try:
+            return get_adapter(location), location.type, location.subtype
+        except Exception as e:
+            logger.error(f"Failed to get adapter for location {location.id}: {e}")
+            # Fall back to local
+
+    # Default to local storage
+    return LocalAdapter({"path": str(settings.MEDIA_DIR)}), "local", None
+
+
+async def get_active_storage_path() -> Path:
+    """Get the path of the currently active storage location.
+
+    Returns the configured storage location path from the database,
+    or falls back to settings.MEDIA_DIR if none is configured.
+
+    Note: For cloud storage, this returns None as there's no local path.
+    """
+    location = await get_active_storage_location()
+
+    if location and location.config:
+        if location.type == "local":
+            path_str = location.config.get("path")
+            if path_str:
+                path = Path(path_str)
+                path.mkdir(parents=True, exist_ok=True)
+                return path
+        # For cloud storage, return None - callers should use adapters
+        elif location.type == "cloud":
+            return None
 
     return settings.MEDIA_DIR
 
@@ -44,6 +102,7 @@ class StorageService:
     """Service for managing file storage operations.
 
     Uses human-readable paths based on project names and item titles.
+    Supports multiple storage backends through adapters.
     """
 
     def __init__(
@@ -59,6 +118,15 @@ class StorageService:
         """
         self.media_dir = media_dir or settings.MEDIA_DIR
         self._pm = pm or default_path_manager
+
+    async def _get_adapter_info(self):
+        """Get the current storage adapter and type info."""
+        return await get_storage_adapter()
+
+    async def _is_cloud_storage(self) -> bool:
+        """Check if current storage is cloud-based."""
+        _, storage_type, _ = await self._get_adapter_info()
+        return storage_type == "cloud"
 
     def get_item_path(
         self,
@@ -80,6 +148,29 @@ class StorageService:
         """
         extension = Path(filename).suffix
         return self._pm.get_item_path(self.media_dir, project_name, title, extension)
+
+    def _get_relative_path(
+        self,
+        title: str,
+        filename: str,
+        project_name: str | None = None,
+    ) -> str:
+        """Get relative path for cloud storage.
+
+        Args:
+            title: The item title.
+            filename: Original filename (used for extension).
+            project_name: Project name if item belongs to a project.
+
+        Returns:
+            Relative path string for cloud storage.
+        """
+        extension = Path(filename).suffix
+        safe_title = self._pm.sanitize_name(title)
+        if project_name:
+            safe_project = self._pm.sanitize_name(project_name)
+            return f"{safe_project}/{safe_title}{extension}"
+        return f"{safe_title}{extension}"
 
     # Legacy method for backwards compatibility during migration
     def get_recording_path(self, recording_id: str, filename: str) -> Path:
@@ -125,7 +216,7 @@ class StorageService:
         title: str,
         filename: str,
         project_name: str | None = None,
-    ) -> Path:
+    ) -> Path | str:
         """Save an uploaded file to storage with human-readable path.
 
         Args:
@@ -135,114 +226,256 @@ class StorageService:
             project_name: Project name if item belongs to a project.
 
         Returns:
-            Path where the file was saved.
+            Path where the file was saved (Path for local, string for cloud).
         """
-        # Get active storage location
-        storage_root = await get_active_storage_path()
+        adapter, storage_type, _ = await self._get_adapter_info()
 
-        extension = Path(filename).suffix
-        desired_path = self._pm.get_item_path(storage_root, project_name, title, extension)
+        if storage_type == "cloud":
+            # Use cloud adapter
+            relative_path = self._get_relative_path(title, filename, project_name)
 
-        # Ensure parent directory exists
-        await aiofiles.os.makedirs(desired_path.parent, exist_ok=True)
+            # Ensure directory exists
+            if project_name:
+                await adapter.ensure_directory(self._pm.sanitize_name(project_name))
 
-        # Generate unique path to handle collisions
-        actual_path = self._pm.generate_unique_path(desired_path.parent, desired_path.name)
+            # Write file through adapter
+            await adapter.write_file(relative_path, content)
 
-        # Ensure directory exists (in case unique path has different parent)
-        await aiofiles.os.makedirs(actual_path.parent, exist_ok=True)
+            logger.info(f"Saved file to cloud storage: {relative_path}")
+            return relative_path
+        else:
+            # Local storage - use filesystem
+            storage_root = await get_active_storage_path()
+            if storage_root is None:
+                storage_root = self.media_dir
 
-        # Write the file
-        async with aiofiles.open(actual_path, "wb") as f:
-            await f.write(content)
+            extension = Path(filename).suffix
+            desired_path = self._pm.get_item_path(storage_root, project_name, title, extension)
 
-        return actual_path
+            # Ensure parent directory exists
+            await aiofiles.os.makedirs(desired_path.parent, exist_ok=True)
+
+            # Generate unique path to handle collisions
+            actual_path = self._pm.generate_unique_path(desired_path.parent, desired_path.name)
+
+            # Ensure directory exists (in case unique path has different parent)
+            await aiofiles.os.makedirs(actual_path.parent, exist_ok=True)
+
+            # Write the file
+            async with aiofiles.open(actual_path, "wb") as f:
+                await f.write(content)
+
+            return actual_path
 
     async def move_to_project(
         self,
-        current_path: Path,
+        current_path: Path | str,
         new_project_name: str | None,
-    ) -> Path:
+    ) -> Path | str:
         """Move a file when project assignment changes.
 
         Args:
-            current_path: Current file path.
+            current_path: Current file path (Path for local, string for cloud).
             new_project_name: New project name, or None to move to root.
 
         Returns:
             New path where the file is now located.
         """
-        # Get active storage location
-        storage_root = await get_active_storage_path()
+        adapter, storage_type, _ = await self._get_adapter_info()
 
-        if new_project_name:
-            new_parent = storage_root / self._pm.sanitize_name(new_project_name)
+        if storage_type == "cloud":
+            # For cloud storage: read file, write to new location, delete old
+            old_path = str(current_path)
+            filename = old_path.split("/")[-1]
+
+            if new_project_name:
+                safe_project = self._pm.sanitize_name(new_project_name)
+                await adapter.ensure_directory(safe_project)
+                new_path = f"{safe_project}/{filename}"
+            else:
+                new_path = filename
+
+            if old_path != new_path:
+                # Read old file content
+                content = await adapter.read_file(old_path)
+                # Write to new location
+                await adapter.write_file(new_path, content)
+                # Delete old file
+                await adapter.delete_file(old_path)
+                logger.info(f"Moved cloud file from {old_path} to {new_path}")
+
+            return new_path
         else:
-            new_parent = storage_root
+            # Local storage - use filesystem operations
+            storage_root = await get_active_storage_path()
+            if storage_root is None:
+                storage_root = self.media_dir
 
-        return await self._pm.move_file(current_path, new_parent)
+            if new_project_name:
+                new_parent = storage_root / self._pm.sanitize_name(new_project_name)
+            else:
+                new_parent = storage_root
 
-    async def rename_item(self, current_path: Path, new_title: str) -> Path:
+            return await self._pm.move_file(Path(current_path), new_parent)
+
+    async def rename_item(self, current_path: Path | str, new_title: str) -> Path | str:
         """Rename a file when its title changes.
 
         Args:
-            current_path: Current file path.
+            current_path: Current file path (Path for local, string for cloud).
             new_title: New title for the item.
 
         Returns:
             New path with renamed file.
         """
-        extension = current_path.suffix
-        new_name = f"{self._pm.sanitize_name(new_title)}{extension}"
-        return await self._pm.rename_file(current_path, new_name)
+        adapter, storage_type, _ = await self._get_adapter_info()
+
+        if storage_type == "cloud":
+            # For cloud storage: read file, write with new name, delete old
+            old_path = str(current_path)
+            # Get extension from old path
+            if "." in old_path.split("/")[-1]:
+                extension = "." + old_path.rsplit(".", 1)[1]
+            else:
+                extension = ""
+
+            # Determine new path (keep same directory)
+            path_parts = old_path.rsplit("/", 1)
+            if len(path_parts) == 2:
+                directory = path_parts[0]
+                new_path = f"{directory}/{self._pm.sanitize_name(new_title)}{extension}"
+            else:
+                new_path = f"{self._pm.sanitize_name(new_title)}{extension}"
+
+            if old_path != new_path:
+                # Read old file content
+                content = await adapter.read_file(old_path)
+                # Write with new name
+                await adapter.write_file(new_path, content)
+                # Delete old file
+                await adapter.delete_file(old_path)
+                logger.info(f"Renamed cloud file from {old_path} to {new_path}")
+
+            return new_path
+        else:
+            # Local storage
+            path = Path(current_path)
+            extension = path.suffix
+            new_name = f"{self._pm.sanitize_name(new_title)}{extension}"
+            return await self._pm.rename_file(path, new_name)
 
     async def delete_file(self, file_path: Path | str) -> bool:
         """Delete a file from storage.
 
         Args:
-            file_path: Path to the file to delete.
+            file_path: Path to the file to delete (Path for local, string for cloud).
 
         Returns:
             True if file was deleted, False if it didn't exist.
         """
-        path = Path(file_path)
+        adapter, storage_type, _ = await self._get_adapter_info()
 
-        try:
-            await aiofiles.os.remove(path)
-            # Try to remove parent directory if empty (cleanup project folder)
-            await self._pm.delete_folder_if_empty(path.parent)
-            return True
-        except FileNotFoundError:
-            return False
+        if storage_type == "cloud":
+            # For cloud storage, file_path is a relative path string
+            relative_path = str(file_path)
+            try:
+                await adapter.delete_file(relative_path)
+                logger.info(f"Deleted file from cloud storage: {relative_path}")
+                return True
+            except Exception as e:
+                logger.error(f"Failed to delete cloud file {relative_path}: {e}")
+                return False
+        else:
+            # Local storage
+            path = Path(file_path)
+            try:
+                await aiofiles.os.remove(path)
+                # Try to remove parent directory if empty (cleanup project folder)
+                await self._pm.delete_folder_if_empty(path.parent)
+                return True
+            except FileNotFoundError:
+                return False
 
     async def get_file_size(self, file_path: Path | str) -> int | None:
         """Get the size of a file in bytes.
 
         Args:
-            file_path: Path to the file.
+            file_path: Path to the file (Path for local, string for cloud).
 
         Returns:
             File size in bytes, or None if file doesn't exist.
         """
-        path = Path(file_path)
+        adapter, storage_type, _ = await self._get_adapter_info()
 
-        try:
-            stat_result = await aiofiles.os.stat(path)
-            return stat_result.st_size
-        except FileNotFoundError:
-            return None
+        if storage_type == "cloud":
+            # For cloud storage, use adapter's get_file_info
+            relative_path = str(file_path)
+            try:
+                info = await adapter.get_file_info(relative_path)
+                return info.get("size") if info else None
+            except Exception as e:
+                logger.error(f"Failed to get cloud file size for {relative_path}: {e}")
+                return None
+        else:
+            # Local storage
+            path = Path(file_path)
+            try:
+                stat_result = await aiofiles.os.stat(path)
+                return stat_result.st_size
+            except FileNotFoundError:
+                return None
 
     async def file_exists(self, file_path: Path | str) -> bool:
         """Check if a file exists.
 
         Args:
-            file_path: Path to the file.
+            file_path: Path to the file (Path for local, string for cloud).
 
         Returns:
             True if file exists, False otherwise.
         """
-        path = Path(file_path)
-        return await aiofiles.os.path.exists(path)
+        adapter, storage_type, _ = await self._get_adapter_info()
+
+        if storage_type == "cloud":
+            # For cloud storage, use adapter's exists method
+            relative_path = str(file_path)
+            try:
+                return await adapter.exists(relative_path)
+            except Exception as e:
+                logger.error(f"Failed to check cloud file existence for {relative_path}: {e}")
+                return False
+        else:
+            # Local storage
+            path = Path(file_path)
+            return await aiofiles.os.path.exists(path)
+
+    async def read_file(self, file_path: Path | str) -> bytes | None:
+        """Read file content from storage.
+
+        Args:
+            file_path: Path to the file (Path for local, string for cloud).
+
+        Returns:
+            File content as bytes, or None if file doesn't exist.
+        """
+        adapter, storage_type, _ = await self._get_adapter_info()
+
+        if storage_type == "cloud":
+            # For cloud storage, use adapter's read_file
+            relative_path = str(file_path)
+            try:
+                return await adapter.read_file(relative_path)
+            except Exception as e:
+                logger.error(f"Failed to read cloud file {relative_path}: {e}")
+                return None
+        else:
+            # Local storage
+            path = Path(file_path)
+            try:
+                async with aiofiles.open(path, "rb") as f:
+                    return await f.read()
+            except FileNotFoundError:
+                return None
 
     async def save_file(self, relative_path: str, content: bytes) -> Path:
         """Save a file to a relative path under media directory.
@@ -340,22 +573,30 @@ class StorageService:
 
         return dest_path
 
-    async def ensure_project_folder(self, project_name: str) -> Path:
+    async def ensure_project_folder(self, project_name: str) -> Path | str:
         """Ensure a project folder exists.
 
         Args:
             project_name: The project name.
 
         Returns:
-            Path to the project folder.
+            Path to the project folder (Path for local, string for cloud).
         """
-        storage_root = await get_active_storage_path()
+        adapter, storage_type, _ = await self._get_adapter_info()
         safe_name = self._pm.sanitize_name(project_name)
-        folder_path = storage_root / safe_name
-        await self._pm.ensure_folder(folder_path)
-        return folder_path
 
-    async def rename_project_folder(self, old_name: str, new_name: str) -> Path:
+        if storage_type == "cloud":
+            await adapter.ensure_directory(safe_name)
+            return safe_name
+        else:
+            storage_root = await get_active_storage_path()
+            if storage_root is None:
+                storage_root = self.media_dir
+            folder_path = storage_root / safe_name
+            await self._pm.ensure_folder(folder_path)
+            return folder_path
+
+    async def rename_project_folder(self, old_name: str, new_name: str) -> Path | str:
         """Rename a project folder.
 
         Args:
@@ -363,17 +604,42 @@ class StorageService:
             new_name: New project name.
 
         Returns:
-            New folder path.
+            New folder path (Path for local, string for cloud).
         """
-        storage_root = await get_active_storage_path()
+        adapter, storage_type, _ = await self._get_adapter_info()
         old_safe = self._pm.sanitize_name(old_name)
-        old_path = storage_root / old_safe
+        new_safe = self._pm.sanitize_name(new_name)
 
-        if not old_path.exists():
-            # Folder doesn't exist yet, just ensure new one exists
-            return await self.ensure_project_folder(new_name)
+        if storage_type == "cloud":
+            # For cloud: list files in old folder, move each to new folder, delete old
+            try:
+                files = await adapter.list_files(old_safe)
+                if files:
+                    await adapter.ensure_directory(new_safe)
+                    for file_info in files:
+                        old_path = file_info.get("path", "")
+                        if old_path:
+                            filename = old_path.split("/")[-1]
+                            new_path = f"{new_safe}/{filename}"
+                            content = await adapter.read_file(old_path)
+                            await adapter.write_file(new_path, content)
+                            await adapter.delete_file(old_path)
+                    logger.info(f"Renamed cloud folder from {old_safe} to {new_safe}")
+                return new_safe
+            except Exception as e:
+                logger.warning(f"Could not rename cloud folder {old_safe}: {e}")
+                return await self.ensure_project_folder(new_name)
+        else:
+            storage_root = await get_active_storage_path()
+            if storage_root is None:
+                storage_root = self.media_dir
+            old_path = storage_root / old_safe
 
-        return await self._pm.rename_folder(old_path, new_name)
+            if not old_path.exists():
+                # Folder doesn't exist yet, just ensure new one exists
+                return await self.ensure_project_folder(new_name)
+
+            return await self._pm.rename_folder(old_path, new_name)
 
     async def delete_project_folder_if_empty(self, project_name: str) -> bool:
         """Delete a project folder if it's empty.
@@ -384,10 +650,27 @@ class StorageService:
         Returns:
             True if folder was deleted, False otherwise.
         """
-        storage_root = await get_active_storage_path()
+        adapter, storage_type, _ = await self._get_adapter_info()
         safe_name = self._pm.sanitize_name(project_name)
-        folder_path = storage_root / safe_name
-        return await self._pm.delete_folder_if_empty(folder_path)
+
+        if storage_type == "cloud":
+            # For cloud: check if folder has any files
+            try:
+                files = await adapter.list_files(safe_name)
+                if not files:
+                    # Empty folder - in Google Drive, empty folders are auto-managed
+                    logger.info(f"Cloud folder {safe_name} is empty")
+                    return True
+                return False
+            except Exception as e:
+                logger.warning(f"Could not check cloud folder {safe_name}: {e}")
+                return False
+        else:
+            storage_root = await get_active_storage_path()
+            if storage_root is None:
+                storage_root = self.media_dir
+            folder_path = storage_root / safe_name
+            return await self._pm.delete_folder_if_empty(folder_path)
 
 
 # Default storage service instance
