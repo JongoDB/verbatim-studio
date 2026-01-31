@@ -46,6 +46,14 @@ class Settings(BaseSettings):
     # HuggingFace token for pyannote speaker diarization
     HF_TOKEN: str | None = None
 
+    # OAuth credentials for cloud storage providers
+    GOOGLE_CLIENT_ID: str | None = None
+    GOOGLE_CLIENT_SECRET: str | None = None
+    MICROSOFT_CLIENT_ID: str | None = None
+    MICROSOFT_CLIENT_SECRET: str | None = None
+    DROPBOX_CLIENT_ID: str | None = None
+    DROPBOX_CLIENT_SECRET: str | None = None
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         # Set derived paths

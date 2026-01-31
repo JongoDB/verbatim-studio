@@ -857,6 +857,35 @@ export interface MigrationStatus {
   error: string | null;
 }
 
+// OAuth types
+export interface OAuthProvider {
+  id: string;
+  name: string;
+}
+
+export interface OAuthStartRequest {
+  provider: string;
+}
+
+export interface OAuthStartResponse {
+  auth_url: string;
+  state: string;
+  provider: string;
+}
+
+export interface OAuthStatusResponse {
+  status: 'pending' | 'complete' | 'error';
+  provider: string;
+  error?: string;
+  tokens?: {
+    access_token: string;
+    refresh_token: string;
+    expires_in: number;
+    token_type: string;
+    obtained_at: string;
+  };
+}
+
 class ApiClient {
   private baseUrl: string;
 
@@ -1688,6 +1717,19 @@ class ApiClient {
       }),
     getMigrationStatus: () =>
       this.request<MigrationStatus>('/api/storage-locations/migrate/status'),
+  };
+
+  // OAuth API
+  oauth = {
+    providers: () =>
+      this.request<{ providers: OAuthProvider[] }>('/api/oauth/providers'),
+    start: (data: OAuthStartRequest) =>
+      this.request<OAuthStartResponse>('/api/oauth/start', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    status: (state: string) =>
+      this.request<OAuthStatusResponse>(`/api/oauth/status/${state}`),
   };
 }
 

@@ -4,11 +4,15 @@ from persistence.models import StorageLocation
 from services.encryption import decrypt_config
 from storage.base import StorageAdapter
 from storage.adapters.local import LocalAdapter
+from storage.adapters.gdrive import GDriveAdapter
+from storage.adapters.onedrive import OneDriveAdapter
 
 
 # Registry of adapter classes by (type, subtype)
 ADAPTER_REGISTRY: dict[tuple[str, str | None], type[StorageAdapter]] = {
     ("local", None): LocalAdapter,
+    ("cloud", "gdrive"): GDriveAdapter,
+    ("cloud", "onedrive"): OneDriveAdapter,
 }
 
 

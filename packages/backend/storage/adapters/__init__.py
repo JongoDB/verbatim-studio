@@ -2,5 +2,7 @@
 """Storage adapter implementations."""
 
 from storage.adapters.local import LocalAdapter
+from storage.adapters.gdrive import GDriveAdapter
+from storage.adapters.onedrive import OneDriveAdapter
 
-__all__ = ["LocalAdapter"]
+__all__ = ["LocalAdapter", "GDriveAdapter", "OneDriveAdapter"]
