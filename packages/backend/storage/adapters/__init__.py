@@ -2,5 +2,6 @@
 """Storage adapter implementations."""
 
 from storage.adapters.local import LocalAdapter
+from storage.adapters.gdrive import GDriveAdapter
 
-__all__ = ["LocalAdapter"]
+__all__ = ["LocalAdapter", "GDriveAdapter"]
