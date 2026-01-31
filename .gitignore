@@ -47,3 +47,4 @@ models/
 *.gguf
 *.pt
 .worktrees/
+.playwright-mcp/
