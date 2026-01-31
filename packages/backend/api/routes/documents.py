@@ -162,7 +162,9 @@ async def upload_document(
     await db.commit()
     await db.refresh(doc)
 
-    # TODO: Queue processing job
+    # Queue processing job
+    from services.jobs import job_queue
+    await job_queue.enqueue("process_document", {"document_id": doc.id})
 
     return _doc_to_response(doc)
 
@@ -271,6 +273,27 @@ async def download_document_file(
         filename=doc.filename,
         media_type=doc.mime_type,
     )
+
+
+@router.post("/{document_id}/process", response_model=MessageResponse)
+async def reprocess_document(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    document_id: str,
+) -> MessageResponse:
+    """Re-trigger document processing."""
+    doc = await db.get(Document, document_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    # Reset status and queue job
+    doc.status = "pending"
+    doc.error_message = None
+    await db.commit()
+
+    from services.jobs import job_queue
+    await job_queue.enqueue("process_document", {"document_id": document_id})
+
+    return MessageResponse(message="Processing queued", id=document_id)
 
 
 @router.get("/{document_id}/content")

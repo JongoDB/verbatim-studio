@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from sqlalchemy import select, update
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from persistence.database import async_session
 from persistence.models import Job, Recording, Segment, SegmentEmbedding, Speaker, Transcript
@@ -639,3 +640,151 @@ async def handle_embedding(
 
 # Register the embedding handler
 job_queue.register_handler("embed", handle_embedding)
+
+
+# Document processing handler
+async def handle_document_processing(
+    payload: dict[str, Any], update_progress: ProgressCallback
+) -> dict[str, Any]:
+    """Process a document: extract text and generate embeddings."""
+    document_id = payload["document_id"]
+
+    async with async_session() as session:
+        from persistence.models import Document, DocumentEmbedding
+        from services.document_processor import document_processor
+        from services.storage import storage_service
+
+        # Get document
+        result = await session.execute(
+            select(Document).where(Document.id == document_id)
+        )
+        doc = result.scalar_one_or_none()
+        if not doc:
+            raise ValueError(f"Document {document_id} not found")
+
+        # Update status
+        doc.status = "processing"
+        await session.commit()
+
+        await update_progress(10)
+
+        try:
+            # Get file path
+            file_path = storage_service.get_full_path(doc.file_path)
+            if not file_path.exists():
+                raise FileNotFoundError(f"File not found: {file_path}")
+
+            # Extract text
+            extraction_result = document_processor.process(file_path, doc.mime_type)
+
+            await update_progress(50)
+
+            # Update document
+            doc.extracted_text = extraction_result.get("text")
+            doc.extracted_markdown = extraction_result.get("markdown")
+            doc.page_count = extraction_result.get("page_count")
+            if extraction_result.get("metadata"):
+                doc.metadata_.update(extraction_result.get("metadata", {}))
+
+            await update_progress(70)
+
+            # Generate embeddings if text was extracted
+            if doc.extracted_text and len(doc.extracted_text.strip()) > 0:
+                await _generate_document_embeddings(session, doc, update_progress)
+
+            doc.status = "completed"
+            doc.error_message = None
+            await session.commit()
+
+            await update_progress(100)
+
+            return {"document_id": document_id, "status": "completed"}
+
+        except Exception as e:
+            doc.status = "failed"
+            doc.error_message = str(e)
+            await session.commit()
+            raise
+
+
+async def _generate_document_embeddings(
+    session: AsyncSession, doc: "Document", update_progress: ProgressCallback
+) -> None:
+    """Generate embeddings for document chunks."""
+    from persistence.models import DocumentEmbedding
+    from services.embedding import embedding_service, embedding_to_bytes
+
+    if not embedding_service.is_available():
+        logger.warning("Embedding service not available, skipping embeddings")
+        return
+
+    # Delete existing embeddings
+    existing = (await session.execute(
+        select(DocumentEmbedding).where(DocumentEmbedding.document_id == doc.id)
+    )).scalars().all()
+    for emb in existing:
+        await session.delete(emb)
+
+    # Chunk text
+    chunks = _chunk_document_text(doc.extracted_text, max_tokens=500)
+
+    # Generate embeddings in batch for efficiency
+    chunk_texts = [chunk["text"] for chunk in chunks]
+    if not chunk_texts:
+        return
+
+    embeddings = await embedding_service.embed_texts(chunk_texts)
+
+    # Store embeddings
+    for i, (chunk, embedding_vector) in enumerate(zip(chunks, embeddings)):
+        try:
+            doc_embedding = DocumentEmbedding(
+                document_id=doc.id,
+                chunk_index=i,
+                chunk_text=chunk["text"],
+                chunk_metadata=chunk.get("metadata", {}),
+                embedding=embedding_to_bytes(embedding_vector),
+                model_used=embedding_service._model_name,
+            )
+            session.add(doc_embedding)
+        except Exception as e:
+            logger.warning(f"Failed to embed chunk {i}: {e}")
+
+    await session.commit()
+    logger.info(f"Generated {len(chunks)} embeddings for document {doc.id}")
+
+
+def _chunk_document_text(text: str, max_tokens: int = 500) -> list[dict]:
+    """Split text into chunks."""
+    import re
+
+    sentences = re.split(r'(?<=[.!?])\s+', text)
+    chunks = []
+    current_chunk = []
+    current_length = 0
+
+    for sentence in sentences:
+        sentence_tokens = len(sentence) // 4
+
+        if current_length + sentence_tokens > max_tokens and current_chunk:
+            chunks.append({
+                "text": " ".join(current_chunk),
+                "metadata": {"chunk_index": len(chunks)},
+            })
+            current_chunk = []
+            current_length = 0
+
+        current_chunk.append(sentence)
+        current_length += sentence_tokens
+
+    if current_chunk:
+        chunks.append({
+            "text": " ".join(current_chunk),
+            "metadata": {"chunk_index": len(chunks)},
+        })
+
+    return chunks
+
+
+# Register document processing handler
+job_queue.register_handler("process_document", handle_document_processing)
