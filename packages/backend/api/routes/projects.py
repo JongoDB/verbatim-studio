@@ -447,13 +447,11 @@ async def add_recording_to_project(
     if recording.project_id == project_id:
         return MessageResponse(message="Recording already in project", id=recording_id)
 
-    # Move file to project folder
+    # Move file to project folder (works for both local and cloud storage)
     if recording.file_path:
         try:
-            old_path = Path(recording.file_path)
-            if old_path.exists():
-                new_path = await storage_service.move_to_project(old_path, project.name)
-                recording.file_path = str(new_path)
+            new_path = await storage_service.move_to_project(recording.file_path, project.name)
+            recording.file_path = str(new_path)
         except Exception as e:
             logger.warning(f"Could not move file for recording {recording_id}: {e}")
 
@@ -482,13 +480,11 @@ async def remove_recording_from_project(
     if not recording:
         raise HTTPException(status_code=404, detail="Recording not found in project")
 
-    # Move file to root
+    # Move file to root (works for both local and cloud storage)
     if recording.file_path:
         try:
-            old_path = Path(recording.file_path)
-            if old_path.exists():
-                new_path = await storage_service.move_to_project(old_path, None)
-                recording.file_path = str(new_path)
+            new_path = await storage_service.move_to_project(recording.file_path, None)
+            recording.file_path = str(new_path)
         except Exception as e:
             logger.warning(f"Could not move file for recording {recording_id}: {e}")
 

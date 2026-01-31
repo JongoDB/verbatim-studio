@@ -69,19 +69,20 @@ function ItemIcon({ type, mimeType, size = 'md' }: { type: string; mimeType?: st
 
 // Move Dialog Component
 function MoveDialog({
-  item,
+  items,
   folders,
   currentFolderId,
   onMove,
   onClose,
 }: {
-  item: BrowseItem;
+  items: BrowseItem[];
   folders: FolderTreeNode[];
   currentFolderId: string | null;
   onMove: (targetId: string | null) => void;
   onClose: () => void;
 }) {
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
+  const title = items.length === 1 ? `Move "${items[0].name}"` : `Move ${items.length} items`;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -89,7 +90,7 @@ function MoveDialog({
       <div className="relative bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md mx-4">
         <div className="p-4 border-b border-gray-200 dark:border-gray-700">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-            Move "{item.name}"
+            {title}
           </h3>
         </div>
         <div className="p-4 max-h-64 overflow-y-auto">
@@ -282,7 +283,8 @@ export function FileBrowserPage({ initialFolderId, onViewRecording, onViewDocume
   const [browseData, setBrowseData] = useState<BrowseResponse | null>(null);
   const [folders, setFolders] = useState<FolderTreeNode[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
+  const [selectedItems, setSelectedItems] = useState<Map<string, BrowseItem>>(new Map());
+  const [lastSelectedId, setLastSelectedId] = useState<string | null>(null);
   const [searchInput, setSearchInput] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -290,8 +292,10 @@ export function FileBrowserPage({ initialFolderId, onViewRecording, onViewDocume
   const [sortOrder, setSortOrder] = useState<SortOrder>('asc');
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; item: BrowseItem } | null>(null);
   const [moveItem, setMoveItem] = useState<BrowseItem | null>(null);
+  const [moveItems, setMoveItems] = useState<BrowseItem[] | null>(null);
   const [propertiesItem, setPropertiesItem] = useState<BrowseItem | null>(null);
   const [dragOverFolder, setDragOverFolder] = useState<string | null>(null);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   // Debounce search input
   useEffect(() => {
@@ -314,7 +318,8 @@ export function FileBrowserPage({ initialFolderId, onViewRecording, onViewDocume
       ]);
       setBrowseData(data);
       setFolders(treeData.root.children);
-      setSelectedItems(new Set());
+      setSelectedItems(new Map());
+      setLastSelectedId(null);
     } catch (err) {
       console.error('Failed to load folder:', err);
       setError('Failed to load folder');
@@ -456,6 +461,116 @@ export function FileBrowserPage({ initialFolderId, onViewRecording, onViewDocume
     return 'Document';
   };
 
+  // Selection handlers
+  const toggleItemSelection = (item: BrowseItem, e?: React.MouseEvent) => {
+    const newSelected = new Map(selectedItems);
+    const itemKey = `${item.type}-${item.id}`;
+
+    if (e?.shiftKey && lastSelectedId && browseData?.items) {
+      // Shift+click: select range
+      const items = browseData.items;
+      const lastIndex = items.findIndex(i => `${i.type}-${i.id}` === lastSelectedId);
+      const currentIndex = items.findIndex(i => `${i.type}-${i.id}` === itemKey);
+
+      if (lastIndex !== -1 && currentIndex !== -1) {
+        const start = Math.min(lastIndex, currentIndex);
+        const end = Math.max(lastIndex, currentIndex);
+        for (let i = start; i <= end; i++) {
+          const key = `${items[i].type}-${items[i].id}`;
+          newSelected.set(key, items[i]);
+        }
+      }
+    } else if (e?.metaKey || e?.ctrlKey) {
+      // Cmd/Ctrl+click: toggle individual
+      if (newSelected.has(itemKey)) {
+        newSelected.delete(itemKey);
+      } else {
+        newSelected.set(itemKey, item);
+      }
+    } else {
+      // Regular click: select only this item
+      newSelected.clear();
+      newSelected.set(itemKey, item);
+    }
+
+    setSelectedItems(newSelected);
+    setLastSelectedId(itemKey);
+  };
+
+  const toggleCheckbox = (item: BrowseItem, e: React.ChangeEvent<HTMLInputElement>) => {
+    e.stopPropagation();
+    const newSelected = new Map(selectedItems);
+    const itemKey = `${item.type}-${item.id}`;
+
+    if (newSelected.has(itemKey)) {
+      newSelected.delete(itemKey);
+    } else {
+      newSelected.set(itemKey, item);
+    }
+
+    setSelectedItems(newSelected);
+  };
+
+  const selectAll = () => {
+    if (!browseData?.items) return;
+    const newSelected = new Map<string, BrowseItem>();
+    browseData.items.forEach(item => {
+      newSelected.set(`${item.type}-${item.id}`, item);
+    });
+    setSelectedItems(newSelected);
+  };
+
+  const clearSelection = () => {
+    setSelectedItems(new Map());
+    setLastSelectedId(null);
+  };
+
+  const isAllSelected = browseData?.items && browseData.items.length > 0 &&
+    browseData.items.every(item => selectedItems.has(`${item.type}-${item.id}`));
+
+  const isSomeSelected = selectedItems.size > 0 && !isAllSelected;
+
+  // Bulk actions
+  const handleBulkDelete = async () => {
+    const items = Array.from(selectedItems.values());
+    if (items.length === 0) return;
+
+    const confirmMsg = items.length === 1
+      ? `Delete "${items[0].name}"?`
+      : `Delete ${items.length} items?`;
+
+    if (!confirm(confirmMsg)) return;
+
+    setBulkDeleting(true);
+    try {
+      for (const item of items) {
+        await api.browse.delete(item.type, item.id);
+      }
+      loadFolder();
+    } catch (err) {
+      console.error('Failed to delete items:', err);
+      setError('Failed to delete some items');
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
+
+  const handleBulkMove = async (targetFolderId: string | null) => {
+    const items = Array.from(selectedItems.values()).filter(i => i.type !== 'folder');
+    if (items.length === 0) return;
+
+    try {
+      for (const item of items) {
+        await api.browse.move(item.id, item.type as 'recording' | 'document', targetFolderId);
+      }
+      loadFolder();
+    } catch (err) {
+      console.error('Failed to move items:', err);
+      setError('Failed to move some items');
+    }
+    setMoveItems(null);
+  };
+
   const SortIcon = ({ field }: { field: SortField }) => {
     if (sortField !== field) return null;
     return (
@@ -474,6 +589,39 @@ export function FileBrowserPage({ initialFolderId, onViewRecording, onViewDocume
         <div className="flex items-center gap-4">
           <Breadcrumb items={browseData?.breadcrumb || []} onNavigate={handleNavigate} />
           <div className="flex-1" />
+
+          {/* Bulk action toolbar */}
+          {selectedItems.size > 0 && (
+            <div className="flex items-center gap-2 mr-4">
+              <span className="text-sm text-gray-600 dark:text-gray-400">
+                {selectedItems.size} selected
+              </span>
+              <button
+                onClick={clearSelection}
+                className="px-2 py-1 text-xs text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
+              >
+                Clear
+              </button>
+              <button
+                onClick={() => {
+                  const items = Array.from(selectedItems.values()).filter(i => i.type !== 'folder');
+                  if (items.length > 0) setMoveItems(items);
+                }}
+                disabled={Array.from(selectedItems.values()).every(i => i.type === 'folder')}
+                className="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Move
+              </button>
+              <button
+                onClick={handleBulkDelete}
+                disabled={bulkDeleting}
+                className="px-3 py-1.5 text-xs font-medium rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {bulkDeleting ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          )}
+
           <input
             type="text"
             placeholder="Search files..."
@@ -516,6 +664,17 @@ export function FileBrowserPage({ initialFolderId, onViewRecording, onViewDocume
           <table className="w-full">
             <thead className="sticky top-0 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
               <tr>
+                <th className="px-4 py-3 w-10">
+                  <input
+                    type="checkbox"
+                    checked={isAllSelected}
+                    ref={(el) => {
+                      if (el) el.indeterminate = isSomeSelected;
+                    }}
+                    onChange={() => isAllSelected ? clearSelection() : selectAll()}
+                    className="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500"
+                  />
+                </th>
                 <th
                   className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700"
                   onClick={() => handleSort('name')}
@@ -543,44 +702,57 @@ export function FileBrowserPage({ initialFolderId, onViewRecording, onViewDocume
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-              {browseData?.items.map((item) => (
-                <tr
-                  key={`${item.type}-${item.id}`}
-                  draggable={item.type !== 'folder'}
-                  onDragStart={(e) => handleDragStart(e, item)}
-                  onDragOver={item.type === 'folder' ? (e) => handleDragOver(e, item.id) : undefined}
-                  onDragLeave={item.type === 'folder' ? handleDragLeave : undefined}
-                  onDrop={item.type === 'folder' ? (e) => handleDrop(e, item.id) : undefined}
-                  onClick={() => setSelectedItems(new Set([item.id]))}
-                  onDoubleClick={() => handleOpen(item)}
-                  onContextMenu={(e) => handleContextMenu(e, item)}
-                  className={`cursor-pointer transition-colors ${
-                    selectedItems.has(item.id)
-                      ? 'bg-blue-50 dark:bg-blue-900/20'
-                      : dragOverFolder === item.id
-                      ? 'bg-blue-100 dark:bg-blue-900/40'
-                      : 'hover:bg-gray-50 dark:hover:bg-gray-800'
-                  }`}
-                >
-                  <td className="px-6 py-3">
-                    <div className="flex items-center gap-3">
-                      <ItemIcon type={item.type} mimeType={item.mime_type} />
-                      <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                        {item.name}
-                      </span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-3 text-sm text-gray-500 dark:text-gray-400">
-                    {item.updated_at ? formatDate(item.updated_at) : '-'}
-                  </td>
-                  <td className="px-6 py-3 text-sm text-gray-500 dark:text-gray-400">
-                    {getItemSize(item)}
-                  </td>
-                  <td className="px-6 py-3 text-sm text-gray-500 dark:text-gray-400">
-                    {getItemType(item)}
-                  </td>
-                </tr>
-              ))}
+              {browseData?.items.map((item) => {
+                const itemKey = `${item.type}-${item.id}`;
+                const isSelected = selectedItems.has(itemKey);
+                return (
+                  <tr
+                    key={itemKey}
+                    draggable={item.type !== 'folder'}
+                    onDragStart={(e) => handleDragStart(e, item)}
+                    onDragOver={item.type === 'folder' ? (e) => handleDragOver(e, item.id) : undefined}
+                    onDragLeave={item.type === 'folder' ? handleDragLeave : undefined}
+                    onDrop={item.type === 'folder' ? (e) => handleDrop(e, item.id) : undefined}
+                    onClick={(e) => toggleItemSelection(item, e)}
+                    onDoubleClick={() => handleOpen(item)}
+                    onContextMenu={(e) => handleContextMenu(e, item)}
+                    className={`cursor-pointer transition-colors ${
+                      isSelected
+                        ? 'bg-blue-50 dark:bg-blue-900/20'
+                        : dragOverFolder === item.id
+                        ? 'bg-blue-100 dark:bg-blue-900/40'
+                        : 'hover:bg-gray-50 dark:hover:bg-gray-800'
+                    }`}
+                  >
+                    <td className="px-4 py-3 w-10">
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={(e) => toggleCheckbox(item, e)}
+                        onClick={(e) => e.stopPropagation()}
+                        className="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500"
+                      />
+                    </td>
+                    <td className="px-6 py-3">
+                      <div className="flex items-center gap-3">
+                        <ItemIcon type={item.type} mimeType={item.mime_type} />
+                        <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                          {item.name}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-3 text-sm text-gray-500 dark:text-gray-400">
+                      {item.updated_at ? formatDate(item.updated_at) : '-'}
+                    </td>
+                    <td className="px-6 py-3 text-sm text-gray-500 dark:text-gray-400">
+                      {getItemSize(item)}
+                    </td>
+                    <td className="px-6 py-3 text-sm text-gray-500 dark:text-gray-400">
+                      {getItemType(item)}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}
@@ -641,10 +813,10 @@ export function FileBrowserPage({ initialFolderId, onViewRecording, onViewDocume
         </>
       )}
 
-      {/* Move dialog */}
+      {/* Move dialog (single item) */}
       {moveItem && (
         <MoveDialog
-          item={moveItem}
+          items={[moveItem]}
           folders={folders}
           currentFolderId={currentFolderId}
           onMove={(targetId) => {
@@ -652,6 +824,17 @@ export function FileBrowserPage({ initialFolderId, onViewRecording, onViewDocume
             setMoveItem(null);
           }}
           onClose={() => setMoveItem(null)}
+        />
+      )}
+
+      {/* Move dialog (bulk) */}
+      {moveItems && moveItems.length > 0 && (
+        <MoveDialog
+          items={moveItems}
+          folders={folders}
+          currentFolderId={currentFolderId}
+          onMove={(targetId) => handleBulkMove(targetId)}
+          onClose={() => setMoveItems(null)}
         />
       )}
 
