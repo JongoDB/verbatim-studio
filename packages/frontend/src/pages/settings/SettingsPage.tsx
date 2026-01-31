@@ -3,6 +3,7 @@ import { api, type ArchiveInfo, type TranscriptionSettings, type AIModel, type A
 import { StorageTypeSelector } from '@/components/storage/StorageTypeSelector';
 import { StorageSubtypeSelector } from '@/components/storage/StorageSubtypeSelector';
 import { StorageConfigForm } from '@/components/storage/StorageConfigForm';
+import { OAuthCredentialsConfig } from '@/components/storage/OAuthCredentialsConfig';
 import { TIMEZONE_OPTIONS, getStoredTimezone, setStoredTimezone, type TimezoneValue } from '@/lib/utils';
 
 interface SettingsPageProps {
@@ -1435,6 +1436,19 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
           <p className="text-xs text-gray-500 dark:text-gray-400 border-t border-gray-200 dark:border-gray-700 pt-3">
             Storage locations determine where recordings, documents, and other media files are saved. The default location is used for new uploads.
           </p>
+        </div>
+      </div>
+
+      {/* OAuth Credentials Section */}
+      <div className="mt-6 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+        <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-700">
+          <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Cloud Storage Credentials</h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+            Configure OAuth app credentials for cloud storage providers
+          </p>
+        </div>
+        <div className="px-5 py-4">
+          <OAuthCredentialsConfig />
         </div>
       </div>
 

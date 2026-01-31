@@ -11,6 +11,7 @@ import httpx
 from aiohttp import web
 
 from core.config import settings
+from core.oauth_credentials import get_oauth_credentials_raw
 
 logger = logging.getLogger(__name__)
 
@@ -52,31 +53,37 @@ OAUTH_PROVIDERS = {
 _callback_servers: dict[str, web.AppRunner] = {}
 
 
-def get_client_credentials(provider: str) -> tuple[str, str]:
-    """Get client ID and secret for a provider from environment."""
+async def get_client_credentials(provider: str) -> tuple[str, str]:
+    """Get client ID and secret for a provider.
+
+    Checks database first, falls back to environment variables.
+    """
     config = OAUTH_PROVIDERS.get(provider)
     if not config:
         raise ValueError(f"Unknown OAuth provider: {provider}")
 
-    client_id = getattr(settings, config["client_id_env"], None)
-    client_secret = getattr(settings, config["client_secret_env"], None)
+    # Get credentials from DB or env vars
+    creds = await get_oauth_credentials_raw(provider)
+    client_id = creds.get("client_id")
+    client_secret = creds.get("client_secret")
 
     if not client_id or not client_secret:
         raise ValueError(
             f"Missing OAuth credentials for {provider}. "
-            f"Set {config['client_id_env']} and {config['client_secret_env']} environment variables."
+            f"Configure them in Settings > System > OAuth Credentials, "
+            f"or set {config['client_id_env']} and {config['client_secret_env']} environment variables."
         )
 
     return client_id, client_secret
 
 
-def build_auth_url(provider: str, state: str, redirect_uri: str) -> str:
+async def build_auth_url(provider: str, state: str, redirect_uri: str) -> str:
     """Build the authorization URL for a provider."""
     config = OAUTH_PROVIDERS.get(provider)
     if not config:
         raise ValueError(f"Unknown OAuth provider: {provider}")
 
-    client_id, _ = get_client_credentials(provider)
+    client_id, _ = await get_client_credentials(provider)
 
     params = {
         "client_id": client_id,
@@ -105,7 +112,7 @@ async def exchange_code_for_tokens(
     if not config:
         raise ValueError(f"Unknown OAuth provider: {provider}")
 
-    client_id, client_secret = get_client_credentials(provider)
+    client_id, client_secret = await get_client_credentials(provider)
 
     data = {
         "client_id": client_id,
@@ -145,7 +152,7 @@ async def refresh_access_token(provider: str, refresh_token: str) -> dict[str, A
     if not config:
         raise ValueError(f"Unknown OAuth provider: {provider}")
 
-    client_id, client_secret = get_client_credentials(provider)
+    client_id, client_secret = await get_client_credentials(provider)
 
     data = {
         "client_id": client_id,
@@ -187,7 +194,7 @@ async def start_oauth(provider: str) -> tuple[str, str]:
         raise ValueError(f"Unknown OAuth provider: {provider}")
 
     # Validate credentials exist before starting
-    get_client_credentials(provider)
+    await get_client_credentials(provider)
 
     # Generate unique state
     state = secrets.token_urlsafe(32)
@@ -208,7 +215,7 @@ async def start_oauth(provider: str) -> tuple[str, str]:
 
     # Build auth URL
     redirect_uri = f"http://localhost:{port}/callback"
-    auth_url = build_auth_url(provider, state, redirect_uri)
+    auth_url = await build_auth_url(provider, state, redirect_uri)
 
     logger.info(f"Started OAuth flow for {provider}, state={state[:8]}..., port={port}")
 

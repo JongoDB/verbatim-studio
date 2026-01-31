@@ -3,3 +3,4 @@ export { StorageTypeSelector } from './StorageTypeSelector';
 export { StorageSubtypeSelector } from './StorageSubtypeSelector';
 export { StorageConfigForm } from './StorageConfigForm';
 export { OAuthConnectButton } from './OAuthConnectButton';
+export { OAuthCredentialsConfig } from './OAuthCredentialsConfig';

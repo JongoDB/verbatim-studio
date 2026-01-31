@@ -886,6 +886,27 @@ export interface OAuthStatusResponse {
   };
 }
 
+// OAuth Credentials types (for configuring OAuth apps)
+export interface OAuthProviderCredentials {
+  client_id: string;
+  has_secret: boolean;
+  configured: boolean;
+  name: string;
+  setup_url: string;
+  docs_url: string;
+}
+
+export interface OAuthCredentialsResponse {
+  gdrive: OAuthProviderCredentials | null;
+  onedrive: OAuthProviderCredentials | null;
+  dropbox: OAuthProviderCredentials | null;
+}
+
+export interface OAuthCredentialsUpdate {
+  client_id: string;
+  client_secret: string;
+}
+
 class ApiClient {
   private baseUrl: string;
 
@@ -1679,6 +1700,24 @@ class ApiClient {
       this.request<TranscriptionSettings>('/api/config/transcription', {
         method: 'PUT',
         body: JSON.stringify(data),
+      }),
+
+    // OAuth Credentials
+    getOAuthCredentials: () =>
+      this.request<OAuthCredentialsResponse>('/api/config/oauth-credentials'),
+
+    getOAuthCredentialsForProvider: (provider: string) =>
+      this.request<OAuthProviderCredentials>(`/api/config/oauth-credentials/${provider}`),
+
+    setOAuthCredentials: (provider: string, data: OAuthCredentialsUpdate) =>
+      this.request<OAuthProviderCredentials>(`/api/config/oauth-credentials/${provider}`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      }),
+
+    deleteOAuthCredentials: (provider: string) =>
+      this.request<{ deleted: boolean }>(`/api/config/oauth-credentials/${provider}`, {
+        method: 'DELETE',
       }),
   };
 

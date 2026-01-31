@@ -24,6 +24,7 @@ SENSITIVE_FIELDS = {
     "oauth_tokens",
     "access_token",
     "refresh_token",
+    "client_secret",
 }
 
 
