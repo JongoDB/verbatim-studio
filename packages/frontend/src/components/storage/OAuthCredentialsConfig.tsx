@@ -6,10 +6,11 @@ const SETUP_GUIDE = `## Google Drive
 
 1. [Create a Google Cloud Project](https://console.cloud.google.com/projectcreate)
 2. [Enable the Drive API](https://console.cloud.google.com/apis/library/drive.googleapis.com) ← **Required**
-3. [Configure OAuth Consent](https://console.cloud.google.com/apis/credentials/consent) → External → Add scope \`drive.file\`
-4. [Add yourself as test user](https://console.cloud.google.com/auth/audience) → Add your email
-5. [Create OAuth Credentials](https://console.cloud.google.com/apis/credentials) → OAuth client ID → Web application
-6. Add all 4 redirect URIs below, copy Client ID & Secret
+3. [Configure OAuth Branding](https://console.cloud.google.com/auth/branding) → Get Started → External
+4. [Add Scopes](https://console.cloud.google.com/auth/scopes) → Add \`drive.file\`
+5. [Add Test User](https://console.cloud.google.com/auth/audience) → Add your email
+6. [Create OAuth Credentials](https://console.cloud.google.com/apis/credentials) → OAuth client ID → Web application
+7. Add all 4 redirect URIs below, copy Client ID & Secret
 
 **Troubleshooting**
 
