@@ -1,4 +1,4 @@
-import { cn } from '@/lib/utils';
+import { cn, formatDateTime } from '@/lib/utils';
 import type { Recording } from '@/lib/api';
 
 interface RecordingListItemProps {
@@ -27,16 +27,6 @@ function formatDuration(seconds: number | null): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-function formatDate(dateString: string): string {
-  const date = new Date(dateString);
-  return date.toLocaleDateString(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
 
 const statusConfig: Record<string, { label: string; className: string }> = {
   pending: {
@@ -97,7 +87,7 @@ export function RecordingListItem({
 
         {/* Date */}
         <span className="text-xs text-muted-foreground whitespace-nowrap hidden lg:block">
-          {formatDate(recording.created_at)}
+          {formatDateTime(recording.created_at)}
         </span>
 
         {/* Status Badge */}

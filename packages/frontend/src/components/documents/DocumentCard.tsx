@@ -1,4 +1,5 @@
 import type { Document } from '@/lib/api';
+import { formatRelativeTime } from '@/lib/utils';
 
 interface DocumentCardProps {
   document: Document;
@@ -30,19 +31,6 @@ function formatBytes(bytes: number): string {
   if (bytes >= 1_048_576) return `${(bytes / 1_048_576).toFixed(1)} MB`;
   if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${bytes} B`;
-}
-
-function formatDate(dateStr: string): string {
-  const date = new Date(dateStr);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
-
-  if (diffMins < 1) return 'Just now';
-  if (diffMins < 60) return `${diffMins}m ago`;
-  if (diffMins < 1440) return `${Math.floor(diffMins / 60)}h ago`;
-  if (diffMins < 10080) return `${Math.floor(diffMins / 1440)}d ago`;
-  return date.toLocaleDateString();
 }
 
 export function DocumentCard({ document, onClick, onDelete }: DocumentCardProps) {
@@ -77,7 +65,7 @@ export function DocumentCard({ document, onClick, onDelete }: DocumentCardProps)
             )}
           </div>
           <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
-            {formatDate(document.created_at)}
+            {formatRelativeTime(document.created_at)}
           </p>
         </div>
       </div>

@@ -1,4 +1,5 @@
 import { type BrowseItem } from '@/lib/api';
+import { formatDate } from '@/lib/utils';
 
 interface BrowserItemProps {
   item: BrowseItem;
@@ -110,7 +111,7 @@ export function BrowserItem({ item, viewMode, selected, onSelect, onOpen, onCont
         <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{item.name}</p>
         <p className="text-xs text-gray-500 dark:text-gray-400">{subtitle}</p>
       </div>
-      <p className="text-xs text-gray-400">{new Date(item.updated_at).toLocaleDateString()}</p>
+      <p className="text-xs text-gray-400">{formatDate(item.updated_at)}</p>
     </div>
   );
 }

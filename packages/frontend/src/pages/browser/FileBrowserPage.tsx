@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api, type BrowseItem, type BrowseResponse, type FolderTreeNode, type FileProperties } from '@/lib/api';
+import { formatDateTime, formatDate } from '@/lib/utils';
 import { Breadcrumb } from '@/components/browser/Breadcrumb';
 
 interface FileBrowserPageProps {
@@ -248,10 +249,10 @@ function PropertiesDialog({
                 <span className="text-gray-900 dark:text-gray-100 capitalize">{properties.status}</span>
 
                 <span className="text-gray-500 dark:text-gray-400">Created:</span>
-                <span className="text-gray-900 dark:text-gray-100">{new Date(properties.created_at).toLocaleString()}</span>
+                <span className="text-gray-900 dark:text-gray-100">{formatDateTime(properties.created_at)}</span>
 
                 <span className="text-gray-500 dark:text-gray-400">Modified:</span>
-                <span className="text-gray-900 dark:text-gray-100">{new Date(properties.updated_at).toLocaleString()}</span>
+                <span className="text-gray-900 dark:text-gray-100">{formatDateTime(properties.updated_at)}</span>
 
                 {properties.storage_location && (
                   <>
@@ -570,7 +571,7 @@ export function FileBrowserPage({ initialFolderId, onViewRecording, onViewDocume
                     </div>
                   </td>
                   <td className="px-6 py-3 text-sm text-gray-500 dark:text-gray-400">
-                    {item.updated_at ? new Date(item.updated_at).toLocaleDateString() : '-'}
+                    {item.updated_at ? formatDate(item.updated_at) : '-'}
                   </td>
                   <td className="px-6 py-3 text-sm text-gray-500 dark:text-gray-400">
                     {getItemSize(item)}

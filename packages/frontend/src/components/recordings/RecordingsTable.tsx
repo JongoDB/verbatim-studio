@@ -1,4 +1,4 @@
-import { cn } from '@/lib/utils';
+import { cn, formatDateTime } from '@/lib/utils';
 import type { Recording, Tag, Project } from '@/lib/api';
 
 type SortKey = 'created_at' | 'title' | 'duration';
@@ -45,16 +45,6 @@ function isVideo(mimeType: string | null): boolean {
   return mimeType.startsWith('video/');
 }
 
-function formatDate(dateString: string): string {
-  const date = new Date(dateString);
-  return date.toLocaleDateString(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
 
 const statusConfig: Record<string, { label: string; className: string }> = {
   pending: {
@@ -354,7 +344,7 @@ function RecordingRow({
 
         {/* Date */}
         <td className="hidden lg:table-cell px-3 py-2.5 text-xs text-muted-foreground whitespace-nowrap">
-          {formatDate(recording.created_at)}
+          {formatDateTime(recording.created_at)}
         </td>
 
         {/* Actions */}

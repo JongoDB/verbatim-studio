@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { api, type ArchiveInfo, type TranscriptionSettings, type AIModel, type AIModelDownloadEvent, type SystemInfo, type StorageLocation, type MigrationStatus } from '@/lib/api';
+import { TIMEZONE_OPTIONS, getStoredTimezone, setStoredTimezone, type TimezoneValue } from '@/lib/utils';
 
 interface SettingsPageProps {
   theme: 'light' | 'dark' | 'system';
@@ -573,6 +574,27 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
                 </button>
               ))}
             </div>
+          </SettingSection>
+
+          <SettingSection
+            title="Timezone"
+            description="Display dates and times in your preferred timezone"
+          >
+            <select
+              value={getStoredTimezone()}
+              onChange={(e) => {
+                setStoredTimezone(e.target.value as TimezoneValue);
+                setSaved(true);
+                setTimeout(() => setSaved(false), 2000);
+              }}
+              className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 py-2 px-3 text-sm text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            >
+              {TIMEZONE_OPTIONS.map((tz) => (
+                <option key={tz.value} value={tz.value}>
+                  {tz.label}{tz.offset ? ` (${tz.offset})` : ''}
+                </option>
+              ))}
+            </select>
           </SettingSection>
         </div>
       </div>

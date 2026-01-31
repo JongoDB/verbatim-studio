@@ -1,3 +1,3 @@
 // This file is updated automatically by the release process
 // Run: npm run update-version or ./scripts/update-version.sh
-export const APP_VERSION = 'v0.14.0-7-g29a7e68';
+export const APP_VERSION = 'v0.15.3';

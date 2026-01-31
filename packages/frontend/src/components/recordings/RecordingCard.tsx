@@ -1,4 +1,4 @@
-import { cn } from '@/lib/utils';
+import { cn, formatDateTime } from '@/lib/utils';
 import type { Recording, Tag, Project } from '@/lib/api';
 
 interface RecordingCardProps {
@@ -41,16 +41,6 @@ function isVideo(mimeType: string | null): boolean {
   return mimeType.startsWith('video/');
 }
 
-function formatDate(dateString: string): string {
-  const date = new Date(dateString);
-  return date.toLocaleDateString(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
 
 const statusConfig: Record<string, { label: string; className: string }> = {
   pending: {
@@ -176,7 +166,7 @@ export function RecordingCard({
       <div className="mt-3 flex items-center gap-4 text-xs text-muted-foreground">
         <span>{formatDuration(recording.duration_seconds)}</span>
         <span>{formatFileSize(recording.file_size)}</span>
-        <span>{formatDate(recording.created_at)}</span>
+        <span>{formatDateTime(recording.created_at)}</span>
       </div>
 
       {/* Template Type Badge */}

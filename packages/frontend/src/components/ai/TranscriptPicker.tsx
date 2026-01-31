@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { api, type Recording } from '@/lib/api';
+import { formatDate } from '@/lib/utils';
 
 export interface AttachedTranscript {
   id: string;
@@ -93,7 +94,7 @@ export function TranscriptPicker({ attached, onAttach, onDetach, onClose }: Tran
                   {recording.title}
                 </p>
                 <p className="text-xs text-gray-500 dark:text-gray-400">
-                  {new Date(recording.created_at).toLocaleDateString()}
+                  {formatDate(recording.created_at)}
                 </p>
               </div>
             </label>

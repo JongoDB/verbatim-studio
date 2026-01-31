@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api, type Project, type ProjectRecording, type ProjectType } from '@/lib/api';
+import { formatDate } from '@/lib/utils';
 import { DynamicMetadataForm } from '@/components/shared/DynamicMetadataForm';
 import { AddRecordingDialog } from '@/components/projects/AddRecordingDialog';
 
@@ -15,10 +16,6 @@ function formatDuration(seconds: number | null): string {
   const mins = Math.floor(seconds / 60);
   const secs = Math.floor(seconds % 60);
   return `${mins}:${secs.toString().padStart(2, '0')}`;
-}
-
-function formatDate(dateString: string): string {
-  return new Date(dateString).toLocaleDateString();
 }
 
 export function ProjectDetailPage({
