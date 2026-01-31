@@ -2,6 +2,8 @@
 
 Implements IAIService for local LLM inference using llama-cpp-python.
 Uses create_chat_completion() for correct chat template handling.
+
+Includes singleton caching with automatic invalidation when model path changes.
 """
 
 import asyncio
@@ -22,6 +24,58 @@ from core.interfaces import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Module-level cache for singleton pattern with path-based invalidation
+_cached_service: "LlamaCppAIService | None" = None
+_cached_model_path: str | None = None
+
+
+def get_llama_service(
+    model_path: str | None = None,
+    n_ctx: int = 4096,
+    n_gpu_layers: int = 0,
+) -> "LlamaCppAIService":
+    """Get a cached LlamaCppAIService, creating or replacing as needed.
+
+    If the model_path differs from the cached service's path, the cache
+    is invalidated and a new service is created. This allows model switching
+    without restarting the server.
+
+    Args:
+        model_path: Path to the GGUF model file
+        n_ctx: Context window size
+        n_gpu_layers: Number of layers to offload to GPU
+
+    Returns:
+        Cached or newly created LlamaCppAIService instance
+    """
+    global _cached_service, _cached_model_path
+
+    # If path changed, invalidate cache
+    if model_path != _cached_model_path:
+        if _cached_service is not None:
+            logger.info(
+                "Model path changed from %s to %s, invalidating cache",
+                _cached_model_path,
+                model_path,
+            )
+            # Release the old model
+            if _cached_service._llm is not None:
+                del _cached_service._llm
+                _cached_service._llm = None
+        _cached_service = None
+        _cached_model_path = model_path
+
+    # Create new service if needed
+    if _cached_service is None:
+        logger.info("Creating new LlamaCppAIService (model_path=%s)", model_path)
+        _cached_service = LlamaCppAIService(
+            model_path=model_path,
+            n_ctx=n_ctx,
+            n_gpu_layers=n_gpu_layers,
+        )
+
+    return _cached_service
 
 
 class LlamaCppAIService(IAIService):

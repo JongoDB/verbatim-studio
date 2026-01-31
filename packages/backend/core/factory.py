@@ -217,14 +217,14 @@ class AdapterFactory:
     def create_ai_service(self) -> "IAIService":
         """Create an AI service.
 
-        Basic tier: llama.cpp (local)
+        Basic tier: llama.cpp (local) with singleton caching
         Enterprise tier: Ollama, OpenAI, etc. (future)
 
         Returns:
-            AI service instance
+            AI service instance (cached for efficiency, auto-invalidates on model change)
         """
         if self.is_basic:
-            from adapters.ai.llama_cpp import LlamaCppAIService
+            from adapters.ai.llama_cpp import get_llama_service
 
             gpu_layers = self._config.ai_n_gpu_layers
             if gpu_layers is None:
@@ -232,9 +232,8 @@ class AdapterFactory:
                 gpu_layers = detect_llm_gpu_layers()
                 logger.info("Auto-detected LLM GPU layers: %d", gpu_layers)
 
-            logger.info("Creating llama.cpp AI service for basic tier")
-
-            return LlamaCppAIService(
+            # Use cached service with automatic invalidation on path change
+            return get_llama_service(
                 model_path=self._config.ai_model_path,
                 n_ctx=self._config.ai_n_ctx,
                 n_gpu_layers=gpu_layers,
