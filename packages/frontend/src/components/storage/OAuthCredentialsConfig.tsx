@@ -11,8 +11,13 @@ const PROVIDERS = [
   { id: 'dropbox', name: 'Dropbox', icon: 'D' },
 ] as const;
 
-// OAuth callback URI - must match what's configured in the provider's developer console
-const OAUTH_REDIRECT_URI = 'http://localhost:9876/callback';
+// OAuth callback URIs - the backend tries these ports in order if one is busy
+const OAUTH_REDIRECT_URIS = [
+  'http://localhost:9876/callback',
+  'http://localhost:9877/callback',
+  'http://localhost:9878/callback',
+  'http://localhost:9879/callback',
+];
 
 export function OAuthCredentialsConfig({ onUpdate }: OAuthCredentialsConfigProps) {
   const [credentials, setCredentials] = useState<OAuthCredentialsResponse | null>(null);
@@ -23,15 +28,16 @@ export function OAuthCredentialsConfig({ onUpdate }: OAuthCredentialsConfigProps
   const [saving, setSaving] = useState(false);
   const [copiedUri, setCopiedUri] = useState(false);
 
-  const copyRedirectUri = useCallback(async () => {
+  const copyRedirectUris = useCallback(async () => {
+    const urisText = OAUTH_REDIRECT_URIS.join('\n');
     try {
-      await navigator.clipboard.writeText(OAUTH_REDIRECT_URI);
+      await navigator.clipboard.writeText(urisText);
       setCopiedUri(true);
       setTimeout(() => setCopiedUri(false), 2000);
     } catch {
       // Fallback for older browsers
-      const input = document.createElement('input');
-      input.value = OAUTH_REDIRECT_URI;
+      const input = document.createElement('textarea');
+      input.value = urisText;
       document.body.appendChild(input);
       input.select();
       document.execCommand('copy');
@@ -181,22 +187,34 @@ export function OAuthCredentialsConfig({ onUpdate }: OAuthCredentialsConfigProps
               {/* Edit form */}
               {isEditing && (
                 <div className="mt-4 pt-4 border-t border-border space-y-3">
-                  {/* Redirect URI - for copying into provider's OAuth app config */}
+                  {/* Redirect URIs - for copying into provider's OAuth app config */}
                   <div className="p-3 rounded-lg bg-muted/50 border border-border">
-                    <label className="block text-xs font-medium text-muted-foreground mb-1">
-                      Redirect URI (copy this into your OAuth app settings)
-                    </label>
-                    <div className="flex items-center gap-2">
-                      <code className="flex-1 text-sm font-mono text-foreground bg-background px-2 py-1.5 rounded border border-border select-all">
-                        {OAUTH_REDIRECT_URI}
-                      </code>
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <div>
+                        <label className="block text-xs font-medium text-muted-foreground">
+                          Redirect URIs (add ALL of these to your OAuth app)
+                        </label>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          The app tries different ports if one is busy
+                        </p>
+                      </div>
                       <button
                         type="button"
-                        onClick={copyRedirectUri}
-                        className="px-3 py-1.5 text-sm font-medium rounded-lg border border-border hover:bg-muted shrink-0"
+                        onClick={copyRedirectUris}
+                        className="px-2.5 py-1 text-xs font-medium rounded-md border border-border hover:bg-muted shrink-0"
                       >
-                        {copiedUri ? 'Copied!' : 'Copy'}
+                        {copiedUri ? 'Copied!' : 'Copy All'}
                       </button>
+                    </div>
+                    <div className="space-y-1">
+                      {OAUTH_REDIRECT_URIS.map((uri) => (
+                        <code
+                          key={uri}
+                          className="block text-xs font-mono text-foreground bg-background px-2 py-1 rounded border border-border select-all"
+                        >
+                          {uri}
+                        </code>
+                      ))}
                     </div>
                   </div>
 
