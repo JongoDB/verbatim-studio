@@ -267,14 +267,12 @@ async def move_item(
         if not item:
             raise HTTPException(status_code=404, detail="Recording not found")
 
-        # Move file on disk
+        # Move file on disk (works for both local and cloud storage)
         if item.file_path:
             try:
-                old_path = Path(item.file_path)
-                if old_path.exists():
-                    new_path = await storage_service.move_to_project(old_path, target_project_name)
-                    item.file_path = str(new_path)
-                    item.file_name = new_path.name
+                new_path = await storage_service.move_to_project(item.file_path, target_project_name)
+                item.file_path = str(new_path)
+                item.file_name = new_path.name
             except Exception as e:
                 logger.warning(f"Failed to move file on disk: {e}")
 
@@ -288,14 +286,12 @@ async def move_item(
         if not item:
             raise HTTPException(status_code=404, detail="Document not found")
 
-        # Move file on disk
+        # Move file on disk (works for both local and cloud storage)
         if item.file_path:
             try:
-                old_path = Path(item.file_path)
-                if old_path.exists():
-                    new_path = await storage_service.move_to_project(old_path, target_project_name)
-                    item.file_path = str(new_path)
-                    item.filename = new_path.name
+                new_path = await storage_service.move_to_project(item.file_path, target_project_name)
+                item.file_path = str(new_path)
+                item.filename = new_path.name
             except Exception as e:
                 logger.warning(f"Failed to move file on disk: {e}")
 
@@ -632,9 +628,14 @@ async def delete_item(
     db: Annotated[AsyncSession, Depends(get_db)],
     item_type: Literal["folder", "recording", "document"],
     item_id: str,
-    recursive: Annotated[bool, Query(description="Delete folder contents")] = False,
+    delete_files: Annotated[bool, Query(description="Delete all files in folder")] = False,
 ) -> MessageResponse:
-    """Delete an item (removes from DB and deletes file from disk)."""
+    """Delete an item (removes from DB and deletes file from disk).
+
+    For folders:
+        - delete_files=True: Delete folder and all files inside
+        - delete_files=False: Delete folder but move files to root
+    """
     from pathlib import Path
 
     if item_type == "folder":
@@ -644,33 +645,56 @@ async def delete_item(
 
         project_name = project.name
 
-        # Check if folder has contents
+        # Get all recordings in this folder
         rec_result = await db.execute(
             select(Recording).where(Recording.project_id == item_id)
         )
         recordings = list(rec_result.scalars())
 
+        # Get all documents in this folder
         doc_result = await db.execute(
             select(Document).where(Document.project_id == item_id)
         )
         documents = list(doc_result.scalars())
 
-        if (len(recordings) + len(documents)) > 0 and not recursive:
-            raise HTTPException(
-                status_code=400,
-                detail="Folder is not empty. Use recursive=true to delete contents."
-            )
-
-        # If recursive, move contents to root (both DB and disk)
-        if recursive:
+        if delete_files:
+            # Delete all recordings and their files
             for rec in recordings:
                 if rec.file_path:
                     try:
-                        old_path = Path(rec.file_path)
-                        if old_path.exists():
-                            new_path = await storage_service.move_to_project(old_path, None)
-                            rec.file_path = str(new_path)
-                            rec.file_name = new_path.name
+                        await storage_service.delete_file(rec.file_path)
+                    except Exception as e:
+                        logger.warning(f"Failed to delete recording file: {e}")
+                await db.delete(rec)
+
+            # Delete all documents and their files
+            for doc in documents:
+                if doc.file_path:
+                    try:
+                        await storage_service.delete_file(doc.file_path)
+                    except Exception as e:
+                        logger.warning(f"Failed to delete document file: {e}")
+                await db.delete(doc)
+
+            # Delete project
+            await db.delete(project)
+            await db.commit()
+
+            # Delete project folder with any remaining contents
+            try:
+                await storage_service.delete_project_folder(project_name, delete_contents=True)
+            except Exception as e:
+                logger.warning(f"Failed to delete project folder: {e}")
+
+            return MessageResponse(message="Folder and all files deleted")
+        else:
+            # Move contents to root (both DB and disk)
+            for rec in recordings:
+                if rec.file_path:
+                    try:
+                        new_path = await storage_service.move_to_project(rec.file_path, None)
+                        rec.file_path = str(new_path)
+                        rec.file_name = new_path.name
                     except Exception as e:
                         logger.warning(f"Failed to move recording file to root: {e}")
                 rec.project_id = None
@@ -678,24 +702,24 @@ async def delete_item(
             for doc in documents:
                 if doc.file_path:
                     try:
-                        old_path = Path(doc.file_path)
-                        if old_path.exists():
-                            new_path = await storage_service.move_to_project(old_path, None)
-                            doc.file_path = str(new_path)
-                            doc.filename = new_path.name
+                        new_path = await storage_service.move_to_project(doc.file_path, None)
+                        doc.file_path = str(new_path)
+                        doc.filename = new_path.name
                     except Exception as e:
                         logger.warning(f"Failed to move document file to root: {e}")
                 doc.project_id = None
 
-        # Delete project folder from disk if empty
-        try:
-            await storage_service.delete_project_folder_if_empty(project_name)
-        except Exception as e:
-            logger.warning(f"Failed to delete project folder: {e}")
+            # Delete project
+            await db.delete(project)
+            await db.commit()
 
-        await db.delete(project)
-        await db.commit()
-        return MessageResponse(message="Folder deleted")
+            # Delete project folder (should be empty now)
+            try:
+                await storage_service.delete_project_folder(project_name, delete_contents=False)
+            except Exception as e:
+                logger.warning(f"Failed to delete project folder: {e}")
+
+            return MessageResponse(message="Folder deleted, files moved to root")
 
     elif item_type == "recording":
         recording = await db.get(Recording, item_id)

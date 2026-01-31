@@ -296,6 +296,8 @@ export function FileBrowserPage({ initialFolderId, onViewRecording, onViewDocume
   const [propertiesItem, setPropertiesItem] = useState<BrowseItem | null>(null);
   const [dragOverFolder, setDragOverFolder] = useState<string | null>(null);
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [deleteFolderItem, setDeleteFolderItem] = useState<BrowseItem | null>(null);
+  const [bulkDeleteFolders, setBulkDeleteFolders] = useState<BrowseItem[] | null>(null);
 
   // Debounce search input
   useEffect(() => {
@@ -379,6 +381,13 @@ export function FileBrowserPage({ initialFolderId, onViewRecording, onViewDocume
   };
 
   const handleDelete = async (item: BrowseItem) => {
+    // For folders, show a special dialog with options
+    if (item.type === 'folder') {
+      setDeleteFolderItem(item);
+      setContextMenu(null);
+      return;
+    }
+
     if (!confirm(`Delete "${item.name}"?`)) return;
     try {
       await api.browse.delete(item.type, item.id);
@@ -388,6 +397,18 @@ export function FileBrowserPage({ initialFolderId, onViewRecording, onViewDocume
       setError('Failed to delete item');
     }
     setContextMenu(null);
+  };
+
+  const handleDeleteFolder = async (deleteFiles: boolean) => {
+    if (!deleteFolderItem) return;
+    try {
+      await api.browse.delete(deleteFolderItem.type, deleteFolderItem.id, deleteFiles);
+      loadFolder();
+    } catch (err) {
+      console.error('Failed to delete folder:', err);
+      setError('Failed to delete folder');
+    }
+    setDeleteFolderItem(null);
   };
 
   const handleMove = async (item: BrowseItem, targetFolderId: string | null) => {
@@ -535,16 +556,34 @@ export function FileBrowserPage({ initialFolderId, onViewRecording, onViewDocume
     const items = Array.from(selectedItems.values());
     if (items.length === 0) return;
 
+    const folders = items.filter(i => i.type === 'folder');
+    const files = items.filter(i => i.type !== 'folder');
+
+    // If folders are included, show special dialog
+    if (folders.length > 0) {
+      setBulkDeleteFolders(items);
+      return;
+    }
+
+    // For files only, simple confirm
     const confirmMsg = items.length === 1
       ? `Delete "${items[0].name}"?`
       : `Delete ${items.length} items?`;
 
     if (!confirm(confirmMsg)) return;
 
+    await executeBulkDelete(files, false);
+  };
+
+  const executeBulkDelete = async (items: BrowseItem[], deleteFiles: boolean) => {
     setBulkDeleting(true);
     try {
       for (const item of items) {
-        await api.browse.delete(item.type, item.id);
+        if (item.type === 'folder') {
+          await api.browse.delete(item.type, item.id, deleteFiles);
+        } else {
+          await api.browse.delete(item.type, item.id);
+        }
       }
       loadFolder();
     } catch (err) {
@@ -552,6 +591,7 @@ export function FileBrowserPage({ initialFolderId, onViewRecording, onViewDocume
       setError('Failed to delete some items');
     } finally {
       setBulkDeleting(false);
+      setBulkDeleteFolders(null);
     }
   };
 
@@ -844,6 +884,96 @@ export function FileBrowserPage({ initialFolderId, onViewRecording, onViewDocume
           item={propertiesItem}
           onClose={() => setPropertiesItem(null)}
         />
+      )}
+
+      {/* Delete folder confirmation dialog */}
+      {deleteFolderItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="fixed inset-0 bg-black/50" onClick={() => setDeleteFolderItem(null)} />
+          <div className="relative bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md mx-4">
+            <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                Delete Folder
+              </h3>
+            </div>
+            <div className="p-4">
+              <p className="text-gray-600 dark:text-gray-300 mb-4">
+                How would you like to delete "{deleteFolderItem.name}"?
+              </p>
+              {deleteFolderItem.item_count && deleteFolderItem.item_count > 0 ? (
+                <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+                  This folder contains {deleteFolderItem.item_count} item{deleteFolderItem.item_count !== 1 ? 's' : ''}.
+                </p>
+              ) : null}
+            </div>
+            <div className="p-4 border-t border-gray-200 dark:border-gray-700 flex flex-col gap-2">
+              <button
+                onClick={() => handleDeleteFolder(false)}
+                className="w-full px-4 py-2.5 text-sm font-medium rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600"
+              >
+                Delete folder only (move files to root)
+              </button>
+              <button
+                onClick={() => handleDeleteFolder(true)}
+                className="w-full px-4 py-2.5 text-sm font-medium rounded-lg bg-red-600 text-white hover:bg-red-700"
+              >
+                Delete folder and all files
+              </button>
+              <button
+                onClick={() => setDeleteFolderItem(null)}
+                className="w-full px-4 py-2.5 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk delete with folders confirmation dialog */}
+      {bulkDeleteFolders && bulkDeleteFolders.length > 0 && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="fixed inset-0 bg-black/50" onClick={() => setBulkDeleteFolders(null)} />
+          <div className="relative bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-md mx-4">
+            <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                Delete Items
+              </h3>
+            </div>
+            <div className="p-4">
+              <p className="text-gray-600 dark:text-gray-300 mb-4">
+                You are about to delete {bulkDeleteFolders.length} item{bulkDeleteFolders.length !== 1 ? 's' : ''},
+                including {bulkDeleteFolders.filter(i => i.type === 'folder').length} folder{bulkDeleteFolders.filter(i => i.type === 'folder').length !== 1 ? 's' : ''}.
+              </p>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+                How would you like to handle files in the folders?
+              </p>
+            </div>
+            <div className="p-4 border-t border-gray-200 dark:border-gray-700 flex flex-col gap-2">
+              <button
+                onClick={() => executeBulkDelete(bulkDeleteFolders, false)}
+                disabled={bulkDeleting}
+                className="w-full px-4 py-2.5 text-sm font-medium rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600 disabled:opacity-50"
+              >
+                {bulkDeleting ? 'Deleting...' : 'Delete folders only (move files to root)'}
+              </button>
+              <button
+                onClick={() => executeBulkDelete(bulkDeleteFolders, true)}
+                disabled={bulkDeleting}
+                className="w-full px-4 py-2.5 text-sm font-medium rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {bulkDeleting ? 'Deleting...' : 'Delete everything including all files'}
+              </button>
+              <button
+                onClick={() => setBulkDeleteFolders(null)}
+                disabled={bulkDeleting}
+                className="w-full px-4 py-2.5 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

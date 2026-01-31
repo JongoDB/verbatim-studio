@@ -1700,8 +1700,8 @@ class ApiClient {
       });
     },
 
-    delete: async (itemType: 'folder' | 'recording' | 'document', itemId: string, recursive?: boolean): Promise<{ message: string }> => {
-      const query = recursive ? '?recursive=true' : '';
+    delete: async (itemType: 'folder' | 'recording' | 'document', itemId: string, deleteFiles?: boolean): Promise<{ message: string }> => {
+      const query = deleteFiles ? '?delete_files=true' : '';
       return this.request<{ message: string }>(`/api/browse/${itemType}/${itemId}${query}`, {
         method: 'DELETE',
       });

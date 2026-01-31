@@ -670,7 +670,7 @@ export function ProjectsPage({ onNavigateToProject }: ProjectsPageProps) {
               </button>
               <button
                 onClick={() => handleDeleteProject(deleteFilesChoice === true)}
-                disabled={selectedProject && selectedProject.recording_count > 0 && deleteFilesChoice === null}
+                disabled={!!(selectedProject && selectedProject.recording_count > 0 && deleteFilesChoice === null)}
                 className="px-4 py-2 text-sm font-medium rounded-lg bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Delete
