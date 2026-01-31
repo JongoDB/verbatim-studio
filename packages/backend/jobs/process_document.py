@@ -34,8 +34,11 @@ def process_document_job(db: Session, document_id: str) -> None:
     db.commit()
 
     try:
-        # Get file path
-        file_path = storage_service.get_full_path(doc.file_path)
+        # Get file path - check if already absolute (new storage format)
+        file_path = Path(doc.file_path)
+        if not file_path.is_absolute():
+            # Backwards compatibility for old relative paths
+            file_path = storage_service.get_full_path(doc.file_path)
         if not file_path.exists():
             raise FileNotFoundError(f"File not found: {file_path}")
 

@@ -492,9 +492,21 @@ async def upload_recording(
                 detail="Invalid recording template ID",
             )
 
+    # Determine title - strip extension if title ends with file extension
+    file_extension = Path(safe_filename).suffix.lower() if safe_filename else ""
+    if title:
+        # If user provided title ends with file extension, strip it
+        if file_extension and title.lower().endswith(file_extension):
+            recording_title = title[:-len(file_extension)]
+        else:
+            recording_title = title
+    else:
+        # Default to filename without extension
+        recording_title = safe_filename.rsplit(".", 1)[0] if safe_filename else "Untitled Recording"
+
     # Create recording record first to get ID
     recording = Recording(
-        title=title or safe_filename or "Untitled Recording",
+        title=recording_title,
         file_path="",  # Will be updated after saving
         file_name=safe_filename,
         file_size=file_size,

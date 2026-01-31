@@ -144,8 +144,16 @@ async def upload_document(
     from persistence.models import generate_uuid
     doc_id = generate_uuid()
 
-    # Determine title
-    doc_title = title or safe_filename.rsplit(".", 1)[0]
+    # Determine title - strip extension if title ends with file extension
+    file_extension = Path(safe_filename).suffix.lower()
+    if title:
+        # If user provided title ends with file extension, strip it
+        if title.lower().endswith(file_extension):
+            doc_title = title[:-len(file_extension)]
+        else:
+            doc_title = title
+    else:
+        doc_title = safe_filename.rsplit(".", 1)[0]
 
     # Save to storage with human-readable path
     file_path = await storage_service.save_upload(
