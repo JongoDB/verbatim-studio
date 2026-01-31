@@ -782,6 +782,107 @@ async def get_recording(
     )
 
 
+class RecordingPropertiesResponse(BaseModel):
+    """Response model for recording file properties."""
+
+    id: str
+    title: str
+    file_path: str
+    file_name: str
+    file_size: int | None
+    file_size_formatted: str
+    file_exists: bool
+    mime_type: str | None
+    duration_seconds: float | None
+    duration_formatted: str | None
+    status: str
+    created_at: datetime
+    updated_at: datetime
+    storage_location: str | None = None
+
+
+def _format_file_size(size: int | None) -> str:
+    """Format file size in human-readable format."""
+    if size is None:
+        return "Unknown"
+    for unit in ["B", "KB", "MB", "GB"]:
+        if size < 1024:
+            return f"{size:.1f} {unit}"
+        size /= 1024
+    return f"{size:.1f} TB"
+
+
+def _format_duration(seconds: float | None) -> str | None:
+    """Format duration in human-readable format."""
+    if seconds is None:
+        return None
+    hours = int(seconds // 3600)
+    minutes = int((seconds % 3600) // 60)
+    secs = int(seconds % 60)
+    if hours > 0:
+        return f"{hours}:{minutes:02d}:{secs:02d}"
+    return f"{minutes}:{secs:02d}"
+
+
+@router.get("/{recording_id}/properties", response_model=RecordingPropertiesResponse)
+async def get_recording_properties(
+    recording_id: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> RecordingPropertiesResponse:
+    """Get detailed file properties for a recording.
+
+    Returns information useful for a Properties dialog including
+    file path, size, whether file exists, etc.
+    """
+    from persistence.models import StorageLocation
+
+    result = await db.execute(select(Recording).where(Recording.id == recording_id))
+    recording = result.scalar_one_or_none()
+
+    if recording is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Recording not found: {recording_id}",
+        )
+
+    file_path = Path(recording.file_path) if recording.file_path else None
+    file_exists = file_path.exists() if file_path else False
+
+    # Get actual file size from disk if possible
+    actual_size = recording.file_size
+    if file_exists and file_path:
+        try:
+            actual_size = file_path.stat().st_size
+        except OSError:
+            pass
+
+    # Try to get storage location name
+    storage_location_name = None
+    loc_result = await db.execute(
+        select(StorageLocation).where(StorageLocation.is_active == True)
+    )
+    storage_loc = loc_result.scalar_one_or_none()
+    if storage_loc:
+        storage_location_name = storage_loc.name
+
+    return RecordingPropertiesResponse(
+        id=recording.id,
+        title=recording.title,
+        file_path=recording.file_path or "",
+        file_name=recording.file_name or "",
+        file_size=actual_size,
+        file_size_formatted=_format_file_size(actual_size),
+        file_exists=file_exists,
+        mime_type=recording.mime_type,
+        duration_seconds=recording.duration_seconds,
+        duration_formatted=_format_duration(recording.duration_seconds),
+        status=recording.status,
+        created_at=recording.created_at,
+        updated_at=recording.updated_at,
+        storage_location=storage_location_name,
+    )
+
+
 @router.get("/{recording_id}/audio")
 async def stream_audio(
     recording_id: str,

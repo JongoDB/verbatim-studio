@@ -284,6 +284,88 @@ async def delete_document(
     return MessageResponse(message="Document deleted", id=document_id)
 
 
+class DocumentPropertiesResponse(BaseModel):
+    """Response model for document file properties."""
+
+    id: str
+    title: str
+    file_path: str
+    filename: str
+    file_size: int | None
+    file_size_formatted: str
+    file_exists: bool
+    mime_type: str | None
+    page_count: int | None
+    status: str
+    created_at: str
+    updated_at: str
+    storage_location: str | None = None
+
+
+def _format_file_size(size: int | None) -> str:
+    """Format file size in human-readable format."""
+    if size is None:
+        return "Unknown"
+    for unit in ["B", "KB", "MB", "GB"]:
+        if size < 1024:
+            return f"{size:.1f} {unit}"
+        size /= 1024
+    return f"{size:.1f} TB"
+
+
+@router.get("/{document_id}/properties", response_model=DocumentPropertiesResponse)
+async def get_document_properties(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    document_id: str,
+) -> DocumentPropertiesResponse:
+    """Get detailed file properties for a document.
+
+    Returns information useful for a Properties dialog including
+    file path, size, whether file exists, etc.
+    """
+    from persistence.models import StorageLocation
+
+    doc = await db.get(Document, document_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    file_path = Path(doc.file_path) if doc.file_path else None
+    file_exists = file_path.exists() if file_path else False
+
+    # Get actual file size from disk if possible
+    actual_size = doc.file_size_bytes
+    if file_exists and file_path:
+        try:
+            actual_size = file_path.stat().st_size
+        except OSError:
+            pass
+
+    # Try to get storage location name
+    storage_location_name = None
+    loc_result = await db.execute(
+        select(StorageLocation).where(StorageLocation.is_active == True)
+    )
+    storage_loc = loc_result.scalar_one_or_none()
+    if storage_loc:
+        storage_location_name = storage_loc.name
+
+    return DocumentPropertiesResponse(
+        id=doc.id,
+        title=doc.title,
+        file_path=doc.file_path or "",
+        filename=doc.filename or "",
+        file_size=actual_size,
+        file_size_formatted=_format_file_size(actual_size),
+        file_exists=file_exists,
+        mime_type=doc.mime_type,
+        page_count=doc.metadata_.get("page_count") if doc.metadata_ else None,
+        status=doc.status,
+        created_at=doc.created_at.isoformat() if doc.created_at else "",
+        updated_at=doc.updated_at.isoformat() if doc.updated_at else "",
+        storage_location=storage_location_name,
+    )
+
+
 @router.get("/{document_id}/file")
 async def download_document_file(
     db: Annotated[AsyncSession, Depends(get_db)],

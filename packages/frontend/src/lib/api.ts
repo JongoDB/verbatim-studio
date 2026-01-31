@@ -71,6 +71,25 @@ export interface TranscribeResponse {
   status: string;
 }
 
+export interface FileProperties {
+  id: string;
+  title: string;
+  file_path: string;
+  file_name?: string;
+  filename?: string;
+  file_size: number | null;
+  file_size_formatted: string;
+  file_exists: boolean;
+  mime_type: string | null;
+  duration_seconds?: number | null;
+  duration_formatted?: string | null;
+  page_count?: number | null;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  storage_location: string | null;
+}
+
 export interface Job {
   id: string;
   job_type: string;
@@ -903,6 +922,9 @@ class ApiClient {
       }),
 
     getAudioUrl: (id: string) => `${this.baseUrl}/api/recordings/${id}/audio`,
+
+    getProperties: (id: string) =>
+      this.request<FileProperties>(`/api/recordings/${id}/properties`),
   };
 
   // Jobs
@@ -1422,6 +1444,9 @@ class ApiClient {
     reprocess: async (id: string): Promise<void> => {
       await this.request<void>(`/api/documents/${id}/process`, { method: 'POST' });
     },
+
+    getProperties: (id: string) =>
+      this.request<FileProperties>(`/api/documents/${id}/properties`),
   };
 
   // Notes

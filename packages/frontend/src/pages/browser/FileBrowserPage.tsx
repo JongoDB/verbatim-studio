@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { api, type BrowseItem, type BrowseResponse, type FolderTreeNode } from '@/lib/api';
+import { api, type BrowseItem, type BrowseResponse, type FolderTreeNode, type FileProperties } from '@/lib/api';
 import { Breadcrumb } from '@/components/browser/Breadcrumb';
 
 interface FileBrowserPageProps {
@@ -144,6 +144,138 @@ function MoveDialog({
   );
 }
 
+// Properties Dialog Component
+function PropertiesDialog({
+  item,
+  onClose,
+}: {
+  item: BrowseItem;
+  onClose: () => void;
+}) {
+  const [properties, setProperties] = useState<FileProperties | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchProperties = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        if (item.type === 'recording') {
+          const props = await api.recordings.getProperties(item.id);
+          setProperties(props);
+        } else if (item.type === 'document') {
+          const props = await api.documents.getProperties(item.id);
+          setProperties(props);
+        }
+      } catch (err) {
+        console.error('Failed to load properties:', err);
+        setError('Failed to load file properties');
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchProperties();
+  }, [item.id, item.type]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="fixed inset-0 bg-black/50" onClick={onClose} />
+      <div className="relative bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-lg mx-4">
+        <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+            Properties
+          </h3>
+          <button
+            onClick={onClose}
+            className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <div className="p-4">
+          {loading ? (
+            <div className="flex items-center justify-center py-8">
+              <svg className="w-6 h-6 animate-spin text-blue-500" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+            </div>
+          ) : error ? (
+            <p className="text-red-500 text-center py-4">{error}</p>
+          ) : properties ? (
+            <div className="space-y-3">
+              <div className="flex items-center gap-3 mb-4">
+                <ItemIcon type={item.type} mimeType={item.mime_type} />
+                <div>
+                  <p className="font-medium text-gray-900 dark:text-gray-100">{properties.title}</p>
+                  <p className="text-sm text-gray-500">{item.type === 'recording' ? 'Recording' : 'Document'}</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-[120px_1fr] gap-y-2 text-sm">
+                <span className="text-gray-500 dark:text-gray-400">Location:</span>
+                <span className="text-gray-900 dark:text-gray-100 font-mono text-xs break-all">{properties.file_path}</span>
+
+                <span className="text-gray-500 dark:text-gray-400">Size:</span>
+                <span className="text-gray-900 dark:text-gray-100">{properties.file_size_formatted}</span>
+
+                <span className="text-gray-500 dark:text-gray-400">File exists:</span>
+                <span className={properties.file_exists ? 'text-green-600' : 'text-red-600'}>
+                  {properties.file_exists ? 'Yes' : 'No - file missing'}
+                </span>
+
+                {properties.duration_formatted && (
+                  <>
+                    <span className="text-gray-500 dark:text-gray-400">Duration:</span>
+                    <span className="text-gray-900 dark:text-gray-100">{properties.duration_formatted}</span>
+                  </>
+                )}
+
+                {properties.page_count && (
+                  <>
+                    <span className="text-gray-500 dark:text-gray-400">Pages:</span>
+                    <span className="text-gray-900 dark:text-gray-100">{properties.page_count}</span>
+                  </>
+                )}
+
+                <span className="text-gray-500 dark:text-gray-400">Type:</span>
+                <span className="text-gray-900 dark:text-gray-100">{properties.mime_type || 'Unknown'}</span>
+
+                <span className="text-gray-500 dark:text-gray-400">Status:</span>
+                <span className="text-gray-900 dark:text-gray-100 capitalize">{properties.status}</span>
+
+                <span className="text-gray-500 dark:text-gray-400">Created:</span>
+                <span className="text-gray-900 dark:text-gray-100">{new Date(properties.created_at).toLocaleString()}</span>
+
+                <span className="text-gray-500 dark:text-gray-400">Modified:</span>
+                <span className="text-gray-900 dark:text-gray-100">{new Date(properties.updated_at).toLocaleString()}</span>
+
+                {properties.storage_location && (
+                  <>
+                    <span className="text-gray-500 dark:text-gray-400">Storage:</span>
+                    <span className="text-gray-900 dark:text-gray-100">{properties.storage_location}</span>
+                  </>
+                )}
+              </div>
+            </div>
+          ) : null}
+        </div>
+        <div className="p-4 border-t border-gray-200 dark:border-gray-700 flex justify-end">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-sm bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function FileBrowserPage({ initialFolderId, onViewRecording, onViewDocument }: FileBrowserPageProps) {
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(initialFolderId ?? null);
   const [browseData, setBrowseData] = useState<BrowseResponse | null>(null);
@@ -157,6 +289,7 @@ export function FileBrowserPage({ initialFolderId, onViewRecording, onViewDocume
   const [sortOrder, setSortOrder] = useState<SortOrder>('asc');
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; item: BrowseItem } | null>(null);
   const [moveItem, setMoveItem] = useState<BrowseItem | null>(null);
+  const [propertiesItem, setPropertiesItem] = useState<BrowseItem | null>(null);
   const [dragOverFolder, setDragOverFolder] = useState<string | null>(null);
 
   // Debounce search input
@@ -488,6 +621,14 @@ export function FileBrowserPage({ initialFolderId, onViewRecording, onViewDocume
                 </button>
               </>
             )}
+            {contextMenu.item.type !== 'folder' && (
+              <button
+                onClick={() => { setPropertiesItem(contextMenu.item); setContextMenu(null); }}
+                className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
+              >
+                Properties
+              </button>
+            )}
             <hr className="my-1 border-gray-200 dark:border-gray-700" />
             <button
               onClick={() => handleDelete(contextMenu.item)}
@@ -510,6 +651,14 @@ export function FileBrowserPage({ initialFolderId, onViewRecording, onViewDocume
             setMoveItem(null);
           }}
           onClose={() => setMoveItem(null)}
+        />
+      )}
+
+      {/* Properties dialog */}
+      {propertiesItem && (
+        <PropertiesDialog
+          item={propertiesItem}
+          onClose={() => setPropertiesItem(null)}
         />
       )}
     </div>

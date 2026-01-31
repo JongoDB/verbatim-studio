@@ -15,6 +15,31 @@ from core.config import settings
 from services.path_manager import PathManager, path_manager as default_path_manager
 
 
+async def get_active_storage_path() -> Path:
+    """Get the path of the currently active storage location.
+
+    Returns the configured storage location path from the database,
+    or falls back to settings.MEDIA_DIR if none is configured.
+    """
+    from persistence.database import async_session
+    from persistence.models import StorageLocation
+    from sqlalchemy import select
+
+    async with async_session() as session:
+        result = await session.execute(
+            select(StorageLocation).where(StorageLocation.is_active == True)
+        )
+        location = result.scalar_one_or_none()
+
+        if location and location.config and location.config.get("path"):
+            path = Path(location.config["path"])
+            # Ensure directory exists
+            path.mkdir(parents=True, exist_ok=True)
+            return path
+
+    return settings.MEDIA_DIR
+
+
 class StorageService:
     """Service for managing file storage operations.
 
@@ -112,7 +137,11 @@ class StorageService:
         Returns:
             Path where the file was saved.
         """
-        desired_path = self.get_item_path(title, filename, project_name)
+        # Get active storage location
+        storage_root = await get_active_storage_path()
+
+        extension = Path(filename).suffix
+        desired_path = self._pm.get_item_path(storage_root, project_name, title, extension)
 
         # Ensure parent directory exists
         await aiofiles.os.makedirs(desired_path.parent, exist_ok=True)
@@ -143,10 +172,13 @@ class StorageService:
         Returns:
             New path where the file is now located.
         """
+        # Get active storage location
+        storage_root = await get_active_storage_path()
+
         if new_project_name:
-            new_parent = self.media_dir / self._pm.sanitize_name(new_project_name)
+            new_parent = storage_root / self._pm.sanitize_name(new_project_name)
         else:
-            new_parent = self.media_dir
+            new_parent = storage_root
 
         return await self._pm.move_file(current_path, new_parent)
 
@@ -317,8 +349,9 @@ class StorageService:
         Returns:
             Path to the project folder.
         """
+        storage_root = await get_active_storage_path()
         safe_name = self._pm.sanitize_name(project_name)
-        folder_path = self.media_dir / safe_name
+        folder_path = storage_root / safe_name
         await self._pm.ensure_folder(folder_path)
         return folder_path
 
@@ -332,8 +365,9 @@ class StorageService:
         Returns:
             New folder path.
         """
+        storage_root = await get_active_storage_path()
         old_safe = self._pm.sanitize_name(old_name)
-        old_path = self.media_dir / old_safe
+        old_path = storage_root / old_safe
 
         if not old_path.exists():
             # Folder doesn't exist yet, just ensure new one exists
@@ -350,8 +384,9 @@ class StorageService:
         Returns:
             True if folder was deleted, False otherwise.
         """
+        storage_root = await get_active_storage_path()
         safe_name = self._pm.sanitize_name(project_name)
-        folder_path = self.media_dir / safe_name
+        folder_path = storage_root / safe_name
         return await self._pm.delete_folder_if_empty(folder_path)
 
 
