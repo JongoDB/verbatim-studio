@@ -16,24 +16,34 @@ export function FileBrowserPage({ initialFolderId, onViewRecording, onViewDocume
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
-  const [search, setSearch] = useState('');
+  const [searchInput, setSearchInput] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [error, setError] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; item: BrowseItem } | null>(null);
+
+  // Debounce search input
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchInput), 300);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
 
   const loadFolder = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const data = await api.browse.list({
         parent_id: currentFolderId ?? undefined,
-        search: search || undefined,
+        search: debouncedSearch || undefined,
       });
       setBrowseData(data);
       setSelectedItems(new Set());
     } catch (err) {
       console.error('Failed to load folder:', err);
+      setError('Failed to load folder');
     } finally {
       setLoading(false);
     }
-  }, [currentFolderId, search]);
+  }, [currentFolderId, debouncedSearch]);
 
   useEffect(() => {
     loadFolder();
@@ -55,7 +65,11 @@ export function FileBrowserPage({ initialFolderId, onViewRecording, onViewDocume
 
   const handleContextMenu = (e: React.MouseEvent, item: BrowseItem) => {
     e.preventDefault();
-    setContextMenu({ x: e.clientX, y: e.clientY, item });
+    const menuWidth = 160;
+    const menuHeight = 200;
+    const x = Math.min(e.clientX, window.innerWidth - menuWidth - 10);
+    const y = Math.min(e.clientY, window.innerHeight - menuHeight - 10);
+    setContextMenu({ x, y, item });
   };
 
   const handleRename = async (item: BrowseItem) => {
@@ -66,6 +80,7 @@ export function FileBrowserPage({ initialFolderId, onViewRecording, onViewDocume
         loadFolder();
       } catch (err) {
         console.error('Failed to rename:', err);
+        setError('Failed to rename item');
       }
     }
     setContextMenu(null);
@@ -78,6 +93,7 @@ export function FileBrowserPage({ initialFolderId, onViewRecording, onViewDocume
       loadFolder();
     } catch (err) {
       console.error('Failed to delete:', err);
+      setError('Failed to delete item');
     }
     setContextMenu(null);
   };
@@ -91,6 +107,7 @@ export function FileBrowserPage({ initialFolderId, onViewRecording, onViewDocume
         loadFolder();
       } catch (err) {
         console.error('Failed to move:', err);
+        setError('Failed to move item');
       }
     }
     setContextMenu(null);
@@ -103,6 +120,7 @@ export function FileBrowserPage({ initialFolderId, onViewRecording, onViewDocume
       loadFolder();
     } catch (err) {
       console.error('Failed to copy:', err);
+      setError('Failed to copy item');
     }
     setContextMenu(null);
   };
@@ -126,8 +144,8 @@ export function FileBrowserPage({ initialFolderId, onViewRecording, onViewDocume
           <input
             type="text"
             placeholder="Search..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
             className="px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700"
           />
           <div className="flex border border-gray-300 dark:border-gray-600 rounded-lg overflow-hidden">
@@ -149,6 +167,21 @@ export function FileBrowserPage({ initialFolderId, onViewRecording, onViewDocume
             </button>
           </div>
         </div>
+
+        {/* Error banner */}
+        {error && (
+          <div className="mx-4 mt-4 p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg flex items-center justify-between">
+            <span className="text-red-700 dark:text-red-300 text-sm">{error}</span>
+            <button
+              onClick={() => setError(null)}
+              className="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-200"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        )}
 
         {/* Items */}
         <div className="flex-1 overflow-y-auto p-4">
