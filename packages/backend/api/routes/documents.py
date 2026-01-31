@@ -163,10 +163,14 @@ async def upload_document(
         project_name=project_name,
     )
 
+    # Derive final title from actual filename (handles collision suffix)
+    # e.g., "POCs local (1).pdf" -> "POCs local (1)"
+    final_title = file_path.stem  # filename without extension
+
     # Create document record
     doc = Document(
         id=doc_id,
-        title=doc_title,
+        title=final_title,
         filename=file_path.name,  # Actual filename (may have collision suffix)
         file_path=str(file_path),  # Full path
         mime_type=mime_type,

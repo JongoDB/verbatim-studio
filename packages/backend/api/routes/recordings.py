@@ -556,6 +556,7 @@ async def upload_recording(
         )
         recording.file_path = str(file_path)
         recording.file_name = file_path.name  # Update to actual filename (may have collision suffix)
+        recording.title = file_path.stem  # Update title to match actual filename (handles collision suffix)
 
         # Extract audio from video files for playback and transcription
         if _is_video(content_type):
