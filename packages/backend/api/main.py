@@ -16,7 +16,11 @@ from api.routes.highlights import segment_highlights_router, transcript_highligh
 from api.routes.storage_locations import router as storage_locations_router
 from core.config import settings
 from persistence import init_db
+from services.file_watcher import FileWatcherService
 from services.jobs import job_queue
+
+# Global file watcher instance
+file_watcher: FileWatcherService | None = None
 
 
 def _get_git_version() -> str:
@@ -42,11 +46,21 @@ MultiPartParser.max_file_size = 10 * 1024 * 1024 * 1024
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
+    global file_watcher
+
     # Startup
     settings.ensure_directories()
     await init_db()
+
+    # Start file watcher for external file detection
+    file_watcher = FileWatcherService(settings.MEDIA_DIR)
+    file_watcher.start()
+
     yield
+
     # Shutdown
+    if file_watcher:
+        file_watcher.stop()
     job_queue.shutdown(wait=True)
 
 

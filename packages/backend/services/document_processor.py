@@ -5,7 +5,6 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-
 class DocumentProcessor:
     """Extracts text from various document formats."""
 

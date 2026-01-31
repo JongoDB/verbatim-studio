@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { api, type ArchiveInfo, type TranscriptionSettings, type AIModel, type AIModelDownloadEvent, type SystemInfo, type StorageLocation } from '@/lib/api';
+import { api, type ArchiveInfo, type TranscriptionSettings, type AIModel, type AIModelDownloadEvent, type SystemInfo, type StorageLocation, type MigrationStatus } from '@/lib/api';
 
 interface SettingsPageProps {
   theme: 'light' | 'dark' | 'system';
@@ -108,6 +108,13 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
   const [storageSaving, setStorageSaving] = useState(false);
   const [storageError, setStorageError] = useState<string | null>(null);
   const [editingLocation, setEditingLocation] = useState<StorageLocation | null>(null);
+
+  // Migration state
+  const [showMigrationDialog, setShowMigrationDialog] = useState(false);
+  const [migrationSource, setMigrationSource] = useState('');
+  const [migrationDest, setMigrationDest] = useState('');
+  const [migrationStatus, setMigrationStatus] = useState<MigrationStatus | null>(null);
+  const [pendingLocationUpdate, setPendingLocationUpdate] = useState<StorageLocation | null>(null);
 
   const defaultLanguage = settings.defaultLanguage || '';
   const defaultPlaybackSpeed = settings.defaultPlaybackSpeed || 1;
@@ -304,12 +311,32 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
 
   const handleUpdateStorageLocation = useCallback(async () => {
     if (!editingLocation) return;
+
+    // Check if path is changing
+    const originalLocation = storageLocations.find(l => l.id === editingLocation.id);
+    const oldPath = originalLocation?.config?.path;
+    const newPath = editingLocation.config?.path;
+
+    if (oldPath && newPath && oldPath !== newPath) {
+      // Path is changing - ask about migration
+      setMigrationSource(oldPath);
+      setMigrationDest(newPath);
+      setPendingLocationUpdate(editingLocation);
+      setShowMigrationDialog(true);
+      return;
+    }
+
+    // Path not changing, proceed with update
+    await performLocationUpdate(editingLocation);
+  }, [editingLocation, storageLocations]);
+
+  const performLocationUpdate = useCallback(async (location: StorageLocation) => {
     setStorageSaving(true);
     setStorageError(null);
     try {
-      await api.storageLocations.update(editingLocation.id, {
-        name: editingLocation.name,
-        config: editingLocation.config,
+      await api.storageLocations.update(location.id, {
+        name: location.name,
+        config: location.config,
       });
       setEditingLocation(null);
       loadStorageLocations();
@@ -318,7 +345,76 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
     } finally {
       setStorageSaving(false);
     }
-  }, [editingLocation, loadStorageLocations]);
+  }, [loadStorageLocations]);
+
+  const handleStartMigration = useCallback(async () => {
+    if (!pendingLocationUpdate) return;
+
+    setMigrationStatus({
+      status: 'running',
+      total_files: 0,
+      migrated_files: 0,
+      total_bytes: 0,
+      migrated_bytes: 0,
+      current_file: null,
+      error: null,
+    });
+
+    try {
+      // Start the migration
+      const status = await api.storageLocations.startMigration({
+        source_path: migrationSource,
+        destination_path: migrationDest,
+      });
+      setMigrationStatus(status);
+
+      // Poll for status updates
+      const pollInterval = setInterval(async () => {
+        try {
+          const currentStatus = await api.storageLocations.getMigrationStatus();
+          setMigrationStatus(currentStatus);
+
+          if (currentStatus.status === 'completed' || currentStatus.status === 'failed') {
+            clearInterval(pollInterval);
+
+            if (currentStatus.status === 'completed') {
+              // Migration complete, update the storage location
+              await performLocationUpdate(pendingLocationUpdate);
+              setShowMigrationDialog(false);
+              setPendingLocationUpdate(null);
+              setMigrationStatus(null);
+            }
+          }
+        } catch (err) {
+          console.error('Failed to get migration status:', err);
+        }
+      }, 500);
+    } catch (err) {
+      setMigrationStatus({
+        status: 'failed',
+        total_files: 0,
+        migrated_files: 0,
+        total_bytes: 0,
+        migrated_bytes: 0,
+        current_file: null,
+        error: err instanceof Error ? err.message : 'Failed to start migration',
+      });
+    }
+  }, [migrationSource, migrationDest, pendingLocationUpdate, performLocationUpdate]);
+
+  const handleSkipMigration = useCallback(async () => {
+    if (!pendingLocationUpdate) return;
+    // User chose not to migrate - just update the location
+    await performLocationUpdate(pendingLocationUpdate);
+    setShowMigrationDialog(false);
+    setPendingLocationUpdate(null);
+  }, [pendingLocationUpdate, performLocationUpdate]);
+
+  const handleCancelMigration = useCallback(() => {
+    setShowMigrationDialog(false);
+    setPendingLocationUpdate(null);
+    setMigrationStatus(null);
+  }, []);
 
   const handleSetDefaultLocation = useCallback(async (id: string) => {
     setStorageError(null);
@@ -1549,6 +1645,108 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
           </div>
         </div>
         </>
+      )}
+
+      {/* Migration Dialog */}
+      {showMigrationDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
+              Migrate Files to New Location?
+            </h3>
+
+            {!migrationStatus && (
+              <>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                  You're changing the storage location. Would you like to move existing files to the new location?
+                </p>
+
+                <div className="text-xs text-gray-500 dark:text-gray-400 mb-4 space-y-1">
+                  <div><span className="font-medium">From:</span> {migrationSource}</div>
+                  <div><span className="font-medium">To:</span> {migrationDest}</div>
+                </div>
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={handleStartMigration}
+                    className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium"
+                  >
+                    Move Files
+                  </button>
+                  <button
+                    onClick={handleSkipMigration}
+                    className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 text-sm font-medium"
+                  >
+                    Don't Move
+                  </button>
+                  <button
+                    onClick={handleCancelMigration}
+                    className="px-4 py-2 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 text-sm"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </>
+            )}
+
+            {migrationStatus?.status === 'running' && (
+              <>
+                <div className="mb-4">
+                  <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400 mb-2">
+                    <span>Migrating files...</span>
+                    <span>{migrationStatus.migrated_files} / {migrationStatus.total_files}</span>
+                  </div>
+                  <div className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-blue-500 transition-all"
+                      style={{
+                        width: migrationStatus.total_files > 0
+                          ? `${(migrationStatus.migrated_files / migrationStatus.total_files) * 100}%`
+                          : '0%'
+                      }}
+                    />
+                  </div>
+                  {migrationStatus.current_file && (
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 truncate">
+                      {migrationStatus.current_file}
+                    </p>
+                  )}
+                </div>
+              </>
+            )}
+
+            {migrationStatus?.status === 'completed' && (
+              <div className="text-center py-4">
+                <svg className="w-12 h-12 text-green-500 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                <p className="text-gray-600 dark:text-gray-400">
+                  Migration complete! {migrationStatus.migrated_files} files moved.
+                </p>
+              </div>
+            )}
+
+            {migrationStatus?.status === 'failed' && (
+              <div className="text-center py-4">
+                <svg className="w-12 h-12 text-red-500 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+                <p className="text-red-600 dark:text-red-400 mb-2">
+                  Migration failed
+                </p>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+                  {migrationStatus.error}
+                </p>
+                <button
+                  onClick={handleCancelMigration}
+                  className="px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 text-sm"
+                >
+                  Close
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );

@@ -1,6 +1,8 @@
 """Storage location management endpoints."""
 
+import asyncio
 import logging
+import shutil
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, status
@@ -14,6 +16,9 @@ from persistence.models import StorageLocation
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/storage-locations", tags=["storage-locations"])
+
+# Track migration progress in memory (for simplicity)
+_migration_progress: dict[str, dict] = {}
 
 
 class StorageLocationConfig(BaseModel):
@@ -237,3 +242,174 @@ async def delete_storage_location(location_id: str) -> None:
 
         await session.delete(location)
         await session.commit()
+
+
+class MigrationRequest(BaseModel):
+    """Request to migrate files to a new location."""
+
+    source_path: str
+    destination_path: str
+
+
+class MigrationStatus(BaseModel):
+    """Migration progress status."""
+
+    status: str  # "pending", "running", "completed", "failed"
+    total_files: int
+    migrated_files: int
+    total_bytes: int
+    migrated_bytes: int
+    current_file: str | None
+    error: str | None
+
+
+@router.post("/migrate", response_model=MigrationStatus)
+async def start_migration(body: MigrationRequest) -> MigrationStatus:
+    """Start migrating files from source to destination path.
+
+    This runs in the background and returns immediately.
+    Use GET /migrate/status to check progress.
+    """
+    source = Path(body.source_path)
+    destination = Path(body.destination_path)
+
+    if not source.exists():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Source path does not exist: {source}",
+        )
+
+    if source == destination:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Source and destination are the same",
+        )
+
+    # Create destination if needed
+    try:
+        destination.mkdir(parents=True, exist_ok=True)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot create destination: {e}",
+        )
+
+    # Check if migration already running
+    if _migration_progress.get("current", {}).get("status") == "running":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Migration already in progress",
+        )
+
+    # Calculate total files and size
+    files_to_migrate = []
+    total_bytes = 0
+
+    for subdir in ["recordings", "documents"]:
+        source_subdir = source / subdir
+        if source_subdir.exists():
+            for file_path in source_subdir.rglob("*"):
+                if file_path.is_file():
+                    files_to_migrate.append(file_path)
+                    total_bytes += file_path.stat().st_size
+
+    # Initialize progress
+    _migration_progress["current"] = {
+        "status": "running",
+        "total_files": len(files_to_migrate),
+        "migrated_files": 0,
+        "total_bytes": total_bytes,
+        "migrated_bytes": 0,
+        "current_file": None,
+        "error": None,
+        "source": str(source),
+        "destination": str(destination),
+        "files": files_to_migrate,
+    }
+
+    # Start migration in background
+    asyncio.create_task(_run_migration(source, destination, files_to_migrate))
+
+    return MigrationStatus(
+        status="running",
+        total_files=len(files_to_migrate),
+        migrated_files=0,
+        total_bytes=total_bytes,
+        migrated_bytes=0,
+        current_file=None,
+        error=None,
+    )
+
+
+async def _run_migration(source: Path, destination: Path, files: list[Path]) -> None:
+    """Run the migration in the background."""
+    progress = _migration_progress["current"]
+
+    try:
+        for file_path in files:
+            # Calculate relative path from source
+            relative_path = file_path.relative_to(source)
+            dest_path = destination / relative_path
+
+            progress["current_file"] = str(relative_path)
+
+            # Create destination directory
+            dest_path.parent.mkdir(parents=True, exist_ok=True)
+
+            # Copy file (using sync shutil in executor to not block)
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(None, shutil.copy2, file_path, dest_path)
+
+            # Update progress
+            file_size = file_path.stat().st_size
+            progress["migrated_files"] += 1
+            progress["migrated_bytes"] += file_size
+
+            # Small delay to allow status checks
+            await asyncio.sleep(0.01)
+
+        # Migration complete - clean up source directories
+        for subdir in ["recordings", "documents"]:
+            source_subdir = source / subdir
+            if source_subdir.exists():
+                try:
+                    loop = asyncio.get_event_loop()
+                    await loop.run_in_executor(None, shutil.rmtree, source_subdir)
+                except Exception as e:
+                    logger.warning(f"Could not remove source directory {source_subdir}: {e}")
+
+        progress["status"] = "completed"
+        progress["current_file"] = None
+        logger.info(f"Migration completed: {progress['migrated_files']} files, {progress['migrated_bytes']} bytes")
+
+    except Exception as e:
+        progress["status"] = "failed"
+        progress["error"] = str(e)
+        logger.exception("Migration failed")
+
+
+@router.get("/migrate/status", response_model=MigrationStatus)
+async def get_migration_status() -> MigrationStatus:
+    """Get current migration status."""
+    progress = _migration_progress.get("current", {})
+
+    if not progress:
+        return MigrationStatus(
+            status="idle",
+            total_files=0,
+            migrated_files=0,
+            total_bytes=0,
+            migrated_bytes=0,
+            current_file=None,
+            error=None,
+        )
+
+    return MigrationStatus(
+        status=progress.get("status", "idle"),
+        total_files=progress.get("total_files", 0),
+        migrated_files=progress.get("migrated_files", 0),
+        total_bytes=progress.get("total_bytes", 0),
+        migrated_bytes=progress.get("migrated_bytes", 0),
+        current_file=progress.get("current_file"),
+        error=progress.get("error"),
+    )

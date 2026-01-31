@@ -113,11 +113,13 @@ async def upload_document(
             detail=f"Unsupported file type: {mime_type}. Allowed: PDF, DOCX, XLSX, PPTX, TXT, MD, PNG, JPG, TIFF"
         )
 
-    # Validate project exists if provided
+    # Validate project exists if provided and get name for path
+    project_name = None
     if project_id:
         project = await db.get(Project, project_id)
         if not project:
             raise HTTPException(status_code=404, detail="Project not found")
+        project_name = project.name
 
     # Read file content
     content = await file.read()
@@ -133,26 +135,32 @@ async def upload_document(
     if file_size == 0:
         raise HTTPException(status_code=400, detail="Uploaded file is empty")
 
-    # Generate storage path
-    from persistence.models import generate_uuid
-    doc_id = generate_uuid()
-
     # Sanitize filename for security
     safe_filename = Path(file.filename.replace("\\", "/")).name
     if not safe_filename or safe_filename in (".", ".."):
         safe_filename = "unknown"
 
-    file_path = f"documents/{doc_id}/{safe_filename}"
+    # Generate document ID
+    from persistence.models import generate_uuid
+    doc_id = generate_uuid()
 
-    # Save to storage
-    await storage_service.save_file(file_path, content)
+    # Determine title
+    doc_title = title or safe_filename.rsplit(".", 1)[0]
+
+    # Save to storage with human-readable path
+    file_path = await storage_service.save_upload(
+        content=content,
+        title=doc_title,
+        filename=safe_filename,
+        project_name=project_name,
+    )
 
     # Create document record
     doc = Document(
         id=doc_id,
-        title=title or safe_filename,
-        filename=safe_filename,
-        file_path=file_path,
+        title=doc_title,
+        filename=file_path.name,  # Actual filename (may have collision suffix)
+        file_path=str(file_path),  # Full path
         mime_type=mime_type,
         file_size_bytes=file_size,
         project_id=project_id,
@@ -218,13 +226,35 @@ async def update_document(
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    if update.title is not None:
+    # Handle title change - rename file on disk
+    if update.title is not None and update.title != doc.title:
+        try:
+            old_path = Path(doc.file_path)
+            if old_path.exists():
+                new_path = await storage_service.rename_item(old_path, update.title)
+                doc.file_path = str(new_path)
+                doc.filename = new_path.name
+        except Exception as e:
+            logger.warning(f"Could not rename file for document {document_id}: {e}")
         doc.title = update.title
-    if update.project_id is not None:
+
+    # Handle project change - move file to new project folder
+    if update.project_id is not None and update.project_id != doc.project_id:
+        new_project_name = None
         if update.project_id:
             project = await db.get(Project, update.project_id)
             if not project:
                 raise HTTPException(status_code=404, detail="Project not found")
+            new_project_name = project.name
+
+        try:
+            old_path = Path(doc.file_path)
+            if old_path.exists():
+                new_path = await storage_service.move_to_project(old_path, new_project_name)
+                doc.file_path = str(new_path)
+        except Exception as e:
+            logger.warning(f"Could not move file for document {document_id}: {e}")
+
         doc.project_id = update.project_id or None
 
     await db.commit()
@@ -263,12 +293,30 @@ async def download_document_file(
     """Download or view the original document file.
 
     Use inline=true to display in browser (for iframe embedding).
+    For Office documents (DOCX, XLSX, PPTX), returns the PDF preview when inline=true.
     """
     doc = await db.get(Document, document_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    file_path = storage_service.get_full_path(doc.file_path)
+    # For inline viewing of Office documents, use the PDF preview if available
+    if inline and doc.metadata_.get("preview_path"):
+        preview_path = Path(doc.metadata_["preview_path"])
+        if not preview_path.is_absolute():
+            preview_path = storage_service.get_full_path(doc.metadata_["preview_path"])
+        if preview_path.exists():
+            return FileResponse(
+                path=preview_path,
+                filename=doc.filename.rsplit(".", 1)[0] + ".pdf",
+                media_type="application/pdf",
+                content_disposition_type="inline",
+            )
+
+    # File path is now stored as full path
+    file_path = Path(doc.file_path)
+    if not file_path.is_absolute():
+        # Backwards compatibility for old relative paths
+        file_path = storage_service.get_full_path(doc.file_path)
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="File not found on disk")
 

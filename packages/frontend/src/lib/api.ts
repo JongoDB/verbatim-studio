@@ -729,6 +729,21 @@ export interface StorageLocationUpdate {
   is_active?: boolean;
 }
 
+export interface MigrationRequest {
+  source_path: string;
+  destination_path: string;
+}
+
+export interface MigrationStatus {
+  status: 'idle' | 'running' | 'completed' | 'failed';
+  total_files: number;
+  migrated_files: number;
+  total_bytes: number;
+  migrated_bytes: number;
+  current_file: string | null;
+  error: string | null;
+}
+
 class ApiClient {
   private baseUrl: string;
 
@@ -1548,6 +1563,15 @@ class ApiClient {
       }).then((res) => {
         if (!res.ok) throw new Error(`API error: ${res.status}`);
       }),
+
+    startMigration: (data: MigrationRequest) =>
+      this.request<MigrationStatus>('/api/storage-locations/migrate', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+
+    getMigrationStatus: () =>
+      this.request<MigrationStatus>('/api/storage-locations/migrate/status'),
   };
 }
 

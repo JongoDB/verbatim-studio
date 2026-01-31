@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from persistence import get_db
-from persistence.models import Job, Recording, RecordingTag, RecordingTemplate, Speaker, Tag, Transcript
+from persistence.models import Job, Project, Recording, RecordingTag, RecordingTemplate, Speaker, Tag, Transcript
 from services.jobs import job_queue
 from services.storage import storage_service
 
@@ -527,14 +527,23 @@ async def upload_recording(
                 await db.flush()
             db.add(RecordingTag(recording_id=recording.id, tag_id=tag.id))
 
-    # Save file to storage
+    # Get project name for human-readable file path
+    project_name = None
+    if project_id:
+        project_result = await db.execute(select(Project).where(Project.id == project_id))
+        project = project_result.scalar_one_or_none()
+        project_name = project.name if project else None
+
+    # Save file to storage with human-readable path
     try:
         file_path = await storage_service.save_upload(
             content=content,
-            recording_id=recording.id,
+            title=recording.title,
             filename=safe_filename,
+            project_name=project_name,
         )
         recording.file_path = str(file_path)
+        recording.file_name = file_path.name  # Update to actual filename (may have collision suffix)
 
         # Extract audio from video files for playback and transcription
         if _is_video(content_type):
@@ -606,6 +615,16 @@ async def update_recording(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Title cannot be empty",
             )
+        # Rename file on disk if title changed
+        if stripped != recording.title and recording.file_path:
+            try:
+                old_path = Path(recording.file_path)
+                if old_path.exists():
+                    new_path = await storage_service.rename_item(old_path, stripped)
+                    recording.file_path = str(new_path)
+                    recording.file_name = new_path.name
+            except Exception as e:
+                logger.warning("Could not rename file for recording %s: %s", recording_id, e)
         recording.title = stripped
 
     if body.template_id is not None:
@@ -694,8 +713,25 @@ async def bulk_assign_recordings(
     if not recordings:
         return MessageResponse(message="No recordings found")
 
-    # Update project_id for all recordings
+    # Get new project name (if assigning to a project)
+    new_project_name = None
+    if body.project_id:
+        project_result = await db.execute(select(Project).where(Project.id == body.project_id))
+        project = project_result.scalar_one_or_none()
+        if project:
+            new_project_name = project.name
+
+    # Update project_id and move files for all recordings
     for recording in recordings:
+        # Move file if project changed
+        if recording.project_id != body.project_id and recording.file_path:
+            try:
+                old_path = Path(recording.file_path)
+                if old_path.exists():
+                    new_path = await storage_service.move_to_project(old_path, new_project_name)
+                    recording.file_path = str(new_path)
+            except Exception as e:
+                logger.warning("Could not move file for recording %s: %s", recording.id, e)
         recording.project_id = body.project_id
 
     await db.commit()

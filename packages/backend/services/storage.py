@@ -1,4 +1,10 @@
-"""Storage service for file management."""
+"""Storage service for file management.
+
+Implements filesystem-as-UI pattern where:
+- Projects are folders on disk
+- Recordings/documents are files in those folders
+- Files without a project live at the storage root
+"""
 
 from pathlib import Path
 
@@ -6,21 +12,53 @@ import aiofiles
 import aiofiles.os
 
 from core.config import settings
+from services.path_manager import PathManager, path_manager as default_path_manager
 
 
 class StorageService:
-    """Service for managing file storage operations."""
+    """Service for managing file storage operations.
 
-    def __init__(self, media_dir: Path | None = None):
+    Uses human-readable paths based on project names and item titles.
+    """
+
+    def __init__(
+        self,
+        media_dir: Path | None = None,
+        pm: PathManager | None = None,
+    ):
         """Initialize storage service.
 
         Args:
             media_dir: Override for media directory. Uses settings.MEDIA_DIR by default.
+            pm: PathManager instance. Uses default if not provided.
         """
         self.media_dir = media_dir or settings.MEDIA_DIR
+        self._pm = pm or default_path_manager
 
+    def get_item_path(
+        self,
+        title: str,
+        filename: str,
+        project_name: str | None = None,
+    ) -> Path:
+        """Get the path for a recording or document file.
+
+        New pattern: <project_name>/<title>.<ext> or <title>.<ext>
+
+        Args:
+            title: The item title.
+            filename: Original filename (used for extension).
+            project_name: Project name if item belongs to a project.
+
+        Returns:
+            Full path where the file should be stored.
+        """
+        extension = Path(filename).suffix
+        return self._pm.get_item_path(self.media_dir, project_name, title, extension)
+
+    # Legacy method for backwards compatibility during migration
     def get_recording_path(self, recording_id: str, filename: str) -> Path:
-        """Get the full path for a recording file.
+        """Get the full path for a recording file (legacy UUID-based path).
 
         Args:
             recording_id: The recording's unique ID.
@@ -33,24 +71,22 @@ class StorageService:
             ValueError: If filename contains path traversal attempts.
         """
         # Defense in depth: sanitize filename to prevent path traversal
-        # First normalize backslashes to forward slashes (handles Windows-style paths on any OS)
-        # Then use Path().name to get only the basename, stripping any directory components
         normalized_filename = filename.replace("\\", "/")
         safe_filename = Path(normalized_filename).name
         if not safe_filename or safe_filename in (".", ".."):
             safe_filename = "unknown"
 
-        # Also sanitize recording_id to prevent path traversal via that parameter
+        # Also sanitize recording_id to prevent path traversal
         normalized_recording_id = recording_id.replace("\\", "/")
         safe_recording_id = Path(normalized_recording_id).name
         if not safe_recording_id or safe_recording_id in (".", ".."):
             raise ValueError("Invalid recording ID")
 
-        # Create a subdirectory based on recording ID to avoid filename collisions
+        # Create a subdirectory based on recording ID
         recording_dir = self.media_dir / "recordings" / safe_recording_id
         result_path = recording_dir / safe_filename
 
-        # Final safety check: ensure resulting path is within media_dir
+        # Final safety check
         try:
             result_path.resolve().relative_to(self.media_dir.resolve())
         except ValueError:
@@ -58,27 +94,75 @@ class StorageService:
 
         return result_path
 
-    async def save_upload(self, content: bytes, recording_id: str, filename: str) -> Path:
-        """Save an uploaded file to storage.
+    async def save_upload(
+        self,
+        content: bytes,
+        title: str,
+        filename: str,
+        project_name: str | None = None,
+    ) -> Path:
+        """Save an uploaded file to storage with human-readable path.
 
         Args:
             content: File content as bytes.
-            recording_id: The recording's unique ID.
-            filename: Original filename.
+            title: The item title (used for filename).
+            filename: Original filename (used for extension).
+            project_name: Project name if item belongs to a project.
 
         Returns:
             Path where the file was saved.
         """
-        file_path = self.get_recording_path(recording_id, filename)
+        desired_path = self.get_item_path(title, filename, project_name)
 
-        # Ensure the directory exists
-        await aiofiles.os.makedirs(file_path.parent, exist_ok=True)
+        # Ensure parent directory exists
+        await aiofiles.os.makedirs(desired_path.parent, exist_ok=True)
+
+        # Generate unique path to handle collisions
+        actual_path = self._pm.generate_unique_path(desired_path.parent, desired_path.name)
+
+        # Ensure directory exists (in case unique path has different parent)
+        await aiofiles.os.makedirs(actual_path.parent, exist_ok=True)
 
         # Write the file
-        async with aiofiles.open(file_path, "wb") as f:
+        async with aiofiles.open(actual_path, "wb") as f:
             await f.write(content)
 
-        return file_path
+        return actual_path
+
+    async def move_to_project(
+        self,
+        current_path: Path,
+        new_project_name: str | None,
+    ) -> Path:
+        """Move a file when project assignment changes.
+
+        Args:
+            current_path: Current file path.
+            new_project_name: New project name, or None to move to root.
+
+        Returns:
+            New path where the file is now located.
+        """
+        if new_project_name:
+            new_parent = self.media_dir / self._pm.sanitize_name(new_project_name)
+        else:
+            new_parent = self.media_dir
+
+        return await self._pm.move_file(current_path, new_parent)
+
+    async def rename_item(self, current_path: Path, new_title: str) -> Path:
+        """Rename a file when its title changes.
+
+        Args:
+            current_path: Current file path.
+            new_title: New title for the item.
+
+        Returns:
+            New path with renamed file.
+        """
+        extension = current_path.suffix
+        new_name = f"{self._pm.sanitize_name(new_title)}{extension}"
+        return await self._pm.rename_file(current_path, new_name)
 
     async def delete_file(self, file_path: Path | str) -> bool:
         """Delete a file from storage.
@@ -93,12 +177,8 @@ class StorageService:
 
         try:
             await aiofiles.os.remove(path)
-            # Try to remove parent directory if empty
-            try:
-                await aiofiles.os.rmdir(path.parent)
-            except OSError:
-                # Directory not empty or other error, ignore
-                pass
+            # Try to remove parent directory if empty (cleanup project folder)
+            await self._pm.delete_folder_if_empty(path.parent)
             return True
         except FileNotFoundError:
             return False
@@ -143,7 +223,6 @@ class StorageService:
             Full path where the file was saved.
         """
         # Sanitize path to prevent traversal
-        # Split path and sanitize each component
         parts = relative_path.replace("\\", "/").split("/")
         safe_parts = []
         for part in parts:
@@ -228,6 +307,52 @@ class StorageService:
             await dst.write(content)
 
         return dest_path
+
+    async def ensure_project_folder(self, project_name: str) -> Path:
+        """Ensure a project folder exists.
+
+        Args:
+            project_name: The project name.
+
+        Returns:
+            Path to the project folder.
+        """
+        safe_name = self._pm.sanitize_name(project_name)
+        folder_path = self.media_dir / safe_name
+        await self._pm.ensure_folder(folder_path)
+        return folder_path
+
+    async def rename_project_folder(self, old_name: str, new_name: str) -> Path:
+        """Rename a project folder.
+
+        Args:
+            old_name: Current project name.
+            new_name: New project name.
+
+        Returns:
+            New folder path.
+        """
+        old_safe = self._pm.sanitize_name(old_name)
+        old_path = self.media_dir / old_safe
+
+        if not old_path.exists():
+            # Folder doesn't exist yet, just ensure new one exists
+            return await self.ensure_project_folder(new_name)
+
+        return await self._pm.rename_folder(old_path, new_name)
+
+    async def delete_project_folder_if_empty(self, project_name: str) -> bool:
+        """Delete a project folder if it's empty.
+
+        Args:
+            project_name: The project name.
+
+        Returns:
+            True if folder was deleted, False otherwise.
+        """
+        safe_name = self._pm.sanitize_name(project_name)
+        folder_path = self.media_dir / safe_name
+        return await self._pm.delete_folder_if_empty(folder_path)
 
 
 # Default storage service instance

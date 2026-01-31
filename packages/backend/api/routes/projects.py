@@ -1,5 +1,7 @@
 """Project management endpoints."""
 
+import logging
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -8,7 +10,10 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from persistence.database import get_db
-from persistence.models import Project, ProjectType, Recording
+from persistence.models import Document, Project, ProjectType, Recording
+from services.storage import storage_service
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -167,6 +172,12 @@ async def create_project(
     db.add(project)
     await db.commit()
 
+    # Create project folder on disk
+    try:
+        await storage_service.ensure_project_folder(data.name)
+    except Exception as e:
+        logger.warning(f"Could not create folder for project {project.id}: {e}")
+
     # Refresh with relationships
     result = await db.execute(
         select(Project)
@@ -239,8 +250,40 @@ async def update_project(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    if data.name is not None:
-        project.name = data.name
+    # Handle name change - rename folder and update all file paths
+    if data.name is not None and data.name != project.name:
+        old_name = project.name
+        new_name = data.name
+
+        try:
+            # Rename the project folder
+            new_folder = await storage_service.rename_project_folder(old_name, new_name)
+
+            # Update file paths for all recordings in this project
+            rec_result = await db.execute(
+                select(Recording).where(Recording.project_id == project_id)
+            )
+            for rec in rec_result.scalars():
+                if rec.file_path:
+                    old_path = Path(rec.file_path)
+                    new_path = new_folder / old_path.name
+                    rec.file_path = str(new_path)
+
+            # Update file paths for all documents in this project
+            doc_result = await db.execute(
+                select(Document).where(Document.project_id == project_id)
+            )
+            for doc in doc_result.scalars():
+                if doc.file_path:
+                    old_path = Path(doc.file_path)
+                    new_path = new_folder / old_path.name
+                    doc.file_path = str(new_path)
+
+        except Exception as e:
+            logger.warning(f"Could not rename folder for project {project_id}: {e}")
+
+        project.name = new_name
+
     if data.description is not None:
         project.description = data.description
     if data.project_type_id is not None:
@@ -289,15 +332,54 @@ async def delete_project(
     db: Annotated[AsyncSession, Depends(get_db)],
     project_id: str,
 ) -> MessageResponse:
-    """Delete a project. Recordings have their project_id set to NULL."""
+    """Delete a project. Files are moved to storage root, then folder deleted."""
     result = await db.execute(select(Project).where(Project.id == project_id))
     project = result.scalar_one_or_none()
 
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
+    project_name = project.name
+
+    # Move recordings to root and clear project_id
+    rec_result = await db.execute(
+        select(Recording).where(Recording.project_id == project_id)
+    )
+    for rec in rec_result.scalars():
+        if rec.file_path:
+            try:
+                old_path = Path(rec.file_path)
+                if old_path.exists():
+                    new_path = await storage_service.move_to_project(old_path, None)
+                    rec.file_path = str(new_path)
+            except Exception as e:
+                logger.warning(f"Could not move file for recording {rec.id}: {e}")
+        rec.project_id = None
+
+    # Move documents to root and clear project_id
+    doc_result = await db.execute(
+        select(Document).where(Document.project_id == project_id)
+    )
+    for doc in doc_result.scalars():
+        if doc.file_path:
+            try:
+                old_path = Path(doc.file_path)
+                if old_path.exists():
+                    new_path = await storage_service.move_to_project(old_path, None)
+                    doc.file_path = str(new_path)
+            except Exception as e:
+                logger.warning(f"Could not move file for document {doc.id}: {e}")
+        doc.project_id = None
+
+    # Delete project
     await db.delete(project)
     await db.commit()
+
+    # Delete project folder if empty
+    try:
+        await storage_service.delete_project_folder_if_empty(project_name)
+    except Exception as e:
+        logger.warning(f"Could not delete folder for project: {e}")
 
     return MessageResponse(message="Project deleted", id=project_id)
 
@@ -308,10 +390,11 @@ async def add_recording_to_project(
     project_id: str,
     recording_id: str,
 ) -> MessageResponse:
-    """Add a recording to a project by setting its project_id."""
+    """Add a recording to a project by setting its project_id and moving the file."""
     # Verify project exists
     project_result = await db.execute(select(Project).where(Project.id == project_id))
-    if not project_result.scalar_one_or_none():
+    project = project_result.scalar_one_or_none()
+    if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
     # Verify recording exists
@@ -323,6 +406,16 @@ async def add_recording_to_project(
     # Check if already in this project
     if recording.project_id == project_id:
         return MessageResponse(message="Recording already in project", id=recording_id)
+
+    # Move file to project folder
+    if recording.file_path:
+        try:
+            old_path = Path(recording.file_path)
+            if old_path.exists():
+                new_path = await storage_service.move_to_project(old_path, project.name)
+                recording.file_path = str(new_path)
+        except Exception as e:
+            logger.warning(f"Could not move file for recording {recording_id}: {e}")
 
     # Set the project_id
     recording.project_id = project_id
@@ -337,7 +430,7 @@ async def remove_recording_from_project(
     project_id: str,
     recording_id: str,
 ) -> MessageResponse:
-    """Remove a recording from a project by clearing its project_id."""
+    """Remove a recording from a project by clearing its project_id and moving file to root."""
     recording_result = await db.execute(
         select(Recording).where(
             Recording.id == recording_id,
@@ -348,6 +441,16 @@ async def remove_recording_from_project(
 
     if not recording:
         raise HTTPException(status_code=404, detail="Recording not found in project")
+
+    # Move file to root
+    if recording.file_path:
+        try:
+            old_path = Path(recording.file_path)
+            if old_path.exists():
+                new_path = await storage_service.move_to_project(old_path, None)
+                recording.file_path = str(new_path)
+        except Exception as e:
+            logger.warning(f"Could not move file for recording {recording_id}: {e}")
 
     recording.project_id = None
     await db.commit()
