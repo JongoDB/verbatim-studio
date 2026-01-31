@@ -1,17 +1,35 @@
-import type { StorageType, StorageSubtype, StorageLocationConfig } from '@/lib/api';
+import type { StorageType, StorageSubtype, StorageLocationConfig, OAuthStatusResponse } from '@/lib/api';
+import { OAuthConnectButton } from './OAuthConnectButton';
 
 interface StorageConfigFormProps {
   storageType: StorageType;
   subtype: StorageSubtype;
   config: StorageLocationConfig;
   onChange: (config: StorageLocationConfig) => void;
+  /** OAuth tokens if connected */
+  oauthTokens?: OAuthStatusResponse['tokens'];
+  /** Callback when OAuth succeeds */
+  onOAuthSuccess?: (tokens: OAuthStatusResponse['tokens']) => void;
+  /** Callback when OAuth fails */
+  onOAuthError?: (error: string) => void;
+  /** Callback to disconnect OAuth */
+  onOAuthDisconnect?: () => void;
 }
 
 const inputClasses = "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary";
 const labelClasses = "block text-sm font-medium text-foreground mb-1.5";
 const hintClasses = "text-xs text-muted-foreground mt-1";
 
-export function StorageConfigForm({ storageType, subtype, config, onChange }: StorageConfigFormProps) {
+export function StorageConfigForm({
+  storageType,
+  subtype,
+  config,
+  onChange,
+  oauthTokens,
+  onOAuthSuccess,
+  onOAuthError,
+  onOAuthDisconnect,
+}: StorageConfigFormProps) {
   const updateField = (field: string, value: string) => {
     onChange({ ...config, [field]: value || undefined });
   };
@@ -281,31 +299,75 @@ export function StorageConfigForm({ storageType, subtype, config, onChange }: St
     );
   }
 
-  // OAuth providers placeholder
+  // OAuth providers (Google Drive, OneDrive, Dropbox)
   if (storageType === 'cloud' && ['gdrive', 'onedrive', 'dropbox'].includes(subtype || '')) {
+    const provider = subtype as 'gdrive' | 'onedrive' | 'dropbox';
+    const isConnected = !!oauthTokens?.access_token;
+    const providerName = provider === 'gdrive' ? 'Google Drive' :
+                         provider === 'onedrive' ? 'OneDrive' : 'Dropbox';
+
     return (
       <div className="space-y-4">
-        <div>
-          <label htmlFor="folder_path" className={labelClasses}>Folder Path (optional)</label>
-          <input
-            id="folder_path"
-            type="text"
-            value={config.folder_path || ''}
-            onChange={(e) => updateField('folder_path', e.target.value)}
-            placeholder="Verbatim Studio"
-            className={inputClasses}
-          />
-          <p className={hintClasses}>
-            Leave empty to use root folder.
-          </p>
+        {/* OAuth Connection Status */}
+        <div className="rounded-lg border border-border p-4">
+          {isConnected ? (
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
+                  <svg className="w-5 h-5 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+                <div>
+                  <p className="font-medium text-foreground">Connected to {providerName}</p>
+                  <p className="text-sm text-muted-foreground">
+                    Authenticated successfully
+                  </p>
+                </div>
+              </div>
+              {onOAuthDisconnect && (
+                <button
+                  type="button"
+                  onClick={onOAuthDisconnect}
+                  className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Disconnect
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center gap-3 py-2">
+              <p className="text-sm text-muted-foreground">
+                Connect your {providerName} account to store files
+              </p>
+              {onOAuthSuccess && (
+                <OAuthConnectButton
+                  provider={provider}
+                  onSuccess={onOAuthSuccess}
+                  onError={onOAuthError}
+                />
+              )}
+            </div>
+          )}
         </div>
-        <p className="text-sm text-amber-600 dark:text-amber-400">
-          Click "Connect" below to authenticate with {
-            subtype === 'gdrive' ? 'Google' :
-            subtype === 'onedrive' ? 'Microsoft' :
-            'Dropbox'
-          }.
-        </p>
+
+        {/* Folder path - only show when connected */}
+        {isConnected && (
+          <div>
+            <label htmlFor="folder_path" className={labelClasses}>Folder Path (optional)</label>
+            <input
+              id="folder_path"
+              type="text"
+              value={config.folder_path || ''}
+              onChange={(e) => updateField('folder_path', e.target.value)}
+              placeholder="Verbatim Studio"
+              className={inputClasses}
+            />
+            <p className={hintClasses}>
+              Leave empty to use root folder. Folder will be created if it doesn't exist.
+            </p>
+          </div>
+        )}
       </div>
     );
   }

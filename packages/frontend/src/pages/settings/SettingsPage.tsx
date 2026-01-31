@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { api, type ArchiveInfo, type TranscriptionSettings, type AIModel, type AIModelDownloadEvent, type SystemInfo, type StorageLocation, type MigrationStatus, type StorageType, type StorageSubtype, type StorageLocationConfig } from '@/lib/api';
+import { api, type ArchiveInfo, type TranscriptionSettings, type AIModel, type AIModelDownloadEvent, type SystemInfo, type StorageLocation, type MigrationStatus, type StorageType, type StorageSubtype, type StorageLocationConfig, type OAuthStatusResponse } from '@/lib/api';
 import { StorageTypeSelector } from '@/components/storage/StorageTypeSelector';
 import { StorageSubtypeSelector } from '@/components/storage/StorageSubtypeSelector';
 import { StorageConfigForm } from '@/components/storage/StorageConfigForm';
@@ -116,6 +116,7 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
   const [editingLocation, setEditingLocation] = useState<StorageLocation | null>(null);
   const [testingConnection, setTestingConnection] = useState(false);
   const [connectionTestResult, setConnectionTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [newLocationOAuthTokens, setNewLocationOAuthTokens] = useState<OAuthStatusResponse['tokens'] | undefined>();
 
   // Migration state
   const [showMigrationDialog, setShowMigrationDialog] = useState(false);
@@ -301,6 +302,7 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
     setNewLocationSubtype(null);
     setNewLocationConfig({});
     setConnectionTestResult(null);
+    setNewLocationOAuthTokens(undefined);
     setStorageError(null);
   }, []);
 
@@ -321,21 +323,45 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
     }
   }, [newLocationType, newLocationSubtype, newLocationConfig]);
 
+  // OAuth handlers for cloud storage providers
+  const handleOAuthSuccess = useCallback((tokens: OAuthStatusResponse['tokens']) => {
+    setNewLocationOAuthTokens(tokens);
+    setConnectionTestResult({ success: true, message: 'Successfully connected!' });
+  }, []);
+
+  const handleOAuthError = useCallback((error: string) => {
+    setStorageError(error);
+    setConnectionTestResult({ success: false, message: error });
+  }, []);
+
+  const handleOAuthDisconnect = useCallback(() => {
+    setNewLocationOAuthTokens(undefined);
+    setConnectionTestResult(null);
+  }, []);
+
   const handleAddStorageLocation = useCallback(async () => {
     if (!newLocationName.trim()) return;
     // Validate config based on type
     if (newLocationType === 'local' && !newLocationConfig.path?.trim()) return;
     if (newLocationType === 'network' && !newLocationSubtype) return;
     if (newLocationType === 'cloud' && !newLocationSubtype) return;
+    // OAuth providers require tokens
+    const isOAuthProvider = ['gdrive', 'onedrive', 'dropbox'].includes(newLocationSubtype || '');
+    if (isOAuthProvider && !newLocationOAuthTokens) return;
 
     setStorageSaving(true);
     setStorageError(null);
     try {
+      // Include OAuth tokens in config for OAuth providers
+      const config = isOAuthProvider
+        ? { ...newLocationConfig, oauth_tokens: newLocationOAuthTokens }
+        : newLocationConfig;
+
       await api.storageLocations.create({
         name: newLocationName.trim(),
         type: newLocationType,
         subtype: newLocationSubtype,
-        config: newLocationConfig,
+        config,
         is_default: storageLocations.length === 0,
       });
       resetAddLocationForm();
@@ -346,7 +372,7 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
     } finally {
       setStorageSaving(false);
     }
-  }, [newLocationName, newLocationType, newLocationSubtype, newLocationConfig, storageLocations.length, loadStorageLocations, resetAddLocationForm]);
+  }, [newLocationName, newLocationType, newLocationSubtype, newLocationConfig, newLocationOAuthTokens, storageLocations.length, loadStorageLocations, resetAddLocationForm]);
 
   const handleUpdateStorageLocation = useCallback(async () => {
     if (!editingLocation) return;
@@ -1218,6 +1244,7 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
                     setNewLocationSubtype(subtype);
                     setNewLocationConfig({});
                     setConnectionTestResult(null);
+                    setNewLocationOAuthTokens(undefined);
                   }}
                 />
               )}
@@ -1229,6 +1256,10 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
                   subtype={newLocationSubtype}
                   config={newLocationConfig}
                   onChange={setNewLocationConfig}
+                  oauthTokens={newLocationOAuthTokens}
+                  onOAuthSuccess={handleOAuthSuccess}
+                  onOAuthError={handleOAuthError}
+                  onOAuthDisconnect={handleOAuthDisconnect}
                 />
               )}
 
@@ -1251,7 +1282,8 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
                 >
                   Cancel
                 </button>
-                {(newLocationType !== 'local' && newLocationSubtype) && (
+                {/* Test Connection button - hide for OAuth providers */}
+                {(newLocationType !== 'local' && newLocationSubtype && !['gdrive', 'onedrive', 'dropbox'].includes(newLocationSubtype)) && (
                   <button
                     onClick={handleTestConnection}
                     disabled={testingConnection}
@@ -1262,7 +1294,13 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
                 )}
                 <button
                   onClick={handleAddStorageLocation}
-                  disabled={storageSaving || !newLocationName.trim() || (newLocationType === 'local' && !newLocationConfig.path?.trim()) || (newLocationType !== 'local' && !newLocationSubtype)}
+                  disabled={
+                    storageSaving ||
+                    !newLocationName.trim() ||
+                    (newLocationType === 'local' && !newLocationConfig.path?.trim()) ||
+                    (newLocationType !== 'local' && !newLocationSubtype) ||
+                    (['gdrive', 'onedrive', 'dropbox'].includes(newLocationSubtype || '') && !newLocationOAuthTokens)
+                  }
                   className="px-3 py-1.5 text-sm font-medium rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
                 >
                   {storageSaving ? 'Adding...' : 'Add Location'}
