@@ -57,6 +57,21 @@ class FolderTreeResponse(BaseModel):
     root: FolderTreeNode
 
 
+class MoveRequest(BaseModel):
+    """Request to move an item."""
+
+    item_id: str
+    item_type: Literal["recording", "document"]
+    target_project_id: str | None  # null = move to root
+
+
+class MessageResponse(BaseModel):
+    """Generic message response."""
+
+    message: str
+    item: BrowseItem | None = None
+
+
 def _project_to_item(project: Project, item_count: int = 0) -> BrowseItem:
     return BrowseItem(
         id=project.id,
@@ -211,3 +226,37 @@ async def get_folder_tree(
     )
 
     return FolderTreeResponse(root=root)
+
+
+@router.post("/move", response_model=MessageResponse)
+async def move_item(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    request: MoveRequest,
+) -> MessageResponse:
+    """Move an item to a different folder."""
+    # Validate target folder exists
+    if request.target_project_id:
+        target = await db.get(Project, request.target_project_id)
+        if not target:
+            raise HTTPException(status_code=404, detail="Target folder not found")
+
+    if request.item_type == "recording":
+        item = await db.get(Recording, request.item_id)
+        if not item:
+            raise HTTPException(status_code=404, detail="Recording not found")
+        item.project_id = request.target_project_id
+        await db.commit()
+        await db.refresh(item)
+        return MessageResponse(message="Moved successfully", item=_recording_to_item(item))
+
+    elif request.item_type == "document":
+        item = await db.get(Document, request.item_id)
+        if not item:
+            raise HTTPException(status_code=404, detail="Document not found")
+        item.project_id = request.target_project_id
+        await db.commit()
+        await db.refresh(item)
+        return MessageResponse(message="Moved successfully", item=_document_to_item(item))
+
+    else:
+        raise HTTPException(status_code=400, detail="Invalid item type")
