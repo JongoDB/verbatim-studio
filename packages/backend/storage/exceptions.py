@@ -12,6 +12,11 @@ class StorageUnavailableError(StorageError):
     pass
 
 
+class StorageConnectionError(StorageError):
+    """Connection to storage failed."""
+    pass
+
+
 class StorageAuthError(StorageError):
     """Authentication failed or expired."""
     pass
