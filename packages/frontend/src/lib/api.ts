@@ -559,6 +559,37 @@ export interface NoteListResponse {
   total: number;
 }
 
+// Browse types
+export interface BrowseItem {
+  id: string;
+  type: 'folder' | 'recording' | 'document';
+  name: string;
+  updated_at: string;
+  item_count?: number;
+  status?: string;
+  duration_seconds?: number;
+  mime_type?: string;
+  file_size_bytes?: number;
+}
+
+export interface BrowseResponse {
+  current: BrowseItem | null;
+  breadcrumb: BrowseItem[];
+  items: BrowseItem[];
+  total: number;
+}
+
+export interface FolderTreeNode {
+  id: string;
+  name: string;
+  item_count: number;
+  children: FolderTreeNode[];
+}
+
+export interface FolderTreeResponse {
+  root: FolderTreeNode;
+}
+
 // Config Types
 export interface WhisperXStatus {
   mode: 'local' | 'external';
@@ -1372,6 +1403,68 @@ class ApiClient {
 
     delete: async (id: string): Promise<void> => {
       await this.request<void>(`/api/notes/${id}`, { method: 'DELETE' });
+    },
+  };
+
+  // Browse
+  browse = {
+    list: async (params?: {
+      parent_id?: string | null;
+      sort?: string;
+      order?: string;
+      search?: string;
+    }): Promise<BrowseResponse> => {
+      const searchParams = new URLSearchParams();
+      if (params?.parent_id) searchParams.set('parent_id', params.parent_id);
+      if (params?.sort) searchParams.set('sort', params.sort);
+      if (params?.order) searchParams.set('order', params.order);
+      if (params?.search) searchParams.set('search', params.search);
+      const query = searchParams.toString();
+      return this.request<BrowseResponse>(`/api/browse${query ? `?${query}` : ''}`);
+    },
+
+    tree: async (): Promise<FolderTreeResponse> => {
+      return this.request<FolderTreeResponse>('/api/browse/tree');
+    },
+
+    move: async (itemId: string, itemType: 'recording' | 'document', targetProjectId: string | null): Promise<{ message: string; item: BrowseItem }> => {
+      return this.request<{ message: string; item: BrowseItem }>('/api/browse/move', {
+        method: 'POST',
+        body: JSON.stringify({
+          item_id: itemId,
+          item_type: itemType,
+          target_project_id: targetProjectId,
+        }),
+      });
+    },
+
+    copy: async (itemId: string, itemType: 'recording' | 'document', targetProjectId: string | null): Promise<{ message: string; item: BrowseItem }> => {
+      return this.request<{ message: string; item: BrowseItem }>('/api/browse/copy', {
+        method: 'POST',
+        body: JSON.stringify({
+          item_id: itemId,
+          item_type: itemType,
+          target_project_id: targetProjectId,
+        }),
+      });
+    },
+
+    rename: async (itemId: string, itemType: 'folder' | 'recording' | 'document', newName: string): Promise<{ message: string; item: BrowseItem }> => {
+      return this.request<{ message: string; item: BrowseItem }>('/api/browse/rename', {
+        method: 'POST',
+        body: JSON.stringify({
+          item_id: itemId,
+          item_type: itemType,
+          new_name: newName,
+        }),
+      });
+    },
+
+    delete: async (itemType: 'folder' | 'recording' | 'document', itemId: string, recursive?: boolean): Promise<{ message: string }> => {
+      const query = recursive ? '?recursive=true' : '';
+      return this.request<{ message: string }>(`/api/browse/${itemType}/${itemId}${query}`, {
+        method: 'DELETE',
+      });
     },
   };
 
