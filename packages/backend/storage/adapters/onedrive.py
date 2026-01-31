@@ -374,3 +374,137 @@ class OneDriveAdapter(StorageAdapter):
             raise StorageConnectionError(
                 f"Failed to create folder: {response.status_code} {response.text}"
             )
+
+    async def delete_folder(self, path: str, delete_contents: bool = False) -> bool:
+        """Delete a folder.
+
+        Args:
+            path: Path to the folder.
+            delete_contents: If True, delete folder and all contents.
+                           If False, only delete if empty.
+
+        Returns:
+            True if folder was deleted, False if not empty and delete_contents=False.
+        """
+        try:
+            # Check if folder exists
+            if not await self.exists(path):
+                return True  # Already gone
+
+            # Get folder contents
+            files = await self.list_files(path)
+
+            if files and not delete_contents:
+                logger.info(f"Folder {path} is not empty, skipping delete")
+                return False
+
+            # Delete contents if requested
+            if files and delete_contents:
+                for file_info in files:
+                    if file_info.is_directory:
+                        await self.delete_folder(file_info.path, delete_contents=True)
+                    else:
+                        await self.delete_file(file_info.path)
+
+            # Delete the folder itself
+            url = self._get_item_url(path)
+            response = await self._request("DELETE", url)
+
+            if response.status_code in (200, 204, 404):
+                return True
+
+            logger.warning(f"Failed to delete folder {path}: {response.status_code}")
+            return False
+
+        except StorageNotFoundError:
+            return True  # Already deleted
+        except Exception as e:
+            logger.error(f"Failed to delete folder {path}: {e}")
+            raise StorageConnectionError(f"Failed to delete folder: {e}")
+
+    async def move_files_to_parent(self, folder_path: str) -> int:
+        """Move all files from a folder to its parent folder.
+
+        Args:
+            folder_path: Path to the folder whose contents should be moved.
+
+        Returns:
+            Number of files moved.
+        """
+        try:
+            files = await self.list_files(folder_path)
+            moved_count = 0
+
+            for file_info in files:
+                if file_info.is_directory:
+                    continue  # Skip subfolders
+
+                # Get file ID to move it
+                old_path = file_info.path
+                filename = file_info.name
+
+                # Determine new parent - folder_path's parent or root
+                parts = folder_path.rsplit("/", 1)
+                if len(parts) == 2:
+                    new_path = f"{parts[0]}/{filename}"
+                    new_parent_path = parts[0]
+                else:
+                    new_path = filename
+                    new_parent_path = ""
+
+                # Use Graph API to move the file
+                try:
+                    # Get the item ID first
+                    item_url = self._get_item_url(old_path)
+                    item_response = await self._request("GET", item_url)
+                    if item_response.status_code != 200:
+                        logger.warning(f"Could not get item {old_path}: {item_response.status_code}")
+                        continue
+
+                    item_data = item_response.json()
+                    item_id = item_data.get("id")
+                    if not item_id:
+                        continue
+
+                    # Get parent folder ID
+                    if new_parent_path:
+                        parent_url = self._get_item_url(new_parent_path)
+                    else:
+                        # Moving to root folder (or app's root if configured)
+                        if self._folder_path:
+                            parent_url = self._get_item_url("")
+                        else:
+                            parent_url = f"{GRAPH_API_BASE}/me/drive/root"
+
+                    parent_response = await self._request("GET", parent_url)
+                    if parent_response.status_code != 200:
+                        logger.warning(f"Could not get parent folder: {parent_response.status_code}")
+                        continue
+
+                    parent_data = parent_response.json()
+                    parent_id = parent_data.get("id")
+                    if not parent_id:
+                        continue
+
+                    # Move the item using PATCH
+                    move_url = f"{GRAPH_API_BASE}/me/drive/items/{item_id}"
+                    move_response = await self._request(
+                        "PATCH",
+                        move_url,
+                        json={"parentReference": {"id": parent_id}},
+                    )
+
+                    if move_response.status_code == 200:
+                        moved_count += 1
+                        logger.debug(f"Moved {old_path} to {new_path}")
+                    else:
+                        logger.warning(f"Failed to move {old_path}: {move_response.status_code}")
+
+                except Exception as e:
+                    logger.warning(f"Failed to move file {old_path}: {e}")
+
+            return moved_count
+
+        except Exception as e:
+            logger.error(f"Failed to move files from {folder_path}: {e}")
+            raise StorageConnectionError(f"Failed to move files: {e}")
