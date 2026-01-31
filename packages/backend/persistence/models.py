@@ -272,6 +272,21 @@ class Setting(Base):
     updated_at: Mapped[datetime] = mapped_column(default=func.now(), onupdate=func.now())
 
 
+class StorageLocation(Base):
+    """Configurable storage location for files (local, S3, Azure, GCS)."""
+
+    __tablename__ = "storage_locations"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    type: Mapped[str] = mapped_column(String(50), nullable=False)  # "local", "s3", "azure", "gcs"
+    config: Mapped[dict] = mapped_column(JSON, default=dict)
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(default=func.now(), onupdate=func.now())
+
+
 class SegmentEmbedding(Base):
     """Embedding vector for a transcript segment."""
 
