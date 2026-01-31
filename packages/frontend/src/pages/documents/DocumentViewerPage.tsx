@@ -127,7 +127,7 @@ export function DocumentViewerPage({ documentId, onBack }: DocumentViewerPagePro
             {isPdf && (
               <iframe
                 src={api.documents.getFileUrl(documentId, true)}
-                className="w-full h-[600px]"
+                className="w-full h-[calc(100vh-260px)]"
                 title={document.title}
               />
             )}
@@ -137,7 +137,7 @@ export function DocumentViewerPage({ documentId, onBack }: DocumentViewerPagePro
                 <img
                   src={api.documents.getFileUrl(documentId, true)}
                   alt={document.title}
-                  className="max-w-full max-h-[600px] object-contain"
+                  className="max-w-full max-h-[calc(100vh-200px)] object-contain"
                 />
               </div>
             )}
