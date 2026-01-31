@@ -359,6 +359,13 @@ async def handle_transcription(
     if not recording_id:
         raise ValueError("Missing recording_id in payload")
 
+    # Track temp file for cleanup
+    import tempfile
+    from storage.factory import get_adapter
+    from persistence.models import StorageLocation as StorageLoc
+
+    temp_audio_file = None
+
     # Get recording and update status
     async with async_session() as session:
         result = await session.execute(select(Recording).where(Recording.id == recording_id))
@@ -373,9 +380,35 @@ async def handle_transcription(
         )
         await session.commit()
 
-        # Use extracted audio for video files, otherwise use original
-        audio_path = recording.file_path
-        extracted_audio = Path(recording.file_path).parent / "audio.wav"
+        # Resolve audio path - check for cloud storage
+        audio_path = None
+
+        if recording.storage_location_id:
+            loc_result = await session.execute(
+                select(StorageLoc).where(StorageLoc.id == recording.storage_location_id)
+            )
+            storage_loc = loc_result.scalar_one_or_none()
+
+            if storage_loc and storage_loc.type == "cloud":
+                # Download from cloud storage to temp file
+                adapter = get_adapter(storage_loc)
+                file_data = await adapter.read_file(recording.file_path)
+
+                suffix = Path(recording.file_path).suffix
+                temp_audio_file = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+                temp_audio_file.write(file_data)
+                temp_audio_file.close()
+                audio_path = temp_audio_file.name
+            elif storage_loc and storage_loc.type == "local":
+                base_path = storage_loc.config.get("path", "")
+                audio_path = str(Path(base_path) / recording.file_path)
+
+        # Fallback for recordings without storage_location_id
+        if audio_path is None:
+            audio_path = recording.file_path
+
+        # Use extracted audio for video files if available
+        extracted_audio = Path(audio_path).parent / "audio.wav"
         if extracted_audio.exists():
             audio_path = str(extracted_audio)
 
@@ -538,6 +571,11 @@ async def handle_transcription(
         logger.exception("Transcription failed for recording %s", recording_id)
         raise
 
+    finally:
+        # Clean up temp audio file if used
+        if temp_audio_file:
+            Path(temp_audio_file.name).unlink(missing_ok=True)
+
 
 # Register the transcription handler
 job_queue.register_handler("transcribe", handle_transcription)
@@ -669,16 +707,51 @@ async def handle_document_processing(
         await update_progress(10)
 
         try:
-            # Get file path - check if already absolute (new storage format)
-            file_path = Path(doc.file_path)
-            if not file_path.is_absolute():
-                # Backwards compatibility for old relative paths
-                file_path = storage_service.get_full_path(doc.file_path)
+            import tempfile
+            from storage.factory import get_adapter
+            from persistence.models import StorageLocation
+
+            temp_file = None
+            file_path = None
+
+            # Check if stored in cloud storage
+            if doc.storage_location_id:
+                loc_result = await session.execute(
+                    select(StorageLocation).where(StorageLocation.id == doc.storage_location_id)
+                )
+                storage_loc = loc_result.scalar_one_or_none()
+
+                if storage_loc and storage_loc.type == "cloud":
+                    # Download from cloud storage to temp file
+                    adapter = get_adapter(storage_loc)
+                    file_data = await adapter.read_file(doc.file_path)
+
+                    # Create temp file with original extension
+                    suffix = Path(doc.file_path).suffix
+                    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+                    temp_file.write(file_data)
+                    temp_file.close()
+                    file_path = Path(temp_file.name)
+                elif storage_loc and storage_loc.type == "local":
+                    # Local storage - construct full path
+                    base_path = storage_loc.config.get("path", "")
+                    file_path = Path(base_path) / doc.file_path
+
+            # Fallback: check if already absolute or use default storage
+            if file_path is None:
+                file_path = Path(doc.file_path)
+                if not file_path.is_absolute():
+                    file_path = storage_service.get_full_path(doc.file_path)
+
             if not file_path.exists():
                 raise FileNotFoundError(f"File not found: {file_path}")
 
             # Extract text
             extraction_result = document_processor.process(file_path, doc.mime_type)
+
+            # Clean up temp file if used
+            if temp_file:
+                Path(temp_file.name).unlink(missing_ok=True)
 
             await update_progress(50)
 
@@ -704,6 +777,9 @@ async def handle_document_processing(
             return {"document_id": document_id, "status": "completed"}
 
         except Exception as e:
+            # Clean up temp file on error
+            if temp_file:
+                Path(temp_file.name).unlink(missing_ok=True)
             doc.status = "failed"
             doc.error_message = str(e)
             await session.commit()

@@ -1333,15 +1333,30 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
                         className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 py-2 px-3 text-sm text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                       />
                     </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Path</label>
-                      <input
-                        type="text"
-                        value={editingLocation.config.path || ''}
-                        onChange={(e) => setEditingLocation({ ...editingLocation, config: { ...editingLocation.config, path: e.target.value } })}
-                        className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 py-2 px-3 text-sm font-mono text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                      />
-                    </div>
+                    {/* Show different field based on storage type */}
+                    {editingLocation.type === 'cloud' && ['gdrive', 'onedrive', 'dropbox'].includes(editingLocation.subtype || '') ? (
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Folder Name</label>
+                        <input
+                          type="text"
+                          value={editingLocation.config.folder_path || ''}
+                          onChange={(e) => setEditingLocation({ ...editingLocation, config: { ...editingLocation.config, folder_path: e.target.value } })}
+                          placeholder="Verbatim Studio"
+                          className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 py-2 px-3 text-sm text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        />
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Folder in your cloud storage where files will be saved</p>
+                      </div>
+                    ) : (
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Path</label>
+                        <input
+                          type="text"
+                          value={editingLocation.config.path || ''}
+                          onChange={(e) => setEditingLocation({ ...editingLocation, config: { ...editingLocation.config, path: e.target.value } })}
+                          className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 py-2 px-3 text-sm font-mono text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        />
+                      </div>
+                    )}
                     <div className="flex gap-2 justify-end">
                       <button
                         onClick={() => setEditingLocation(null)}
