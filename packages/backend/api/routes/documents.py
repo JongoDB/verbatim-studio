@@ -11,7 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from persistence.database import get_db
+from persistence import get_db
 from persistence.models import Document, Project
 from services.storage import storage_service
 
@@ -123,10 +123,26 @@ async def upload_document(
     content = await file.read()
     file_size = len(content)
 
+    # Validate file size
+    MAX_FILE_SIZE = 10 * 1024 * 1024 * 1024  # 10 GB
+    if file_size > MAX_FILE_SIZE:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File too large. Maximum size is {MAX_FILE_SIZE // (1024 * 1024 * 1024)} GB"
+        )
+    if file_size == 0:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty")
+
     # Generate storage path
     from persistence.models import generate_uuid
     doc_id = generate_uuid()
-    file_path = f"documents/{doc_id}/{file.filename}"
+
+    # Sanitize filename for security
+    safe_filename = Path(file.filename.replace("\\", "/")).name
+    if not safe_filename or safe_filename in (".", ".."):
+        safe_filename = "unknown"
+
+    file_path = f"documents/{doc_id}/{safe_filename}"
 
     # Save to storage
     storage_service.save_file(file_path, content)
@@ -134,8 +150,8 @@ async def upload_document(
     # Create document record
     doc = Document(
         id=doc_id,
-        title=title or file.filename,
-        filename=file.filename,
+        title=title or safe_filename,
+        filename=safe_filename,
         file_path=file_path,
         mime_type=mime_type,
         file_size_bytes=file_size,
@@ -226,7 +242,7 @@ async def delete_document(
 
     # Delete file from storage
     try:
-        storage_service.delete_file(doc.file_path)
+        await storage_service.delete_file(doc.file_path)
     except Exception as e:
         logger.warning(f"Failed to delete file {doc.file_path}: {e}")
 
