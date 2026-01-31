@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { getWebSocketUrl, getApiUrl } from '@/lib/api';
 
 type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'recording';
 
@@ -87,7 +88,7 @@ export function LiveTranscriptionPage({ onNavigateToRecordings: _onNavigateToRec
       streamRef.current = stream;
 
       // Connect WebSocket
-      const wsUrl = `ws://127.0.0.1:8000/api/live/transcribe`;
+      const wsUrl = getWebSocketUrl('/api/live/transcribe');
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
@@ -268,7 +269,7 @@ export function LiveTranscriptionPage({ onNavigateToRecordings: _onNavigateToRec
     // Discard session on server if exists
     if (sessionId) {
       try {
-        await fetch(`http://127.0.0.1:8000/api/live/session/${sessionId}`, {
+        await fetch(getApiUrl(`/api/live/session/${sessionId}`), {
           method: 'DELETE',
         });
       } catch {
@@ -298,7 +299,7 @@ export function LiveTranscriptionPage({ onNavigateToRecordings: _onNavigateToRec
     setError(null);
 
     try {
-      const response = await fetch('http://127.0.0.1:8000/api/live/save', {
+      const response = await fetch(getApiUrl('/api/live/save'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
