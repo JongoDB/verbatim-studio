@@ -10,6 +10,7 @@ from starlette.formparsers import MultiPartParser
 from api.routes import ai, archive, config, health, jobs, live, project_analytics, project_types, projects, recording_templates, recordings, search, speakers, stats, system, tags, transcripts
 from api.routes.comments import comments_router, segment_comments_router
 from api.routes.documents import router as documents_router
+from api.routes.notes import router as notes_router
 from api.routes.highlights import segment_highlights_router, transcript_highlights_router
 from core.config import settings
 from persistence import init_db
@@ -87,6 +88,7 @@ app.include_router(comments_router, prefix="/api")
 app.include_router(segment_highlights_router, prefix="/api")
 app.include_router(transcript_highlights_router, prefix="/api")
 app.include_router(documents_router, prefix="/api")
+app.include_router(notes_router, prefix="/api")
 
 
 @app.get("/")
