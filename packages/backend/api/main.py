@@ -13,6 +13,7 @@ from api.routes.documents import router as documents_router
 from api.routes.notes import router as notes_router
 from api.routes.browse import router as browse_router
 from api.routes.highlights import segment_highlights_router, transcript_highlights_router
+from api.routes.storage_locations import router as storage_locations_router
 from core.config import settings
 from persistence import init_db
 from services.jobs import job_queue
@@ -91,6 +92,7 @@ app.include_router(transcript_highlights_router, prefix="/api")
 app.include_router(documents_router, prefix="/api")
 app.include_router(notes_router, prefix="/api")
 app.include_router(browse_router, prefix="/api")
+app.include_router(storage_locations_router, prefix="/api")
 
 
 @app.get("/")

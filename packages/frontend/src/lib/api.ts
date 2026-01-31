@@ -693,6 +693,42 @@ export interface SystemInfo {
   max_upload_bytes: number;
 }
 
+// Storage Locations
+export interface StorageLocationConfig {
+  path?: string;
+  // Future: bucket, region, credentials for cloud storage
+}
+
+export interface StorageLocation {
+  id: string;
+  name: string;
+  type: string;
+  config: StorageLocationConfig;
+  is_default: boolean;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StorageLocationListResponse {
+  items: StorageLocation[];
+  total: number;
+}
+
+export interface StorageLocationCreate {
+  name: string;
+  type?: string;
+  config: StorageLocationConfig;
+  is_default?: boolean;
+}
+
+export interface StorageLocationUpdate {
+  name?: string;
+  config?: StorageLocationConfig;
+  is_default?: boolean;
+  is_active?: boolean;
+}
+
 class ApiClient {
   private baseUrl: string;
 
@@ -1485,6 +1521,32 @@ class ApiClient {
   // System
   system = {
     info: () => this.request<SystemInfo>('/api/system/info'),
+  };
+
+  // Storage Locations
+  storageLocations = {
+    list: () => this.request<StorageLocationListResponse>('/api/storage-locations'),
+
+    get: (id: string) => this.request<StorageLocation>(`/api/storage-locations/${id}`),
+
+    create: (data: StorageLocationCreate) =>
+      this.request<StorageLocation>('/api/storage-locations', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+
+    update: (id: string, data: StorageLocationUpdate) =>
+      this.request<StorageLocation>(`/api/storage-locations/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      }),
+
+    delete: (id: string) =>
+      fetch(`${this.baseUrl}/api/storage-locations/${id}`, {
+        method: 'DELETE',
+      }).then((res) => {
+        if (!res.ok) throw new Error(`API error: ${res.status}`);
+      }),
   };
 }
 

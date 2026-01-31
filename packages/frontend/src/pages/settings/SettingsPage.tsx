@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { api, type ArchiveInfo, type TranscriptionSettings, type AIModel, type AIModelDownloadEvent, type SystemInfo } from '@/lib/api';
+import { api, type ArchiveInfo, type TranscriptionSettings, type AIModel, type AIModelDownloadEvent, type SystemInfo, type StorageLocation } from '@/lib/api';
 
 interface SettingsPageProps {
   theme: 'light' | 'dark' | 'system';
@@ -100,17 +100,33 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
   // System info state
   const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
 
+  // Storage locations state
+  const [storageLocations, setStorageLocations] = useState<StorageLocation[]>([]);
+  const [showAddLocation, setShowAddLocation] = useState(false);
+  const [newLocationName, setNewLocationName] = useState('');
+  const [newLocationPath, setNewLocationPath] = useState('');
+  const [storageSaving, setStorageSaving] = useState(false);
+  const [storageError, setStorageError] = useState<string | null>(null);
+  const [editingLocation, setEditingLocation] = useState<StorageLocation | null>(null);
+
   const defaultLanguage = settings.defaultLanguage || '';
   const defaultPlaybackSpeed = settings.defaultPlaybackSpeed || 1;
   const autoTranscribe = settings.autoTranscribe ?? false;
 
-  // Load archive info, config status, transcription settings, AI models, and system info
+  const loadStorageLocations = useCallback(() => {
+    api.storageLocations.list()
+      .then((r) => setStorageLocations(r.items))
+      .catch(console.error);
+  }, []);
+
+  // Load archive info, config status, transcription settings, AI models, system info, and storage locations
   useEffect(() => {
     api.archive.info().then(setArchiveInfo).catch(console.error);
     api.config.getTranscription().then(setTxSettings).catch(console.error);
     api.ai.listModels().then((r) => setAiModels(r.models)).catch(console.error);
     api.system.info().then(setSystemInfo).catch(console.error);
-  }, []);
+    loadStorageLocations();
+  }, [loadStorageLocations]);
 
   const handleExport = useCallback(async () => {
     setIsExporting(true);
@@ -262,6 +278,68 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
       setAiError(err instanceof Error ? err.message : 'Delete failed');
     }
   }, [refreshAiModels]);
+
+  // Storage location handlers
+  const handleAddStorageLocation = useCallback(async () => {
+    if (!newLocationName.trim() || !newLocationPath.trim()) return;
+    setStorageSaving(true);
+    setStorageError(null);
+    try {
+      await api.storageLocations.create({
+        name: newLocationName.trim(),
+        type: 'local',
+        config: { path: newLocationPath.trim() },
+        is_default: storageLocations.length === 0,
+      });
+      setNewLocationName('');
+      setNewLocationPath('');
+      setShowAddLocation(false);
+      loadStorageLocations();
+    } catch (err) {
+      setStorageError(err instanceof Error ? err.message : 'Failed to add storage location');
+    } finally {
+      setStorageSaving(false);
+    }
+  }, [newLocationName, newLocationPath, storageLocations.length, loadStorageLocations]);
+
+  const handleUpdateStorageLocation = useCallback(async () => {
+    if (!editingLocation) return;
+    setStorageSaving(true);
+    setStorageError(null);
+    try {
+      await api.storageLocations.update(editingLocation.id, {
+        name: editingLocation.name,
+        config: editingLocation.config,
+      });
+      setEditingLocation(null);
+      loadStorageLocations();
+    } catch (err) {
+      setStorageError(err instanceof Error ? err.message : 'Failed to update storage location');
+    } finally {
+      setStorageSaving(false);
+    }
+  }, [editingLocation, loadStorageLocations]);
+
+  const handleSetDefaultLocation = useCallback(async (id: string) => {
+    setStorageError(null);
+    try {
+      await api.storageLocations.update(id, { is_default: true });
+      loadStorageLocations();
+    } catch (err) {
+      setStorageError(err instanceof Error ? err.message : 'Failed to set default');
+    }
+  }, [loadStorageLocations]);
+
+  const handleDeleteStorageLocation = useCallback(async (id: string) => {
+    if (!window.confirm('Are you sure you want to delete this storage location?')) return;
+    setStorageError(null);
+    try {
+      await api.storageLocations.delete(id);
+      loadStorageLocations();
+    } catch (err) {
+      setStorageError(err instanceof Error ? err.message : 'Failed to delete storage location');
+    }
+  }, [loadStorageLocations]);
 
   const formatBytes = (bytes: number): string => {
     if (bytes >= 1_073_741_824) return `${(bytes / 1_073_741_824).toFixed(2)} GB`;
@@ -917,6 +995,205 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
       {/* ===== SYSTEM TAB ===== */}
       {activeTab === 'system' && (
         <>
+      {/* Storage Locations Section */}
+      <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+        <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+          <div>
+            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Storage Locations</h2>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Configure where your files and media are stored on disk</p>
+          </div>
+          {!showAddLocation && (
+            <button
+              onClick={() => setShowAddLocation(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+              </svg>
+              Add Location
+            </button>
+          )}
+        </div>
+        <div className="px-5 py-4 space-y-4">
+          {storageError && (
+            <div className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-sm text-red-600 dark:text-red-400">
+              {storageError}
+              <button onClick={() => setStorageError(null)} className="ml-2 underline">Dismiss</button>
+            </div>
+          )}
+
+          {/* Add new location form */}
+          {showAddLocation && (
+            <div className="p-4 rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-900/10 space-y-3">
+              <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">Add New Storage Location</h3>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Name</label>
+                <input
+                  type="text"
+                  value={newLocationName}
+                  onChange={(e) => setNewLocationName(e.target.value)}
+                  placeholder="e.g., External Drive"
+                  className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 py-2 px-3 text-sm text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Path</label>
+                <input
+                  type="text"
+                  value={newLocationPath}
+                  onChange={(e) => setNewLocationPath(e.target.value)}
+                  placeholder="e.g., /Volumes/External/VerbatimMedia"
+                  className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 py-2 px-3 text-sm font-mono text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Enter the full path to a folder. It will be created if it doesn't exist.</p>
+              </div>
+              <div className="flex gap-2 justify-end">
+                <button
+                  onClick={() => { setShowAddLocation(false); setNewLocationName(''); setNewLocationPath(''); }}
+                  className="px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleAddStorageLocation}
+                  disabled={storageSaving || !newLocationName.trim() || !newLocationPath.trim()}
+                  className="px-3 py-1.5 text-sm font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {storageSaving ? 'Adding...' : 'Add Location'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Location list */}
+          <div className="space-y-3">
+            {storageLocations.map((location) => (
+              <div
+                key={location.id}
+                className={`p-4 rounded-lg border transition-all ${
+                  location.is_default
+                    ? 'border-green-300 dark:border-green-700 bg-green-50/50 dark:bg-green-900/10'
+                    : 'border-gray-200 dark:border-gray-600'
+                }`}
+              >
+                {editingLocation?.id === location.id ? (
+                  // Edit mode
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Name</label>
+                      <input
+                        type="text"
+                        value={editingLocation.name}
+                        onChange={(e) => setEditingLocation({ ...editingLocation, name: e.target.value })}
+                        className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 py-2 px-3 text-sm text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Path</label>
+                      <input
+                        type="text"
+                        value={editingLocation.config.path || ''}
+                        onChange={(e) => setEditingLocation({ ...editingLocation, config: { ...editingLocation.config, path: e.target.value } })}
+                        className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 py-2 px-3 text-sm font-mono text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div className="flex gap-2 justify-end">
+                      <button
+                        onClick={() => setEditingLocation(null)}
+                        className="px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={handleUpdateStorageLocation}
+                        disabled={storageSaving}
+                        className="px-3 py-1.5 text-sm font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+                      >
+                        {storageSaving ? 'Saving...' : 'Save'}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  // View mode
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <svg className="w-5 h-5 text-gray-400 dark:text-gray-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                        </svg>
+                        <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{location.name}</span>
+                        {location.is_default && (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs rounded bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300">
+                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                            </svg>
+                            Default
+                          </span>
+                        )}
+                        <span className="px-1.5 py-0.5 text-xs rounded bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400">
+                          {location.type}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-xs font-mono text-gray-500 dark:text-gray-400 truncate" title={location.config.path}>
+                        {location.config.path}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-1 shrink-0">
+                      {!location.is_default && (
+                        <button
+                          onClick={() => handleSetDefaultLocation(location.id)}
+                          className="p-1.5 text-gray-400 hover:text-green-600 dark:hover:text-green-400 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
+                          title="Set as default"
+                        >
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+                          </svg>
+                        </button>
+                      )}
+                      <button
+                        onClick={() => setEditingLocation(location)}
+                        className="p-1.5 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
+                        title="Edit"
+                      >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                      </button>
+                      {storageLocations.length > 1 && (
+                        <button
+                          onClick={() => handleDeleteStorageLocation(location.id)}
+                          className="p-1.5 text-gray-400 hover:text-red-600 dark:hover:text-red-400 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
+                          title="Delete"
+                        >
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+
+            {storageLocations.length === 0 && !showAddLocation && (
+              <div className="text-center py-6 text-gray-500 dark:text-gray-400">
+                <svg className="w-12 h-12 mx-auto mb-3 text-gray-300 dark:text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                </svg>
+                <p className="text-sm">No storage locations configured</p>
+                <p className="text-xs mt-1">Add a location to specify where files are stored</p>
+              </div>
+            )}
+          </div>
+
+          <p className="text-xs text-gray-500 dark:text-gray-400 border-t border-gray-200 dark:border-gray-700 pt-3">
+            Storage locations determine where recordings, documents, and other media files are saved. The default location is used for new uploads.
+          </p>
+        </div>
+      </div>
+
       {/* Backup & Restore Section */}
       <div className="mt-6 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
         <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-700">
