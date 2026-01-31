@@ -325,6 +325,12 @@ class Document(Base):
     project_id: Mapped[str | None] = mapped_column(
         ForeignKey("projects.id", ondelete="SET NULL")
     )
+    source_id: Mapped[str | None] = mapped_column(
+        ForeignKey("documents.id", ondelete="SET NULL")
+    )
+    storage_location_id: Mapped[str | None] = mapped_column(
+        ForeignKey("storage_locations.id", ondelete="SET NULL")
+    )
 
     # Processing state
     status: Mapped[str] = mapped_column(String(20), default="pending")
@@ -341,6 +347,8 @@ class Document(Base):
     updated_at: Mapped[datetime] = mapped_column(default=func.now(), onupdate=func.now())
 
     project: Mapped["Project | None"] = relationship()
+    source: Mapped["Document | None"] = relationship(remote_side=[id])
+    storage_location: Mapped["StorageLocation | None"] = relationship()
     notes: Mapped[list["Note"]] = relationship(back_populates="document", cascade="all, delete-orphan")
 
 
