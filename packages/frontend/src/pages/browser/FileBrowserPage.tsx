@@ -100,7 +100,7 @@ function MoveDialog({
             className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left ${
               selectedFolder === null
                 ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
-                : 'hover:bg-gray-100 dark:hover:bg-gray-700'
+                : 'text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700'
             } ${currentFolderId === null ? 'opacity-50 cursor-not-allowed' : ''}`}
             disabled={currentFolderId === null}
           >
@@ -116,13 +116,13 @@ function MoveDialog({
               className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left ${
                 selectedFolder === folder.id
                   ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
-                  : 'hover:bg-gray-100 dark:hover:bg-gray-700'
+                  : 'text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700'
               } ${currentFolderId === folder.id ? 'opacity-50 cursor-not-allowed' : ''}`}
               disabled={currentFolderId === folder.id}
             >
               <ItemIcon type="folder" size="sm" />
               <span className="text-sm">{folder.name}</span>
-              <span className="text-xs text-gray-400 ml-auto">{folder.item_count} items</span>
+              <span className="text-xs text-gray-400 dark:text-gray-500 ml-auto">{folder.item_count} items</span>
             </button>
           ))}
         </div>
@@ -768,13 +768,13 @@ export function FileBrowserPage({ initialFolderId, onViewRecording, onViewDocume
           >
             <button
               onClick={() => { handleOpen(contextMenu.item); setContextMenu(null); }}
-              className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
+              className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
             >
               Open
             </button>
             <button
               onClick={() => handleRename(contextMenu.item)}
-              className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
+              className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
             >
               Rename
             </button>
@@ -782,13 +782,13 @@ export function FileBrowserPage({ initialFolderId, onViewRecording, onViewDocume
               <>
                 <button
                   onClick={() => handleCopy(contextMenu.item)}
-                  className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
+                  className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
                 >
                   Make a copy
                 </button>
                 <button
                   onClick={() => { setMoveItem(contextMenu.item); setContextMenu(null); }}
-                  className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
+                  className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
                 >
                   Move to...
                 </button>
@@ -797,7 +797,7 @@ export function FileBrowserPage({ initialFolderId, onViewRecording, onViewDocume
             {contextMenu.item.type !== 'folder' && (
               <button
                 onClick={() => { setPropertiesItem(contextMenu.item); setContextMenu(null); }}
-                className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
+                className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
               >
                 Properties
               </button>
@@ -805,7 +805,7 @@ export function FileBrowserPage({ initialFolderId, onViewRecording, onViewDocume
             <hr className="my-1 border-gray-200 dark:border-gray-700" />
             <button
               onClick={() => handleDelete(contextMenu.item)}
-              className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-gray-100 dark:hover:bg-gray-700"
+              className="w-full px-4 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700"
             >
               Delete
             </button>
