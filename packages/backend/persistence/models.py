@@ -280,16 +280,18 @@ class Setting(Base):
 
 
 class StorageLocation(Base):
-    """Configurable storage location for files (local, S3, Azure, GCS)."""
+    """Configurable storage location for files (local, network, cloud)."""
 
     __tablename__ = "storage_locations"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    type: Mapped[str] = mapped_column(String(50), nullable=False)  # "local", "s3", "azure", "gcs"
+    type: Mapped[str] = mapped_column(String(50), nullable=False)  # "local", "network", "cloud"
+    subtype: Mapped[str | None] = mapped_column(String(50))  # "smb", "nfs", "s3", "gdrive", etc.
     config: Mapped[dict] = mapped_column(JSON, default=dict)
     is_default: Mapped[bool] = mapped_column(Boolean, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    status: Mapped[str] = mapped_column(String(20), default="healthy")  # "healthy", "degraded", "unreachable", "auth_expired"
     created_at: Mapped[datetime] = mapped_column(default=func.now())
     updated_at: Mapped[datetime] = mapped_column(default=func.now(), onupdate=func.now())
 

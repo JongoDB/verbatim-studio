@@ -363,7 +363,7 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
 
     try {
       // Start the migration
-      const status = await api.storageLocations.startMigration({
+      const status = await api.storageLocations.migrate({
         source_path: migrationSource,
         destination_path: migrationDest,
       });

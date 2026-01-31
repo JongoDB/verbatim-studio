@@ -751,18 +751,61 @@ export interface SystemInfo {
 }
 
 // Storage Locations
+export type StorageType = 'local' | 'network' | 'cloud';
+export type StorageSubtype =
+  | null
+  | 'smb' | 'nfs'  // network
+  | 's3' | 'azure' | 'gcs' | 'gdrive' | 'onedrive' | 'dropbox';  // cloud
+
 export interface StorageLocationConfig {
+  // Local
   path?: string;
-  // Future: bucket, region, credentials for cloud storage
+
+  // Network - SMB
+  server?: string;
+  share?: string;
+  username?: string;
+  password?: string;
+  domain?: string;
+
+  // Network - NFS
+  export_path?: string;
+  mount_options?: string;
+
+  // Cloud - S3
+  bucket?: string;
+  region?: string;
+  access_key?: string;
+  secret_key?: string;
+  endpoint?: string;
+
+  // Cloud - Azure
+  container?: string;
+  account_name?: string;
+  account_key?: string;
+  connection_string?: string;
+
+  // Cloud - GCS
+  project_id?: string;
+  credentials_json?: string;
+
+  // Cloud - OAuth
+  folder_id?: string;
+  folder_path?: string;
+  oauth_tokens?: Record<string, unknown>;
+
+  [key: string]: unknown;
 }
 
 export interface StorageLocation {
   id: string;
   name: string;
-  type: string;
+  type: StorageType;
+  subtype: StorageSubtype;
   config: StorageLocationConfig;
   is_default: boolean;
   is_active: boolean;
+  status: 'healthy' | 'degraded' | 'unreachable' | 'auth_expired';
   created_at: string;
   updated_at: string;
 }
@@ -774,7 +817,8 @@ export interface StorageLocationListResponse {
 
 export interface StorageLocationCreate {
   name: string;
-  type?: string;
+  type?: StorageType;
+  subtype?: StorageSubtype;
   config: StorageLocationConfig;
   is_default?: boolean;
 }
@@ -784,6 +828,18 @@ export interface StorageLocationUpdate {
   config?: StorageLocationConfig;
   is_default?: boolean;
   is_active?: boolean;
+}
+
+export interface TestConnectionRequest {
+  type: StorageType;
+  subtype?: StorageSubtype;
+  config: StorageLocationConfig;
+}
+
+export interface TestConnectionResponse {
+  success: boolean;
+  error?: string;
+  latency_ms?: number;
 }
 
 export interface MigrationRequest {
@@ -1605,34 +1661,31 @@ class ApiClient {
   // Storage Locations
   storageLocations = {
     list: () => this.request<StorageLocationListResponse>('/api/storage-locations'),
-
     get: (id: string) => this.request<StorageLocation>(`/api/storage-locations/${id}`),
-
     create: (data: StorageLocationCreate) =>
       this.request<StorageLocation>('/api/storage-locations', {
         method: 'POST',
         body: JSON.stringify(data),
       }),
-
     update: (id: string, data: StorageLocationUpdate) =>
       this.request<StorageLocation>(`/api/storage-locations/${id}`, {
         method: 'PUT',
         body: JSON.stringify(data),
       }),
-
     delete: (id: string) =>
-      fetch(`${this.baseUrl}/api/storage-locations/${id}`, {
+      this.request<void>(`/api/storage-locations/${id}`, {
         method: 'DELETE',
-      }).then((res) => {
-        if (!res.ok) throw new Error(`API error: ${res.status}`);
       }),
-
-    startMigration: (data: MigrationRequest) =>
+    test: (data: TestConnectionRequest) =>
+      this.request<TestConnectionResponse>('/api/storage-locations/test', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    migrate: (data: MigrationRequest) =>
       this.request<MigrationStatus>('/api/storage-locations/migrate', {
         method: 'POST',
         body: JSON.stringify(data),
       }),
-
     getMigrationStatus: () =>
       this.request<MigrationStatus>('/api/storage-locations/migrate/status'),
   };

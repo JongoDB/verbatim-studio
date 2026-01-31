@@ -15,6 +15,7 @@ from .models import (
     SegmentHighlight,
     Setting,
     Speaker,
+    StorageLocation,
     Tag,
     Transcript,
 )
@@ -35,6 +36,7 @@ __all__ = [
     "SegmentHighlight",
     "Setting",
     "Speaker",
+    "StorageLocation",
     "Tag",
     "Transcript",
 ]
