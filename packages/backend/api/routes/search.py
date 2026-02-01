@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from persistence import get_db
-from persistence.models import Recording, Segment, SegmentEmbedding, Transcript
+from persistence.models import Document, DocumentEmbedding, Recording, Segment, SegmentEmbedding, Transcript
 from services.embedding import bytes_to_embedding, embedding_service
 
 logger = logging.getLogger(__name__)
@@ -144,6 +144,125 @@ async def search_segments(
     )
 
 
+class SearchResultDocumentChunk(BaseModel):
+    """A document chunk matching the search query."""
+
+    id: str
+    chunk_index: int
+    chunk_text: str
+    chunk_metadata: dict | None
+    # Parent info
+    document_id: str
+    document_title: str
+    document_filename: str
+    document_mime_type: str
+
+    class Config:
+        from_attributes = True
+
+
+class DocumentSearchResponse(BaseModel):
+    """Document search results response."""
+
+    query: str
+    results: list[SearchResultDocumentChunk]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+
+
+@router.get("/documents", response_model=DocumentSearchResponse)
+async def search_documents(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    q: Annotated[str, Query(min_length=1, description="Search query")],
+    document_id: Annotated[str | None, Query(description="Limit to specific document")] = None,
+    page: Annotated[int, Query(ge=1, description="Page number")] = 1,
+    page_size: Annotated[int, Query(ge=1, le=100, description="Results per page")] = 20,
+) -> DocumentSearchResponse:
+    """Search across all document content (including OCR results).
+
+    Full-text search across document chunks. Returns matching chunks
+    with their parent document information.
+
+    Args:
+        db: Database session.
+        q: Search query string.
+        document_id: Optional filter to specific document.
+        page: Page number (1-indexed).
+        page_size: Number of results per page.
+
+    Returns:
+        Search results with pagination info.
+    """
+    # Build base query joining document embeddings with documents
+    base_query = (
+        select(
+            DocumentEmbedding,
+            Document.title.label("document_title"),
+            Document.filename.label("document_filename"),
+            Document.mime_type.label("document_mime_type"),
+        )
+        .join(Document, DocumentEmbedding.document_id == Document.id)
+        .where(Document.status == "completed")
+    )
+
+    # Add search filter (case-insensitive)
+    search_filter = DocumentEmbedding.chunk_text.ilike(f"%{q}%")
+    base_query = base_query.where(search_filter)
+
+    # Add optional filters
+    if document_id:
+        base_query = base_query.where(DocumentEmbedding.document_id == document_id)
+
+    # Get total count
+    count_query = select(func.count()).select_from(base_query.subquery())
+    total = await db.scalar(count_query) or 0
+
+    # Apply pagination and ordering
+    query = (
+        base_query
+        .order_by(Document.created_at.desc(), DocumentEmbedding.chunk_index)
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
+
+    result = await db.execute(query)
+    rows = result.all()
+
+    # Build response
+    results = []
+    for row in rows:
+        chunk = row[0]
+        doc_title = row[1]
+        doc_filename = row[2]
+        doc_mime_type = row[3]
+
+        results.append(
+            SearchResultDocumentChunk(
+                id=chunk.id,
+                chunk_index=chunk.chunk_index,
+                chunk_text=chunk.chunk_text,
+                chunk_metadata=chunk.chunk_metadata,
+                document_id=chunk.document_id,
+                document_title=doc_title,
+                document_filename=doc_filename,
+                document_mime_type=doc_mime_type,
+            )
+        )
+
+    total_pages = (total + page_size - 1) // page_size if page_size > 0 else 0
+
+    return DocumentSearchResponse(
+        query=q,
+        results=results,
+        total=total,
+        page=page,
+        page_size=page_size,
+        total_pages=total_pages,
+    )
+
+
 async def _semantic_search(
     db: AsyncSession,
     query_embedding: list[float],
@@ -237,17 +356,113 @@ async def _semantic_search(
     return results
 
 
+async def _semantic_search_documents(
+    db: AsyncSession,
+    query_embedding: list[float],
+    limit: int,
+    exclude_ids: set[str],
+) -> list["GlobalSearchResult"]:
+    """Perform semantic search on document embeddings.
+
+    Args:
+        db: Database session.
+        query_embedding: The embedded query vector.
+        limit: Maximum results.
+        exclude_ids: Document chunk IDs to exclude (already found by keyword).
+
+    Returns:
+        List of semantic search results for documents.
+    """
+    # Get all document embeddings
+    query = (
+        select(
+            DocumentEmbedding,
+            Document.title.label("document_title"),
+            Document.filename.label("document_filename"),
+            Document.created_at.label("document_created_at"),
+        )
+        .join(Document, DocumentEmbedding.document_id == Document.id)
+        .where(Document.status == "completed")
+    )
+
+    result = await db.execute(query)
+    rows = result.all()
+
+    if not rows:
+        return []
+
+    # Calculate cosine similarity for each
+    import math
+
+    def cosine_similarity(a: list[float], b: list[float]) -> float:
+        dot = sum(x * y for x, y in zip(a, b))
+        norm_a = math.sqrt(sum(x * x for x in a))
+        norm_b = math.sqrt(sum(x * x for x in b))
+        if norm_a == 0 or norm_b == 0:
+            return 0.0
+        return dot / (norm_a * norm_b)
+
+    # Score all embeddings
+    scored = []
+    for row in rows:
+        doc_emb = row[0]
+        doc_title = row[1]
+        doc_filename = row[2]
+        doc_created = row[3]
+
+        if doc_emb.id in exclude_ids:
+            continue
+
+        emb = bytes_to_embedding(doc_emb.embedding)
+        score = cosine_similarity(query_embedding, emb)
+        scored.append((score, doc_emb, doc_title, doc_filename, doc_created))
+
+    # Sort by score descending, take top N
+    scored.sort(key=lambda x: x[0], reverse=True)
+    top_results = scored[:limit]
+
+    # Convert to GlobalSearchResult
+    results = []
+    for score, doc_emb, doc_title, doc_filename, doc_created in top_results:
+        # Only include if similarity is above threshold
+        if score < 0.3:
+            continue
+        results.append(
+            GlobalSearchResult(
+                type="document",
+                id=doc_emb.id,
+                title=doc_title,
+                text=doc_emb.chunk_text,
+                document_id=doc_emb.document_id,
+                document_title=doc_title,
+                chunk_index=doc_emb.chunk_index,
+                chunk_metadata=doc_emb.chunk_metadata,
+                created_at=doc_created,
+                match_type="semantic",
+            )
+        )
+
+    return results
+
+
 class GlobalSearchResult(BaseModel):
     """A result from global search."""
 
-    type: str  # "recording" or "segment"
+    type: str  # "recording", "segment", or "document"
     id: str
     title: str | None
     text: str | None
-    recording_id: str
-    recording_title: str
-    start_time: float | None
-    end_time: float | None
+    # Recording fields (for recording/segment results)
+    recording_id: str | None = None
+    recording_title: str | None = None
+    start_time: float | None = None
+    end_time: float | None = None
+    # Document fields (for document results)
+    document_id: str | None = None
+    document_title: str | None = None
+    chunk_index: int | None = None
+    chunk_metadata: dict | None = None
+    # Common fields
     created_at: datetime
     match_type: str | None = None  # "keyword" or "semantic"
 
@@ -267,27 +482,31 @@ async def global_search(
     limit: Annotated[int, Query(ge=1, le=50, description="Maximum results")] = 20,
     semantic: Annotated[bool, Query(description="Include semantic search results")] = True,
 ) -> GlobalSearchResponse:
-    """Search across recordings and segments.
+    """Search across recordings, segments, and documents.
 
-    Returns a combined list of matching recordings (by title) and
-    segments (by text content).
+    Returns a combined list of matching recordings (by title),
+    segments (by text content), and documents (by OCR/extracted text).
 
     Args:
         db: Database session.
         q: Search query string.
         limit: Maximum number of results.
+        semantic: Whether to include semantic search results.
 
     Returns:
         Combined search results.
     """
     results: list[GlobalSearchResult] = []
 
+    # Allocate limits: recordings (1/4), segments (1/4), documents (1/4), semantic (1/4)
+    keyword_limit = limit // 4 or 1
+
     # Search recordings by title
     recording_query = (
         select(Recording)
         .where(Recording.title.ilike(f"%{q}%"))
         .order_by(Recording.created_at.desc())
-        .limit(limit // 2)
+        .limit(keyword_limit)
     )
     recording_result = await db.execute(recording_query)
     recordings = recording_result.scalars().all()
@@ -320,7 +539,7 @@ async def global_search(
         .join(Recording, Transcript.recording_id == Recording.id)
         .where(Segment.text.ilike(f"%{q}%"))
         .order_by(Recording.created_at.desc(), Segment.start_time)
-        .limit(limit - len(results))
+        .limit(keyword_limit)
     )
     segment_result = await db.execute(segment_query)
     segments = segment_result.all()
@@ -346,15 +565,64 @@ async def global_search(
             )
         )
 
+    # Search document chunks by text (OCR results)
+    document_query = (
+        select(
+            DocumentEmbedding,
+            Document.title.label("document_title"),
+            Document.created_at.label("document_created_at"),
+        )
+        .join(Document, DocumentEmbedding.document_id == Document.id)
+        .where(Document.status == "completed")
+        .where(DocumentEmbedding.chunk_text.ilike(f"%{q}%"))
+        .order_by(Document.created_at.desc(), DocumentEmbedding.chunk_index)
+        .limit(keyword_limit)
+    )
+    document_result = await db.execute(document_query)
+    document_chunks = document_result.all()
+
+    for row in document_chunks:
+        doc_emb = row[0]
+        doc_title = row[1]
+        doc_created = row[2]
+
+        results.append(
+            GlobalSearchResult(
+                type="document",
+                id=doc_emb.id,
+                title=doc_title,
+                text=doc_emb.chunk_text,
+                document_id=doc_emb.document_id,
+                document_title=doc_title,
+                chunk_index=doc_emb.chunk_index,
+                chunk_metadata=doc_emb.chunk_metadata,
+                created_at=doc_created,
+                match_type="keyword",
+            )
+        )
+
     # Semantic search (if enabled and available)
     if semantic and embedding_service.is_available():
         try:
             seen_ids = {r.id for r in results}
             query_embedding = await embedding_service.embed_query(q)
-            semantic_results = await _semantic_search(
-                db, query_embedding, limit - len(results), seen_ids
-            )
-            results.extend(semantic_results)
+
+            # Semantic search on segments
+            remaining_slots = limit - len(results)
+            if remaining_slots > 0:
+                segment_semantic_results = await _semantic_search(
+                    db, query_embedding, remaining_slots // 2 or 1, seen_ids
+                )
+                results.extend(segment_semantic_results)
+                seen_ids.update(r.id for r in segment_semantic_results)
+
+            # Semantic search on documents
+            remaining_slots = limit - len(results)
+            if remaining_slots > 0:
+                document_semantic_results = await _semantic_search_documents(
+                    db, query_embedding, remaining_slots, seen_ids
+                )
+                results.extend(document_semantic_results)
         except Exception as e:
             logger.warning("Semantic search failed: %s", e)
 
