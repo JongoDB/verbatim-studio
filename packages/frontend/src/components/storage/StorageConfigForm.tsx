@@ -20,6 +20,9 @@ const inputClasses = "w-full rounded-lg border border-border bg-background px-3 
 const labelClasses = "block text-sm font-medium text-foreground mb-1.5";
 const hintClasses = "text-xs text-muted-foreground mt-1";
 
+// Check if the File System Access API is available
+const supportsDirectoryPicker = typeof window !== 'undefined' && 'showDirectoryPicker' in window;
+
 export function StorageConfigForm({
   storageType,
   subtype,
@@ -34,20 +37,44 @@ export function StorageConfigForm({
     onChange({ ...config, [field]: value || undefined });
   };
 
+  const handleBrowseFolder = async () => {
+    try {
+      const dirHandle = await window.showDirectoryPicker({
+        mode: 'readwrite',
+      });
+      // Note: For security reasons, browsers only provide the folder name, not the full path.
+      // The user may need to adjust the path if it differs from their expected location.
+      updateField('path', dirHandle.name);
+    } catch {
+      // User cancelled the picker - do nothing
+    }
+  };
+
   // Local storage
   if (storageType === 'local') {
     return (
       <div className="space-y-4">
         <div>
           <label htmlFor="path" className={labelClasses}>Path</label>
-          <input
-            id="path"
-            type="text"
-            value={config.path || ''}
-            onChange={(e) => updateField('path', e.target.value)}
-            placeholder="/path/to/storage"
-            className={`${inputClasses} font-mono`}
-          />
+          <div className="flex gap-2">
+            <input
+              id="path"
+              type="text"
+              value={config.path || ''}
+              onChange={(e) => updateField('path', e.target.value)}
+              placeholder="/path/to/storage"
+              className={`${inputClasses} font-mono flex-1`}
+            />
+            {supportsDirectoryPicker && (
+              <button
+                type="button"
+                onClick={handleBrowseFolder}
+                className="px-3 py-2 text-sm font-medium rounded-lg border border-border bg-muted hover:bg-muted/80 text-foreground transition-colors whitespace-nowrap"
+              >
+                Browse...
+              </button>
+            )}
+          </div>
           <p className={hintClasses}>
             Full path to a folder. It will be created if it doesn't exist.
           </p>

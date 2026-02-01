@@ -67,7 +67,7 @@ export function MarkdownModal({ isOpen, onClose, title, content }: MarkdownModal
                     href={href}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-blue-400 underline hover:text-blue-300"
+                    className="text-blue-600 dark:text-blue-400 underline hover:text-blue-500 dark:hover:text-blue-300"
                   >
                     {children}
                   </a>
@@ -83,11 +83,11 @@ export function MarkdownModal({ isOpen, onClose, title, content }: MarkdownModal
                   const isBlock = className?.includes('language-') || (typeof children === 'string' && children.includes('\n'));
                   if (isBlock) {
                     return (
-                      <code className="block text-amber-400 text-xs font-mono whitespace-pre">{children}</code>
+                      <code className="block text-amber-700 dark:text-amber-400 text-xs font-mono whitespace-pre">{children}</code>
                     );
                   }
                   return (
-                    <code className="text-amber-400 bg-muted px-1.5 py-0.5 rounded text-xs font-mono">{children}</code>
+                    <code className="text-amber-700 dark:text-amber-400 bg-muted px-1.5 py-0.5 rounded text-xs font-mono">{children}</code>
                   );
                 },
                 pre: ({ children }) => (

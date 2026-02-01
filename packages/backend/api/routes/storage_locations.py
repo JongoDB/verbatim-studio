@@ -419,17 +419,15 @@ async def start_migration(body: MigrationRequest) -> MigrationStatus:
             detail="Migration already in progress",
         )
 
-    # Calculate total files and size
+    # Calculate total files and size - scan ALL files in source directory
+    # Files can be in: root (no project), project folders, recordings/, documents/
     files_to_migrate = []
     total_bytes = 0
 
-    for subdir in ["recordings", "documents"]:
-        source_subdir = source / subdir
-        if source_subdir.exists():
-            for file_path in source_subdir.rglob("*"):
-                if file_path.is_file():
-                    files_to_migrate.append(file_path)
-                    total_bytes += file_path.stat().st_size
+    for file_path in source.rglob("*"):
+        if file_path.is_file():
+            files_to_migrate.append(file_path)
+            total_bytes += file_path.stat().st_size
 
     # Initialize progress
     _migration_progress["current"] = {
@@ -486,15 +484,22 @@ async def _run_migration(source: Path, destination: Path, files: list[Path]) -> 
             # Small delay to allow status checks
             await asyncio.sleep(0.01)
 
-        # Migration complete - clean up source directories
-        for subdir in ["recordings", "documents"]:
-            source_subdir = source / subdir
-            if source_subdir.exists():
+        # Migration complete - clean up source files that were migrated
+        loop = asyncio.get_event_loop()
+        for file_path in files:
+            try:
+                if file_path.exists():
+                    await loop.run_in_executor(None, file_path.unlink)
+            except Exception as e:
+                logger.warning(f"Could not remove source file {file_path}: {e}")
+
+        # Clean up empty directories in source (bottom-up)
+        for dir_path in sorted(source.rglob("*"), key=lambda p: len(p.parts), reverse=True):
+            if dir_path.is_dir():
                 try:
-                    loop = asyncio.get_event_loop()
-                    await loop.run_in_executor(None, shutil.rmtree, source_subdir)
-                except Exception as e:
-                    logger.warning(f"Could not remove source directory {source_subdir}: {e}")
+                    dir_path.rmdir()  # Only removes if empty
+                except OSError:
+                    pass  # Directory not empty, skip
 
         progress["status"] = "completed"
         progress["current_file"] = None
