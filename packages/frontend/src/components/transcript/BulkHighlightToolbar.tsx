@@ -30,12 +30,12 @@ export function BulkHighlightToolbar({
 
       <div className="w-px h-5 bg-purple-300 dark:bg-purple-600" />
 
-      <div className="flex items-center gap-1.5">
+      <div className="flex items-center gap-2">
         {COLORS.map(({ value, bg, label }) => (
           <button
             key={value}
             onClick={() => onHighlight(value)}
-            className={`w-6 h-6 rounded-full ${bg} transition-transform hover:scale-125 shadow-sm`}
+            className={`w-11 h-11 rounded-full ${bg} transition-transform hover:scale-110 shadow-sm`}
             title={`Highlight ${label}`}
           />
         ))}
