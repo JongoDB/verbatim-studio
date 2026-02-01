@@ -174,22 +174,23 @@ export function UploadDocumentDialog({
         )}
 
         {/* OCR toggle */}
-        <div className="mt-4">
-          <label className="flex items-center gap-3 cursor-pointer">
+        <div className="mt-4 flex items-center justify-between">
+          <div>
+            <div className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              Enable OCR
+            </div>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              Extract text from images and scanned PDFs using AI vision
+            </p>
+          </div>
+          <label className="relative inline-flex items-center cursor-pointer">
             <input
               type="checkbox"
               checked={enableOcr}
               onChange={(e) => setEnableOcr(e.target.checked)}
-              className="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500"
+              className="sr-only peer"
             />
-            <div>
-              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                Enable OCR
-              </span>
-              <p className="text-xs text-gray-500 dark:text-gray-400">
-                Extract text from images and scanned PDFs using AI vision
-              </p>
-            </div>
+            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-500 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600" />
           </label>
         </div>
 
