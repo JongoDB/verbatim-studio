@@ -39,17 +39,32 @@ def _get_chandra_model_path() -> str | None:
 
 
 def _configure_chandra_model_path():
-    """Configure Chandra to use the Verbatim storage model path."""
+    """Configure Chandra to use the Verbatim storage model path and correct device."""
+    import torch
+
     model_path = _get_chandra_model_path()
+
+    # Determine device: MPS for Mac, CUDA for GPU, CPU fallback
+    if torch.backends.mps.is_available():
+        device = "mps"
+    elif torch.cuda.is_available():
+        device = "cuda"
+    else:
+        device = "cpu"
+
+    # Set environment variables before importing chandra settings
     if model_path:
-        # Set environment variable before importing chandra settings
         os.environ["MODEL_CHECKPOINT"] = model_path
-        # Also update chandra's settings directly if already imported
-        try:
-            from chandra.settings import settings as chandra_settings
+    os.environ["TORCH_DEVICE"] = device
+
+    # Also update chandra's settings directly if already imported
+    try:
+        from chandra.settings import settings as chandra_settings
+        if model_path:
             chandra_settings.MODEL_CHECKPOINT = model_path
-        except ImportError:
-            pass
+        chandra_settings.TORCH_DEVICE = device
+    except ImportError:
+        pass
 
 
 def _check_pymupdf_available() -> bool:
@@ -108,9 +123,20 @@ class DocumentProcessor:
 
     def _get_chandra_config(self) -> dict:
         """Get Chandra config with model path set to Verbatim storage."""
+        import torch
         model_path = _get_chandra_model_path()
+
+        # Determine device: MPS for Mac, CUDA for GPU, CPU fallback
+        if torch.backends.mps.is_available():
+            device = "mps"
+        elif torch.cuda.is_available():
+            device = "cuda"
+        else:
+            device = "cpu"
+
         return {
             "MODEL_CHECKPOINT": model_path or "datalab-to/chandra",
+            "TORCH_DEVICE": device,
         }
 
     def _process_pdf(self, file_path: Path) -> dict:
