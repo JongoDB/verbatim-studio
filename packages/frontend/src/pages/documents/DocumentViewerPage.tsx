@@ -3,7 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { renderAsync } from 'docx-preview';
 import ExcelJS from 'exceljs';
-import { MessageSquare } from 'lucide-react';
+import { MessageSquare, AlertCircle, RefreshCw } from 'lucide-react';
 import { api, type Document } from '@/lib/api';
 import { NotesPanel } from '@/components/documents/NotesPanel';
 
@@ -40,6 +40,7 @@ export function DocumentViewerPage({ documentId, onBack }: DocumentViewerPagePro
   const [activeSlide, setActiveSlide] = useState(0);
   const [notesOpen, setNotesOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
+  const [isRetrying, setIsRetrying] = useState(false);
   const docxContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -263,6 +264,21 @@ export function DocumentViewerPage({ documentId, onBack }: DocumentViewerPagePro
     }
   };
 
+  const handleRetry = async () => {
+    if (!document) return;
+    setIsRetrying(true);
+    try {
+      await api.documents.reprocess(document.id);
+      // Refetch document to get updated status
+      const updated = await api.documents.get(document.id);
+      setDocument(updated);
+    } catch (e) {
+      console.error('Retry failed:', e);
+    } finally {
+      setIsRetrying(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -349,14 +365,22 @@ export function DocumentViewerPage({ documentId, onBack }: DocumentViewerPagePro
         )}
 
         {document.status === 'failed' && (
-          <div className="p-8 text-center">
-            <p className="text-red-500">Processing failed: {document.error_message}</p>
-            <button
-              onClick={() => api.documents.reprocess(documentId)}
-              className="mt-4 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90"
-            >
-              Retry Processing
-            </button>
+          <div className="flex items-center justify-center h-full min-h-[300px]">
+            <div className="bg-destructive/10 border border-destructive rounded-lg p-6 max-w-md text-center">
+              <AlertCircle className="h-10 w-10 text-destructive mx-auto mb-3" />
+              <h3 className="font-semibold text-destructive mb-2">Processing Failed</h3>
+              <p className="text-sm text-muted-foreground mb-4">
+                {document.error_message || 'An unknown error occurred while processing this document.'}
+              </p>
+              <button
+                onClick={handleRetry}
+                disabled={isRetrying}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50"
+              >
+                <RefreshCw className={`h-4 w-4 ${isRetrying ? 'animate-spin' : ''}`} />
+                {isRetrying ? 'Retrying...' : 'Retry Processing'}
+              </button>
+            </div>
           </div>
         )}
 
