@@ -4,15 +4,16 @@ import asyncio
 import json
 import logging
 import shutil
-from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from core.config import settings
 from core.ocr_catalog import (
     OCR_MODEL_CATALOG,
-    get_model_cache_path,
+    get_model_path,
+    get_ocr_models_dir,
     is_model_downloaded,
     get_model_size_on_disk,
 )
@@ -84,7 +85,7 @@ async def get_ocr_status() -> OCRStatusResponse:
     chandra_downloaded = is_model_downloaded("chandra")
 
     if chandra_downloaded:
-        path = get_model_cache_path("chandra")
+        path = get_model_path("chandra")
         return OCRStatusResponse(
             available=True,
             model_id="chandra",
@@ -100,7 +101,7 @@ async def get_ocr_status() -> OCRStatusResponse:
 
 @router.post("/models/{model_id}/download")
 async def download_ocr_model(model_id: str) -> StreamingResponse:
-    """Download an OCR model from HuggingFace, streaming progress via SSE."""
+    """Download an OCR model from HuggingFace to Verbatim storage."""
     entry = OCR_MODEL_CATALOG.get(model_id)
     if not entry:
         raise HTTPException(status_code=404, detail="Model not in catalog")
@@ -111,7 +112,6 @@ async def download_ocr_model(model_id: str) -> StreamingResponse:
     async def _stream_progress():
         try:
             from huggingface_hub import snapshot_download
-            from huggingface_hub.utils import tqdm as hf_tqdm
         except ImportError:
             yield f"data: {json.dumps({'status': 'error', 'error': 'huggingface-hub is not installed'})}\n\n"
             return
@@ -119,20 +119,25 @@ async def download_ocr_model(model_id: str) -> StreamingResponse:
         yield f"data: {json.dumps({'status': 'starting', 'model_id': model_id})}\n\n"
 
         try:
+            # Ensure directories exist
+            settings.ensure_directories()
+            ocr_dir = get_ocr_models_dir()
+            ocr_dir.mkdir(parents=True, exist_ok=True)
+
+            # Get destination path
+            dest_path = get_model_path(model_id)
+
             # Download in a thread to not block
             loop = asyncio.get_event_loop()
 
-            # Track progress using a simple approach
-            # HuggingFace's snapshot_download doesn't expose fine-grained progress easily
-            # We'll report key milestones
-
-            yield f"data: {json.dumps({'status': 'progress', 'model_id': model_id, 'message': 'Downloading model files...'})}\n\n"
+            yield f"data: {json.dumps({'status': 'progress', 'model_id': model_id, 'message': 'Downloading model files to Verbatim storage...'})}\n\n"
 
             def do_download():
                 return snapshot_download(
                     repo_id=entry["repo"],
                     repo_type="model",
-                    # Let HuggingFace handle caching automatically
+                    local_dir=str(dest_path),
+                    local_dir_use_symlinks=False,  # Copy files instead of symlinks
                 )
 
             # Run the download in a thread pool
@@ -157,7 +162,7 @@ async def delete_ocr_model(model_id: str):
     if not is_model_downloaded(model_id):
         raise HTTPException(status_code=404, detail="Model not downloaded")
 
-    path = get_model_cache_path(model_id)
+    path = get_model_path(model_id)
     if path and path.exists():
         try:
             shutil.rmtree(path)

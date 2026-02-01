@@ -1,6 +1,7 @@
 """Document processing service for text extraction."""
 
 import logging
+import os
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -23,6 +24,32 @@ def _check_chandra_model_ready() -> bool:
         return is_model_downloaded("chandra")
     except ImportError:
         return False
+
+
+def _get_chandra_model_path() -> str | None:
+    """Get the path to the downloaded Chandra model."""
+    try:
+        from core.ocr_catalog import get_model_path, is_model_downloaded
+        if is_model_downloaded("chandra"):
+            path = get_model_path("chandra")
+            return str(path) if path else None
+    except ImportError:
+        pass
+    return None
+
+
+def _configure_chandra_model_path():
+    """Configure Chandra to use the Verbatim storage model path."""
+    model_path = _get_chandra_model_path()
+    if model_path:
+        # Set environment variable before importing chandra settings
+        os.environ["MODEL_CHECKPOINT"] = model_path
+        # Also update chandra's settings directly if already imported
+        try:
+            from chandra.settings import settings as chandra_settings
+            chandra_settings.MODEL_CHECKPOINT = model_path
+        except ImportError:
+            pass
 
 
 def _check_pymupdf_available() -> bool:
@@ -83,6 +110,9 @@ class DocumentProcessor:
         """Process PDF using Chandra OCR with PyMuPDF fallback."""
         if self._is_chandra_available():
             try:
+                # Configure Chandra to use Verbatim storage path
+                _configure_chandra_model_path()
+
                 from chandra.input import load_file
                 from chandra.model import InferenceManager
 
@@ -189,6 +219,9 @@ class DocumentProcessor:
             }
 
         try:
+            # Configure Chandra to use Verbatim storage path
+            _configure_chandra_model_path()
+
             from chandra.input import load_file
             from chandra.model import InferenceManager
 
