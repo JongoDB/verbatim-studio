@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from persistence import get_db
-from persistence.models import Document, DocumentEmbedding, Recording, Segment, SegmentEmbedding, Transcript
+from persistence.models import Document, DocumentEmbedding, Note, Recording, Segment, SegmentEmbedding, Transcript
 from services.embedding import bytes_to_embedding, embedding_service
 
 logger = logging.getLogger(__name__)
@@ -448,7 +448,7 @@ async def _semantic_search_documents(
 class GlobalSearchResult(BaseModel):
     """A result from global search."""
 
-    type: str  # "recording", "segment", or "document"
+    type: str  # "recording", "segment", "document", or "note"
     id: str
     title: str | None
     text: str | None
@@ -462,6 +462,10 @@ class GlobalSearchResult(BaseModel):
     document_title: str | None = None
     chunk_index: int | None = None
     chunk_metadata: dict | None = None
+    # Note fields (for note results)
+    note_id: str | None = None
+    anchor_type: str | None = None
+    anchor_data: dict | None = None
     # Common fields
     created_at: datetime
     match_type: str | None = None  # "keyword" or "semantic"
@@ -498,8 +502,8 @@ async def global_search(
     """
     results: list[GlobalSearchResult] = []
 
-    # Allocate limits: recordings (1/4), segments (1/4), documents (1/4), semantic (1/4)
-    keyword_limit = limit // 4 or 1
+    # Allocate limits: recordings (1/5), segments (1/5), documents (1/5), notes (1/5), semantic (1/5)
+    keyword_limit = limit // 5 or 1
 
     # Search recordings by title
     recording_query = (
@@ -597,6 +601,49 @@ async def global_search(
                 chunk_index=doc_emb.chunk_index,
                 chunk_metadata=doc_emb.chunk_metadata,
                 created_at=doc_created,
+                match_type="keyword",
+            )
+        )
+
+    # Search notes by content
+    note_query = (
+        select(
+            Note,
+            Document.id.label("doc_id"),
+            Document.title.label("doc_title"),
+            Recording.id.label("rec_id"),
+            Recording.title.label("rec_title"),
+        )
+        .outerjoin(Document, Note.document_id == Document.id)
+        .outerjoin(Recording, Note.recording_id == Recording.id)
+        .where(Note.content.ilike(f"%{q}%"))
+        .order_by(Note.created_at.desc())
+        .limit(keyword_limit)
+    )
+    note_result = await db.execute(note_query)
+    notes = note_result.all()
+
+    for row in notes:
+        note = row[0]
+        doc_id = row[1]
+        doc_title = row[2]
+        rec_id = row[3]
+        rec_title = row[4]
+
+        results.append(
+            GlobalSearchResult(
+                type="note",
+                id=note.id,
+                title=None,
+                text=note.content,
+                recording_id=rec_id,
+                recording_title=rec_title,
+                document_id=doc_id,
+                document_title=doc_title,
+                note_id=note.id,
+                anchor_type=note.anchor_type,
+                anchor_data=note.anchor_data,
+                created_at=note.created_at,
                 match_type="keyword",
             )
         )

@@ -248,7 +248,7 @@ export interface SearchResponse {
 }
 
 export interface GlobalSearchResult {
-  type: 'recording' | 'segment' | 'document';
+  type: 'recording' | 'segment' | 'document' | 'note';
   id: string;
   title: string | null;
   text: string | null;
@@ -258,6 +258,10 @@ export interface GlobalSearchResult {
   document_title: string | null;
   start_time: number | null;
   end_time: number | null;
+  // Note fields
+  note_id: string | null;
+  anchor_type: string | null;
+  anchor_data: Record<string, unknown> | null;
   created_at: string;
   match_type?: 'keyword' | 'semantic' | null;
   similarity?: number | null;

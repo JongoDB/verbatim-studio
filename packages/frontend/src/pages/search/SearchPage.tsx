@@ -30,7 +30,7 @@ function highlightMatch(text: string | null | undefined, query: string): React.R
   );
 }
 
-type FilterType = 'all' | 'recording' | 'segment';
+type FilterType = 'all' | 'recording' | 'segment' | 'document' | 'note';
 type MatchType = 'all' | 'keyword' | 'semantic';
 
 export function SearchPage({ onResultClick, initialQuery = '' }: SearchPageProps) {
@@ -82,31 +82,53 @@ export function SearchPage({ onResultClick, initialQuery = '' }: SearchPageProps
 
   // Group results by recording or document
   const groupedResults = filteredResults.reduce((acc, result) => {
-    // Use document_id for documents, recording_id for segments/recordings
-    const key = result.type === 'document'
-      ? `doc-${result.document_id || result.id}`
-      : `rec-${result.recording_id}`;
-    const title = result.type === 'document'
-      ? (result.document_title || result.title || 'Unknown Document')
-      : result.recording_title;
-    const isDocument = result.type === 'document';
+    // Determine group key and type
+    let key: string;
+    let title: string | null;
+    let groupType: 'recording' | 'document' | 'note';
+
+    if (result.type === 'note') {
+      // Notes can be attached to documents or recordings
+      if (result.document_id) {
+        key = `doc-${result.document_id}`;
+        title = result.document_title || 'Unknown Document';
+        groupType = 'document';
+      } else if (result.recording_id) {
+        key = `rec-${result.recording_id}`;
+        title = result.recording_title;
+        groupType = 'recording';
+      } else {
+        key = `note-${result.id}`;
+        title = 'Note';
+        groupType = 'note';
+      }
+    } else if (result.type === 'document') {
+      key = `doc-${result.document_id || result.id}`;
+      title = result.document_title || result.title || 'Unknown Document';
+      groupType = 'document';
+    } else {
+      key = `rec-${result.recording_id}`;
+      title = result.recording_title;
+      groupType = 'recording';
+    }
 
     if (!acc[key]) {
       acc[key] = {
         recordingTitle: title,
         recordingId: result.recording_id,
-        documentId: isDocument ? (result.document_id || result.id) : null,
-        isDocument,
+        documentId: result.type === 'document' || result.type === 'note' ? (result.document_id || result.id) : null,
+        groupType,
         items: [],
       };
     }
     acc[key].items.push(result);
     return acc;
-  }, {} as Record<string, { recordingTitle: string | null; recordingId: string | null; documentId: string | null; isDocument: boolean; items: GlobalSearchResult[] }>);
+  }, {} as Record<string, { recordingTitle: string | null; recordingId: string | null; documentId: string | null; groupType: 'recording' | 'document' | 'note'; items: GlobalSearchResult[] }>);
 
-  const recordingCount = Object.values(groupedResults).filter(g => !g.isDocument).length;
-  const documentCount = Object.values(groupedResults).filter(g => g.isDocument).length;
+  const recordingCount = Object.values(groupedResults).filter(g => g.groupType === 'recording').length;
+  const documentCount = Object.values(groupedResults).filter(g => g.groupType === 'document').length;
   const segmentCount = filteredResults.filter(r => r.type === 'segment').length;
+  const noteCount = filteredResults.filter(r => r.type === 'note').length;
 
   return (
     <div className="space-y-6">
@@ -158,7 +180,7 @@ export function SearchPage({ onResultClick, initialQuery = '' }: SearchPageProps
             <div className="flex items-center gap-2">
               <span className="text-sm text-gray-500 dark:text-gray-400">Type:</span>
               <div className="flex rounded-lg border border-gray-300 dark:border-gray-600 overflow-hidden">
-                {(['all', 'recording', 'segment'] as FilterType[]).map((type) => (
+                {(['all', 'recording', 'segment', 'document', 'note'] as FilterType[]).map((type) => (
                   <button
                     key={type}
                     type="button"
@@ -169,7 +191,7 @@ export function SearchPage({ onResultClick, initialQuery = '' }: SearchPageProps
                         : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
                     }`}
                   >
-                    {type === 'all' ? 'All' : type === 'recording' ? 'Recordings' : 'Segments'}
+                    {type === 'all' ? 'All' : type === 'recording' ? 'Recordings' : type === 'segment' ? 'Segments' : type === 'document' ? 'Documents' : 'Notes'}
                   </button>
                 ))}
               </div>
@@ -210,8 +232,9 @@ export function SearchPage({ onResultClick, initialQuery = '' }: SearchPageProps
                 <>
                   Found {filteredResults.length} result{filteredResults.length !== 1 ? 's' : ''}
                   {recordingCount > 0 && ` in ${recordingCount} recording${recordingCount !== 1 ? 's' : ''}`}
-                  {documentCount > 0 && ` and ${documentCount} document${documentCount !== 1 ? 's' : ''}`}
-                  {segmentCount > 0 && ` (${segmentCount} segment match${segmentCount !== 1 ? 'es' : ''})`}
+                  {documentCount > 0 && `, ${documentCount} document${documentCount !== 1 ? 's' : ''}`}
+                  {segmentCount > 0 && ` (${segmentCount} segment${segmentCount !== 1 ? 's' : ''})`}
+                  {noteCount > 0 && ` (${noteCount} note${noteCount !== 1 ? 's' : ''})`}
                 </>
               )}
             </p>
@@ -232,13 +255,13 @@ export function SearchPage({ onResultClick, initialQuery = '' }: SearchPageProps
             <div className="space-y-6">
               {Object.values(groupedResults).map((group) => (
                 <div
-                  key={group.isDocument ? group.documentId : group.recordingId}
+                  key={group.groupType === 'document' ? group.documentId : group.recordingId || group.items[0]?.id}
                   className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden"
                 >
                   {/* Group header */}
                   <div className="px-4 py-3 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
                     <div className="flex items-center gap-2">
-                      {group.isDocument ? (
+                      {group.groupType === 'document' ? (
                         <svg className="h-5 w-5 text-purple-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                           <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                         </svg>
@@ -268,7 +291,8 @@ export function SearchPage({ onResultClick, initialQuery = '' }: SearchPageProps
                             {/* Icon */}
                             <div className={`flex-shrink-0 mt-0.5 ${
                               result.type === 'recording' ? 'text-blue-500' :
-                              result.type === 'document' ? 'text-purple-500' : 'text-green-500'
+                              result.type === 'document' ? 'text-purple-500' :
+                              result.type === 'note' ? 'text-amber-500' : 'text-green-500'
                             }`}>
                               {result.type === 'recording' ? (
                                 <svg className="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -277,6 +301,10 @@ export function SearchPage({ onResultClick, initialQuery = '' }: SearchPageProps
                               ) : result.type === 'document' ? (
                                 <svg className="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                </svg>
+                              ) : result.type === 'note' ? (
+                                <svg className="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
                                 </svg>
                               ) : (
                                 <svg className="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -304,10 +332,20 @@ export function SearchPage({ onResultClick, initialQuery = '' }: SearchPageProps
                                     ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
                                     : result.type === 'document'
                                     ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300'
+                                    : result.type === 'note'
+                                    ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300'
                                     : 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
                                 }`}>
-                                  {result.type === 'recording' ? 'Recording' : result.type === 'document' ? 'Document' : 'Segment'}
+                                  {result.type === 'recording' ? 'Recording' : result.type === 'document' ? 'Document' : result.type === 'note' ? 'Note' : 'Segment'}
                                 </span>
+                                {result.type === 'note' && result.anchor_type && (
+                                  <span className="px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400">
+                                    {result.anchor_type === 'page' ? `Page ${(result.anchor_data as Record<string, unknown>)?.page || ''}` :
+                                     result.anchor_type === 'selection' ? 'Selection' :
+                                     result.anchor_type === 'timestamp' ? `${(result.anchor_data as Record<string, unknown>)?.time || ''}s` :
+                                     result.anchor_type}
+                                  </span>
+                                )}
                                 {result.match_type === 'semantic' && (
                                   <span className="px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300">
                                     Semantic match
