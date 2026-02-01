@@ -1,12 +1,24 @@
-import { type AttachedTranscript } from './TranscriptPicker';
+import { type ChatAttachment } from './AttachmentPicker';
 
 interface ChatHeaderProps {
-  attached: AttachedTranscript[];
+  attached: ChatAttachment[];
   onDetach: (id: string) => void;
   onClose: () => void;
+  onClear?: () => void;
+  onSave?: () => void;
+  onViewHistory?: () => void;
+  hasMessages?: boolean;
 }
 
-export function ChatHeader({ attached, onDetach, onClose }: ChatHeaderProps) {
+export function ChatHeader({
+  attached,
+  onDetach,
+  onClose,
+  onClear,
+  onSave,
+  onViewHistory,
+  hasMessages = false,
+}: ChatHeaderProps) {
   return (
     <div className="border-b border-gray-200 dark:border-gray-700 px-4 py-3">
       <div className="flex items-center justify-between mb-2">
@@ -16,30 +28,90 @@ export function ChatHeader({ attached, onDetach, onClose }: ChatHeaderProps) {
               <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
             </svg>
           </div>
-          <h2 className="font-semibold text-gray-900 dark:text-gray-100">Max - Verbatim Assistant</h2>
+          <h2 className="font-semibold text-gray-900 dark:text-gray-100">Max</h2>
         </div>
-        <button
-          onClick={onClose}
-          className="p-1 rounded text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-          aria-label="Close chat"
-        >
-          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
+        <div className="flex items-center gap-1">
+          {/* History button */}
+          {onViewHistory && (
+            <button
+              onClick={onViewHistory}
+              className="p-1.5 rounded text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+              aria-label="View saved chats"
+              title="Saved Chats"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </button>
+          )}
+          {/* Save button */}
+          {onSave && (
+            <button
+              onClick={onSave}
+              disabled={!hasMessages}
+              className="p-1.5 rounded text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              aria-label="Save conversation"
+              title="Save"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+              </svg>
+            </button>
+          )}
+          {/* Clear button */}
+          {onClear && (
+            <button
+              onClick={onClear}
+              disabled={!hasMessages && attached.length === 0}
+              className="p-1.5 rounded text-gray-400 hover:text-red-500 dark:hover:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              aria-label="Clear conversation"
+              title="Clear"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+            </button>
+          )}
+          {/* Close button */}
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            aria-label="Close chat"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
       </div>
       {attached.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
-          {attached.map((t) => (
+          {attached.map((a) => (
             <span
-              key={t.id}
+              key={a.id}
               className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300"
             >
-              <span className="truncate max-w-[120px]">{t.title}</span>
+              {/* Type icon */}
+              {a.type === 'transcript' && (
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                </svg>
+              )}
+              {a.type === 'document' && (
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+              )}
+              {a.type === 'file' && (
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                </svg>
+              )}
+              <span className="truncate max-w-[100px]">{a.title}</span>
               <button
-                onClick={() => onDetach(t.id)}
+                onClick={() => onDetach(a.id)}
                 className="hover:text-blue-900 dark:hover:text-blue-100"
-                aria-label={`Remove ${t.title}`}
+                aria-label={`Remove ${a.title}`}
               >
                 <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />

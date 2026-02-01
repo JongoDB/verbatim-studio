@@ -16,6 +16,7 @@ from api.routes.highlights import segment_highlights_router, transcript_highligh
 from api.routes.storage_locations import router as storage_locations_router
 from api.routes.oauth import router as oauth_router
 from api.routes.ocr import router as ocr_router
+from api.routes.conversations import router as conversations_router
 from core.config import settings
 from persistence import init_db
 from services.file_watcher import FileWatcherService
@@ -111,6 +112,7 @@ app.include_router(browse_router, prefix="/api")
 app.include_router(storage_locations_router, prefix="/api")
 app.include_router(ocr_router, prefix="/api")
 app.include_router(oauth_router)  # Has its own /api prefix
+app.include_router(conversations_router, prefix="/api")
 
 
 @app.get("/")

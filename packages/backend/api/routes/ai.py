@@ -6,7 +6,7 @@ import logging
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -17,7 +17,7 @@ from core.factory import get_factory
 from core.interfaces import ChatMessage, ChatOptions
 from core.model_catalog import MODEL_CATALOG
 from persistence.database import get_db
-from persistence.models import Recording, Transcript, Segment
+from persistence.models import Document, Recording, Transcript, Segment
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/ai", tags=["ai"])
@@ -100,6 +100,8 @@ class MultiChatRequest(BaseModel):
     """Request model for multi-transcript chat."""
     message: str
     recording_ids: list[str] = []  # Recording IDs (frontend sends these, we look up transcripts)
+    document_ids: list[str] = []  # Document IDs for context
+    file_context: str | None = None  # Text content from uploaded files (temporary)
     history: list[HistoryMessage] = []
     temperature: float = Field(default=0.7, ge=0, le=2)
 
@@ -452,9 +454,11 @@ async def chat_multi_stream(
 
     # Build context from recordings (look up transcripts by recording_id)
     context_parts = []
+    label_index = 0
+
     if request.recording_ids:
-        for i, recording_id in enumerate(request.recording_ids):
-            label = chr(65 + i)  # A, B, C, ...
+        for recording_id in request.recording_ids:
+            label = chr(65 + label_index)  # A, B, C, ...
             try:
                 # Get recording for title
                 recording_result = await db.execute(
@@ -477,17 +481,42 @@ async def chat_multi_stream(
                 text = await get_transcript_text(db, transcript.id)
                 title = recording.title
                 context_parts.append(f"=== Transcript {label}: {title} ===\n{text}\n")
+                label_index += 1
             except Exception:
                 logger.warning("Could not load recording %s", recording_id)
                 continue
 
+    # Add documents to context
+    if request.document_ids:
+        for doc_id in request.document_ids:
+            label = chr(65 + label_index)  # Continue labeling from transcripts
+            try:
+                doc = await db.get(Document, doc_id)
+                if doc and doc.extracted_text:
+                    context_parts.append(f"=== Document {label}: {doc.title} ===\n{doc.extracted_text}\n")
+                    label_index += 1
+                elif doc and doc.extracted_markdown:
+                    context_parts.append(f"=== Document {label}: {doc.title} ===\n{doc.extracted_markdown}\n")
+                    label_index += 1
+                else:
+                    logger.warning("Document %s has no extracted text", doc_id)
+            except Exception:
+                logger.warning("Could not load document %s", doc_id)
+                continue
+
+    # Add temporary file content if provided
+    if request.file_context:
+        label = chr(65 + label_index)
+        context_parts.append(f"=== Uploaded File {label} ===\n{request.file_context}\n")
+        label_index += 1
+
     # Build system message
     system_content = MAX_SYSTEM_PROMPT
     if context_parts:
-        system_content += f"\n\nYou have access to {len(context_parts)} transcript(s):\n\n"
+        system_content += f"\n\nYou have access to {len(context_parts)} attached item(s) (transcripts, documents, or files):\n\n"
         system_content += "\n".join(context_parts)
     else:
-        system_content += "\n\nNo transcripts are currently attached. Help with general questions."
+        system_content += "\n\nNo transcripts or documents are currently attached. Help with general questions."
 
     # Build messages list
     messages = [ChatMessage(role="system", content=system_content)]
@@ -601,6 +630,96 @@ async def analyze_transcript(
     except Exception as e:
         logger.exception("Analysis failed")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+class ExtractTextResponse(BaseModel):
+    """Response model for text extraction."""
+    text: str
+    format: str
+    page_count: int | None = None
+
+
+@router.post("/extract-text", response_model=ExtractTextResponse)
+async def extract_text_from_file(
+    file: UploadFile = File(..., description="File to extract text from"),
+) -> ExtractTextResponse:
+    """Extract text from an uploaded file without saving it permanently.
+
+    Supports: PDF, DOCX, XLSX, PPTX, images (with OCR if available), and text files.
+    """
+    from tempfile import NamedTemporaryFile
+    import mimetypes
+    from services.document_processor import document_processor
+
+    # Determine MIME type
+    mime_type = file.content_type
+    if not mime_type or mime_type == "application/octet-stream":
+        # Try to guess from filename
+        guessed, _ = mimetypes.guess_type(file.filename or "")
+        if guessed:
+            mime_type = guessed
+
+    if not mime_type:
+        raise HTTPException(status_code=400, detail="Could not determine file type")
+
+    # Check if supported
+    supported_mimes = {
+        "application/pdf",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "text/plain",
+        "text/markdown",
+        "image/png",
+        "image/jpeg",
+        "image/gif",
+        "image/webp",
+        "image/tiff",
+    }
+
+    if mime_type not in supported_mimes:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type: {mime_type}. Supported: PDF, Word, Excel, PowerPoint, images, text files."
+        )
+
+    # Save to temp file
+    suffix = Path(file.filename).suffix if file.filename else ""
+    try:
+        with NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            content = await file.read()
+            tmp.write(content)
+            tmp_path = Path(tmp.name)
+
+        # Extract text (enable OCR for images)
+        enable_ocr = mime_type.startswith("image/")
+        result = document_processor.process(tmp_path, mime_type, enable_ocr=enable_ocr)
+
+        # Clean up temp file
+        tmp_path.unlink(missing_ok=True)
+
+        extracted_text = result.get("text") or result.get("markdown") or ""
+
+        if not extracted_text.strip():
+            raise HTTPException(
+                status_code=422,
+                detail="Could not extract text from file. It may be a scanned document requiring OCR."
+            )
+
+        return ExtractTextResponse(
+            text=extracted_text,
+            format=result.get("metadata", {}).get("format", mime_type),
+            page_count=result.get("page_count"),
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Text extraction failed")
+        # Clean up on error
+        if 'tmp_path' in locals():
+            tmp_path.unlink(missing_ok=True)
+        raise HTTPException(status_code=500, detail=f"Text extraction failed: {str(e)}")
 
 
 @router.post("/transcripts/{transcript_id}/ask", response_model=ChatResponse)

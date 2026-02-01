@@ -3,15 +3,16 @@ import { api } from '@/lib/api';
 import { ChatHeader } from './ChatHeader';
 import { ChatMessages, type ChatMessage } from './ChatMessages';
 import { ChatInput } from './ChatInput';
-import { TranscriptPicker, type AttachedTranscript } from './TranscriptPicker';
+import { AttachmentPicker, type ChatAttachment } from './AttachmentPicker';
 
 interface ChatPanelProps {
   isOpen: boolean;
   onClose: () => void;
   messages: ChatMessage[];
   setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
-  attached: AttachedTranscript[];
-  setAttached: React.Dispatch<React.SetStateAction<AttachedTranscript[]>>;
+  attached: ChatAttachment[];
+  setAttached: React.Dispatch<React.SetStateAction<ChatAttachment[]>>;
+  onNavigateToChats?: () => void;
 }
 
 export function ChatPanel({
@@ -21,10 +22,14 @@ export function ChatPanel({
   setMessages,
   attached,
   setAttached,
+  onNavigateToChats,
 }: ChatPanelProps) {
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingContent, setStreamingContent] = useState('');
   const [showPicker, setShowPicker] = useState(false);
+  const [showSaveDialog, setShowSaveDialog] = useState(false);
+  const [saveTitle, setSaveTitle] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
 
   const handleSend = useCallback(async (message: string) => {
     const userMessage: ChatMessage = {
@@ -38,11 +43,29 @@ export function ChatPanel({
 
     try {
       const history = messages.map((m) => ({ role: m.role, content: m.content }));
+
+      // Separate attachments by type
+      const recordingIds: string[] = [];
+      const documentIds: string[] = [];
+      const fileTexts: string[] = [];
+
+      for (const a of attached) {
+        if (a.type === 'transcript' && a.recordingId) {
+          recordingIds.push(a.recordingId);
+        } else if (a.type === 'document' && a.documentId) {
+          documentIds.push(a.documentId);
+        } else if (a.type === 'file' && a.fileText) {
+          fileTexts.push(`=== ${a.title} ===\n${a.fileText}`);
+        }
+      }
+
       let fullContent = '';
 
       for await (const token of api.ai.chatMultiStream({
         message,
-        recording_ids: attached.map((t) => t.id),
+        recording_ids: recordingIds,
+        document_ids: documentIds,
+        file_context: fileTexts.length > 0 ? fileTexts.join('\n\n') : undefined,
         history,
         temperature: 0.7,
       })) {
@@ -77,19 +100,77 @@ export function ChatPanel({
     }
   }, [messages, attached, setMessages]);
 
-  const handleAttach = useCallback((transcript: AttachedTranscript) => {
-    setAttached((prev) => [...prev, transcript]);
+  const handleAttach = useCallback((attachment: ChatAttachment) => {
+    setAttached((prev) => [...prev, attachment]);
   }, [setAttached]);
 
   const handleDetach = useCallback((id: string) => {
-    setAttached((prev) => prev.filter((t) => t.id !== id));
+    setAttached((prev) => prev.filter((a) => a.id !== id));
   }, [setAttached]);
+
+  const handleClear = useCallback(() => {
+    if (messages.length === 0 && attached.length === 0) return;
+
+    if (confirm('Clear this conversation? This cannot be undone.')) {
+      setMessages([]);
+      setAttached([]);
+      setStreamingContent('');
+    }
+  }, [messages.length, attached.length, setMessages, setAttached]);
+
+  const handleSave = useCallback(async () => {
+    if (messages.length === 0) {
+      alert('Nothing to save. Start a conversation first.');
+      return;
+    }
+
+    setShowSaveDialog(true);
+    // Generate default title from first user message
+    const firstUserMsg = messages.find(m => m.role === 'user');
+    if (firstUserMsg) {
+      const defaultTitle = firstUserMsg.content.slice(0, 50) + (firstUserMsg.content.length > 50 ? '...' : '');
+      setSaveTitle(defaultTitle);
+    }
+  }, [messages]);
+
+  const handleSaveConfirm = useCallback(async () => {
+    if (isSaving) return;
+
+    setIsSaving(true);
+    try {
+      await api.conversations.create({
+        title: saveTitle || undefined,
+        messages: messages.map(m => ({ role: m.role, content: m.content })),
+      });
+      setShowSaveDialog(false);
+      setSaveTitle('');
+      alert('Conversation saved!');
+    } catch (error) {
+      console.error('Save error:', error);
+      alert('Failed to save conversation.');
+    } finally {
+      setIsSaving(false);
+    }
+  }, [messages, saveTitle, isSaving]);
+
+  const handleViewHistory = useCallback(() => {
+    onClose();
+    onNavigateToChats?.();
+  }, [onClose, onNavigateToChats]);
 
   if (!isOpen) return null;
 
   return (
     <div className="fixed bottom-24 right-6 z-40 w-[400px] h-[500px] bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 flex flex-col animate-in slide-in-from-bottom-4 fade-in duration-200">
-      <ChatHeader attached={attached} onDetach={handleDetach} onClose={onClose} />
+      <ChatHeader
+        attached={attached}
+        onDetach={handleDetach}
+        onClose={onClose}
+        onClear={handleClear}
+        onSave={handleSave}
+        onViewHistory={onNavigateToChats ? handleViewHistory : undefined}
+        hasMessages={messages.length > 0}
+      />
       <ChatMessages
         messages={messages}
         isStreaming={isStreaming}
@@ -97,7 +178,7 @@ export function ChatPanel({
       />
       <div className="relative">
         {showPicker && (
-          <TranscriptPicker
+          <AttachmentPicker
             attached={attached}
             onAttach={handleAttach}
             onDetach={handleDetach}
@@ -111,6 +192,40 @@ export function ChatPanel({
           attachedCount={attached.length}
         />
       </div>
+
+      {/* Save Dialog */}
+      {showSaveDialog && (
+        <div className="absolute inset-0 bg-black/50 flex items-center justify-center rounded-xl z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-4 w-80 shadow-xl">
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">
+              Save Conversation
+            </h3>
+            <input
+              type="text"
+              value={saveTitle}
+              onChange={(e) => setSaveTitle(e.target.value)}
+              placeholder="Enter a title..."
+              className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:border-blue-500 focus:outline-none mb-3"
+              autoFocus
+            />
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setShowSaveDialog(false)}
+                className="px-3 py-1.5 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveConfirm}
+                disabled={isSaving}
+                className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
+              >
+                {isSaving ? 'Saving...' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

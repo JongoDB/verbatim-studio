@@ -493,6 +493,7 @@ export interface ChatMultiRequest {
   message: string;
   recording_ids: string[];   // Recording IDs to attach for context
   document_ids?: string[];   // Document IDs to attach for context
+  file_context?: string;     // Text content from uploaded files (temporary)
   history: Array<{ role: 'user' | 'assistant'; content: string }>;
   temperature?: number;
 }
@@ -668,6 +669,36 @@ export interface Note {
 
 export interface NoteListResponse {
   items: Note[];
+  total: number;
+}
+
+// Conversation types
+export interface ConversationMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  created_at: string;
+}
+
+export interface Conversation {
+  id: string;
+  title: string | null;
+  created_at: string;
+  updated_at: string;
+  message_count: number;
+  last_message_preview: string | null;
+}
+
+export interface ConversationDetail {
+  id: string;
+  title: string | null;
+  created_at: string;
+  updated_at: string;
+  messages: ConversationMessage[];
+}
+
+export interface ConversationListResponse {
+  items: Conversation[];
   total: number;
 }
 
@@ -1531,6 +1562,23 @@ class ApiClient {
       }
       return streamGenerator();
     },
+
+    extractText: async (file: File): Promise<{ text: string; format: string; page_count: number | null }> => {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await fetch(`${this.baseUrl}/api/ai/extract-text`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ detail: 'Text extraction failed' }));
+        throw new Error(error.detail || `HTTP ${response.status}`);
+      }
+
+      return response.json();
+    },
   };
 
   // OCR
@@ -1942,6 +1990,36 @@ class ApiClient {
     cancel: (state: string) =>
       this.request<{ message: string; state: string }>(`/api/oauth/cancel/${state}`, {
         method: 'POST',
+      }),
+  };
+
+  // Conversations (saved chats)
+  conversations = {
+    list: () => this.request<ConversationListResponse>('/api/conversations'),
+
+    get: (id: string) => this.request<ConversationDetail>(`/api/conversations/${id}`),
+
+    create: (data: { title?: string; messages: Array<{ role: string; content: string }> }) =>
+      this.request<ConversationDetail>('/api/conversations', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+
+    update: (id: string, data: { title?: string }) =>
+      this.request<ConversationDetail>(`/api/conversations/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      }),
+
+    delete: (id: string) =>
+      this.request<{ deleted: boolean }>(`/api/conversations/${id}`, {
+        method: 'DELETE',
+      }),
+
+    addMessage: (id: string, role: string, content: string) =>
+      this.request<ConversationMessage>(`/api/conversations/${id}/messages`, {
+        method: 'POST',
+        body: JSON.stringify({ role, content }),
       }),
   };
 }

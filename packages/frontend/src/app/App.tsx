@@ -18,7 +18,8 @@ import { APP_VERSION } from '@/version'; // static fallback
 import { ChatFAB } from '@/components/ai/ChatFAB';
 import { ChatPanel } from '@/components/ai/ChatPanel';
 import type { ChatMessage } from '@/components/ai/ChatMessages';
-import type { AttachedTranscript } from '@/components/ai/TranscriptPicker';
+import type { ChatAttachment } from '@/components/ai/AttachmentPicker';
+import { ChatsPage } from '@/pages/chats/ChatsPage';
 
 type NavigationState =
   | { type: 'dashboard' }
@@ -32,7 +33,8 @@ type NavigationState =
   | { type: 'transcript'; recordingId: string; initialSeekTime?: number }
   | { type: 'documents' }
   | { type: 'document-viewer'; documentId: string }
-  | { type: 'browser'; folderId?: string | null };
+  | { type: 'browser'; folderId?: string | null }
+  | { type: 'chats' };
 
 // Map navigation state to URL path
 function navigationToPath(nav: NavigationState): string {
@@ -49,6 +51,7 @@ function navigationToPath(nav: NavigationState): string {
     case 'documents': return '/documents';
     case 'document-viewer': return `/documents/${nav.documentId}`;
     case 'browser': return nav.folderId ? `/browser/${nav.folderId}` : '/browser';
+    case 'chats': return '/chats';
   }
 }
 
@@ -63,6 +66,7 @@ function pathToNavigation(path: string): NavigationState {
   if (cleanPath === '/live') return { type: 'live' };
   if (cleanPath === '/search') return { type: 'search' };
   if (cleanPath === '/settings') return { type: 'settings' };
+  if (cleanPath === '/chats') return { type: 'chats' };
 
   // /recordings/:id -> transcript
   const recordingMatch = cleanPath.match(/^\/recordings\/([^/]+)$/);
@@ -121,7 +125,7 @@ export function App() {
   // Chat assistant state
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  const [attachedTranscripts, setAttachedTranscripts] = useState<AttachedTranscript[]>([]);
+  const [chatAttachments, setChatAttachments] = useState<ChatAttachment[]>([]);
 
   // Sidebar collapsed state (persisted to localStorage)
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
@@ -186,6 +190,10 @@ export function App() {
     setNavigation({ type: 'browser', folderId });
   }, []);
 
+  const handleNavigateToChats = useCallback(() => {
+    setNavigation({ type: 'chats' });
+  }, []);
+
   // Map navigation types to sidebar tabs
   const currentTab = (() => {
     switch (navigation.type) {
@@ -199,8 +207,10 @@ export function App() {
         return 'documents';
       case 'browser':
         return 'browser';
+      case 'chats':
+        return 'chats';
       default:
-        return navigation.type as 'dashboard' | 'recordings' | 'projects' | 'live' | 'search' | 'settings' | 'documents' | 'browser';
+        return navigation.type as 'dashboard' | 'recordings' | 'projects' | 'live' | 'search' | 'settings' | 'documents' | 'browser' | 'chats';
     }
   })();
 
@@ -302,21 +312,31 @@ export function App() {
   const handleOpenChat = useCallback(() => {
     if (navigation.type === 'transcript' && !isChatOpen) {
       // Check if this transcript is already attached
-      const alreadyAttached = attachedTranscripts.some(
-        (t) => t.id === navigation.recordingId
-      );
+      const attachmentId = `transcript-${navigation.recordingId}`;
+      const alreadyAttached = chatAttachments.some((a) => a.id === attachmentId);
       if (!alreadyAttached) {
         // Fetch recording title and attach
         api.recordings.get(navigation.recordingId).then((recording) => {
-          setAttachedTranscripts((prev) => [
+          setChatAttachments((prev) => [
             ...prev,
-            { id: recording.id, title: recording.title },
+            {
+              id: attachmentId,
+              type: 'transcript',
+              title: recording.title,
+              recordingId: recording.id,
+            },
           ]);
         }).catch(() => {});
       }
     }
     setIsChatOpen(true);
-  }, [navigation, isChatOpen, attachedTranscripts]);
+  }, [navigation, isChatOpen, chatAttachments]);
+
+  // Load saved conversation into chat
+  const handleLoadConversation = useCallback((messages: ChatMessage[]) => {
+    setChatMessages(messages);
+    setChatAttachments([]);
+  }, []);
 
   // Show loading state while connecting
   if (isConnecting) {
@@ -392,6 +412,7 @@ export function App() {
           else if (tab === 'live') handleNavigateToLive();
           else if (tab === 'search') handleNavigateToSearch();
           else if (tab === 'documents') handleNavigateToDocuments();
+          else if (tab === 'chats') handleNavigateToChats();
           else if (tab === 'browser') handleNavigateToBrowser();
           else if (tab === 'settings') handleNavigateToSettings();
         }}
@@ -468,6 +489,12 @@ export function App() {
                 onViewDocument={(id) => setNavigation({ type: 'document-viewer', documentId: id })}
               />
             )}
+            {navigation.type === 'chats' && (
+              <ChatsPage
+                onLoadConversation={handleLoadConversation}
+                onOpenChat={handleOpenChat}
+              />
+            )}
             {navigation.type === 'transcript' && (
               <TranscriptPage
                 recordingId={navigation.recordingId}
@@ -489,8 +516,9 @@ export function App() {
         onClose={() => setIsChatOpen(false)}
         messages={chatMessages}
         setMessages={setChatMessages}
-        attached={attachedTranscripts}
-        setAttached={setAttachedTranscripts}
+        attached={chatAttachments}
+        setAttached={setChatAttachments}
+        onNavigateToChats={handleNavigateToChats}
       />
     </div>
   );

@@ -400,3 +400,34 @@ class DocumentEmbedding(Base):
     created_at: Mapped[datetime] = mapped_column(default=func.now())
 
     document: Mapped["Document"] = relationship()
+
+
+class Conversation(Base):
+    """Saved chat conversation."""
+
+    __tablename__ = "conversations"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    title: Mapped[str | None] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(default=func.now(), onupdate=func.now())
+
+    messages: Mapped[list["ConversationMessage"]] = relationship(
+        back_populates="conversation", cascade="all, delete-orphan", order_by="ConversationMessage.created_at"
+    )
+
+
+class ConversationMessage(Base):
+    """Message in a conversation."""
+
+    __tablename__ = "conversation_messages"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    conversation_id: Mapped[str] = mapped_column(
+        ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False
+    )
+    role: Mapped[str] = mapped_column(String(20), nullable=False)  # 'user' or 'assistant'
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(default=func.now())
+
+    conversation: Mapped["Conversation"] = relationship(back_populates="messages")
