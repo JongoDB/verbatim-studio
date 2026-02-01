@@ -8,14 +8,14 @@ and are stored in the HuggingFace cache directory.
 from pathlib import Path
 
 # Chandra OCR model repository
-CHANDRA_REPO = "datalab-to/Chandra-VLM-4B"
+CHANDRA_REPO = "datalab-to/chandra"
 
 OCR_MODEL_CATALOG: dict[str, dict] = {
     "chandra": {
         "repo": CHANDRA_REPO,
-        "size_bytes": 16_000_000_000,  # ~16GB approximate
-        "label": "Chandra VLM",
-        "description": "Vision-language model for high-quality document OCR. Processes PDFs and images.",
+        "size_bytes": 17_200_000_000,  # ~17GB (9B params, BF16)
+        "label": "Chandra VLM (9B)",
+        "description": "Vision-language model for high-quality document OCR. Handles complex tables, handwriting, and scanned documents.",
         "default": True,
     },
 }
