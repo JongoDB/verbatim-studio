@@ -778,6 +778,8 @@ export interface ModelBreakdown {
   asr_bytes: number;
   diarization_count: number;
   diarization_bytes: number;
+  ocr_count: number;
+  ocr_bytes: number;
 }
 
 export interface StorageBreakdown {

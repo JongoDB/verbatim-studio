@@ -58,6 +58,8 @@ class ModelBreakdown(BaseModel):
     asr_bytes: int
     diarization_count: int
     diarization_bytes: int
+    ocr_count: int
+    ocr_bytes: int
 
 
 class StorageBreakdown(BaseModel):
@@ -186,6 +188,33 @@ def count_pyannote_models() -> tuple[int, int]:
     return count, size
 
 
+def count_ocr_models(models_dir: Path) -> tuple[int, int]:
+    """Count OCR/VLM models in the Verbatim models/ocr directory.
+
+    Returns:
+        Tuple of (model_count, total_bytes)
+    """
+    ocr_dir = models_dir / "ocr"
+    count, size = 0, 0
+    if not ocr_dir.exists():
+        return count, size
+
+    # Each subdirectory is a model
+    for d in ocr_dir.iterdir():
+        if d.is_dir():
+            # Check if it has model files
+            model_files = list(d.glob("*.safetensors")) + list(d.glob("*.bin"))
+            if model_files:
+                count += 1
+                for f in d.rglob("*"):
+                    if f.is_file():
+                        try:
+                            size += f.stat().st_size
+                        except (OSError, PermissionError):
+                            pass
+    return count, size
+
+
 @router.get("/info", response_model=SystemInfo)
 async def get_system_info() -> SystemInfo:
     """Get system information including storage usage and content counts."""
@@ -231,6 +260,7 @@ async def get_system_info() -> SystemInfo:
     llm_count, llm_bytes = count_llm_models(settings.MODELS_DIR)
     asr_count, asr_bytes = count_huggingface_models("*whisper*")
     diarization_count, diarization_bytes = count_pyannote_models()
+    ocr_count, ocr_bytes = count_ocr_models(settings.MODELS_DIR)
 
     models = ModelBreakdown(
         llm_count=llm_count,
@@ -239,9 +269,11 @@ async def get_system_info() -> SystemInfo:
         asr_bytes=asr_bytes,
         diarization_count=diarization_count,
         diarization_bytes=diarization_bytes,
+        ocr_count=ocr_count,
+        ocr_bytes=ocr_bytes,
     )
 
-    total_models_bytes = llm_bytes + asr_bytes + diarization_bytes
+    total_models_bytes = llm_bytes + asr_bytes + diarization_bytes + ocr_bytes
 
     storage_breakdown = StorageBreakdown(
         media_bytes=media_bytes,

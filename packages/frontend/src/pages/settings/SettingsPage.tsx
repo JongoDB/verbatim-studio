@@ -1960,6 +1960,12 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
                     {systemInfo.storage_breakdown.models.diarization_count} ({formatBytes(systemInfo.storage_breakdown.models.diarization_bytes)})
                   </span>
                 </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500 dark:text-gray-400">OCR / VLM</span>
+                  <span className="text-gray-900 dark:text-gray-100">
+                    {systemInfo.storage_breakdown.models.ocr_count} ({formatBytes(systemInfo.storage_breakdown.models.ocr_bytes)})
+                  </span>
+                </div>
                 <div className="flex justify-between pt-2 border-t border-gray-100 dark:border-gray-700 font-medium">
                   <span className="text-gray-700 dark:text-gray-300">Total</span>
                   <span className="text-gray-900 dark:text-gray-100">
