@@ -33,16 +33,33 @@ class DocumentProcessor:
     def _process_pdf(self, file_path: Path) -> dict:
         """Process PDF using Chandra OCR."""
         try:
-            from chandra_ocr import ocr
-            result = ocr(str(file_path), output_format="markdown")
+            from chandra.input import load_file
+            from chandra.model import InferenceManager
+
+            # Load the PDF file
+            pages = load_file(str(file_path))
+
+            # Initialize the inference manager (uses HuggingFace by default)
+            manager = InferenceManager(method="hf")
+
+            # Process all pages
+            markdown_parts = []
+            for page in pages:
+                result = manager.run_inference(page)
+                markdown_parts.append(result.markdown)
+
+            combined_markdown = "\n\n".join(markdown_parts)
+            # Strip markdown formatting for plain text
+            plain_text = combined_markdown.replace("#", "").replace("*", "").replace("|", " ")
+
             return {
-                "text": result.plain_text if hasattr(result, 'plain_text') else str(result),
-                "markdown": result.markdown if hasattr(result, 'markdown') else str(result),
-                "page_count": result.page_count if hasattr(result, 'page_count') else None,
+                "text": plain_text,
+                "markdown": combined_markdown,
+                "page_count": len(pages),
                 "metadata": {"ocr_engine": "chandra"},
             }
         except ImportError:
-            logger.warning("chandra-ocr not installed, falling back to basic PDF extraction")
+            logger.warning("chandra not installed, falling back to basic PDF extraction")
             return self._process_pdf_fallback(file_path)
         except Exception as e:
             logger.error(f"Chandra OCR failed: {e}")
@@ -70,16 +87,33 @@ class DocumentProcessor:
     def _process_image(self, file_path: Path) -> dict:
         """Process image using Chandra OCR."""
         try:
-            from chandra_ocr import ocr
-            result = ocr(str(file_path), output_format="markdown")
+            from chandra.input import load_file
+            from chandra.model import InferenceManager
+
+            # Load the image file
+            pages = load_file(str(file_path))
+
+            # Initialize the inference manager (uses HuggingFace by default)
+            manager = InferenceManager(method="hf")
+
+            # Process the image (should be single page)
+            markdown_parts = []
+            for page in pages:
+                result = manager.run_inference(page)
+                markdown_parts.append(result.markdown)
+
+            combined_markdown = "\n\n".join(markdown_parts)
+            # Strip markdown formatting for plain text
+            plain_text = combined_markdown.replace("#", "").replace("*", "").replace("|", " ")
+
             return {
-                "text": result.plain_text if hasattr(result, 'plain_text') else str(result),
-                "markdown": result.markdown if hasattr(result, 'markdown') else str(result),
+                "text": plain_text,
+                "markdown": combined_markdown,
                 "page_count": 1,
                 "metadata": {"ocr_engine": "chandra"},
             }
         except ImportError:
-            logger.warning("chandra-ocr not installed for image processing")
+            logger.warning("chandra not installed for image processing")
             return {"text": "", "markdown": "", "page_count": 1, "metadata": {}}
         except Exception as e:
             logger.error(f"Image OCR failed: {e}")
