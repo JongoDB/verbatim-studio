@@ -5,6 +5,29 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+
+def _check_chandra_available() -> bool:
+    """Check if Chandra OCR is installed."""
+    try:
+        from chandra_ocr import ocr
+        return True
+    except ImportError:
+        return False
+
+
+def _check_pymupdf_available() -> bool:
+    """Check if PyMuPDF is installed."""
+    try:
+        import fitz
+        return True
+    except ImportError:
+        return False
+
+
+CHANDRA_AVAILABLE = _check_chandra_available()
+PYMUPDF_AVAILABLE = _check_pymupdf_available()
+
+
 class DocumentProcessor:
     """Extracts text from various document formats."""
 
@@ -31,59 +54,86 @@ class DocumentProcessor:
             raise ValueError(f"Unsupported MIME type: {mime_type}")
 
     def _process_pdf(self, file_path: Path) -> dict:
-        """Process PDF using Chandra OCR."""
-        try:
-            from chandra_ocr import ocr
-            result = ocr(str(file_path), output_format="markdown")
-            return {
-                "text": result.plain_text if hasattr(result, 'plain_text') else str(result),
-                "markdown": result.markdown if hasattr(result, 'markdown') else str(result),
-                "page_count": result.page_count if hasattr(result, 'page_count') else None,
-                "metadata": {"ocr_engine": "chandra"},
-            }
-        except ImportError:
-            logger.warning("chandra-ocr not installed, falling back to basic PDF extraction")
-            return self._process_pdf_fallback(file_path)
-        except Exception as e:
-            logger.error(f"Chandra OCR failed: {e}")
+        """Process PDF using Chandra OCR with PyMuPDF fallback."""
+        if CHANDRA_AVAILABLE:
+            try:
+                from chandra_ocr import ocr
+                logger.info(f"Processing {file_path.name} with Chandra OCR")
+                result = ocr(str(file_path), output_format="markdown")
+                return {
+                    "text": result.plain_text if hasattr(result, 'plain_text') else str(result),
+                    "markdown": result.markdown if hasattr(result, 'markdown') else str(result),
+                    "page_count": result.page_count if hasattr(result, 'page_count') else None,
+                    "metadata": {
+                        "ocr_engine": "chandra",
+                        "ocr_confidence": getattr(result, 'confidence', None),
+                    },
+                }
+            except Exception as e:
+                logger.warning(f"Chandra OCR failed, falling back to PyMuPDF: {e}")
+                return self._process_pdf_fallback(file_path)
+        else:
+            logger.info(f"Chandra OCR not available, using PyMuPDF for {file_path.name}")
             return self._process_pdf_fallback(file_path)
 
     def _process_pdf_fallback(self, file_path: Path) -> dict:
-        """Fallback PDF processing using PyMuPDF or pdfplumber."""
+        """Fallback PDF processing using PyMuPDF."""
+        if not PYMUPDF_AVAILABLE:
+            logger.error("No PDF processing library available (install chandra-ocr or pymupdf)")
+            return {
+                "text": "",
+                "markdown": "",
+                "page_count": None,
+                "metadata": {"error": "No PDF processor available"},
+            }
+
         try:
             import fitz  # PyMuPDF
+            logger.info(f"Processing {file_path.name} with PyMuPDF")
             doc = fitz.open(file_path)
             text_parts = []
             for page in doc:
                 text_parts.append(page.get_text())
             text = "\n\n".join(text_parts)
+            page_count = len(doc)
+            doc.close()
             return {
                 "text": text,
                 "markdown": text,
-                "page_count": len(doc),
+                "page_count": page_count,
                 "metadata": {"ocr_engine": "pymupdf"},
             }
-        except ImportError:
-            logger.warning("PyMuPDF not installed")
-            return {"text": "", "markdown": "", "page_count": None, "metadata": {}}
+        except Exception as e:
+            logger.error(f"PyMuPDF processing failed: {e}")
+            return {"text": "", "markdown": "", "page_count": None, "metadata": {"error": str(e)}}
 
     def _process_image(self, file_path: Path) -> dict:
         """Process image using Chandra OCR."""
+        if not CHANDRA_AVAILABLE:
+            logger.warning(f"Chandra OCR not available for image processing: {file_path.name}")
+            return {
+                "text": "",
+                "markdown": "",
+                "page_count": 1,
+                "metadata": {"error": "No OCR processor available for images"},
+            }
+
         try:
             from chandra_ocr import ocr
+            logger.info(f"Processing {file_path.name} with Chandra OCR")
             result = ocr(str(file_path), output_format="markdown")
             return {
                 "text": result.plain_text if hasattr(result, 'plain_text') else str(result),
                 "markdown": result.markdown if hasattr(result, 'markdown') else str(result),
                 "page_count": 1,
-                "metadata": {"ocr_engine": "chandra"},
+                "metadata": {
+                    "ocr_engine": "chandra",
+                    "ocr_confidence": getattr(result, 'confidence', None),
+                },
             }
-        except ImportError:
-            logger.warning("chandra-ocr not installed for image processing")
-            return {"text": "", "markdown": "", "page_count": 1, "metadata": {}}
         except Exception as e:
             logger.error(f"Image OCR failed: {e}")
-            return {"text": "", "markdown": "", "page_count": 1, "metadata": {}}
+            return {"text": "", "markdown": "", "page_count": 1, "metadata": {"error": str(e)}}
 
     def _process_docx(self, file_path: Path) -> dict:
         """Process DOCX using python-docx."""
