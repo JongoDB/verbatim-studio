@@ -94,10 +94,6 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
   const [txSaved, setTxSaved] = useState(false);
   const [showHfToken, setShowHfToken] = useState(false);
   const [hfTokenInput, setHfTokenInput] = useState('');
-  // External WhisperX (enterprise feature)
-  const [externalUrlInput, setExternalUrlInput] = useState('');
-  const [externalApiKeyInput, setExternalApiKeyInput] = useState('');
-  const [showExternalApiKey, setShowExternalApiKey] = useState(false);
 
   // AI / LLM model state
   const [aiModels, setAiModels] = useState<AIModel[]>([]);
@@ -263,42 +259,6 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
       setTxSaving(false);
     }
   }, [hfTokenInput]);
-
-  const saveExternalWhisperX = useCallback(async () => {
-    setTxSaving(true);
-    try {
-      const updated = await api.config.updateTranscription({
-        external_url: externalUrlInput,
-        external_api_key: externalApiKeyInput,
-      });
-      setTxSettings(updated);
-      setExternalUrlInput('');
-      setExternalApiKeyInput('');
-      setTxSaved(true);
-    } catch (err) {
-      console.error('Failed to save external WhisperX settings:', err);
-    } finally {
-      setTxSaving(false);
-    }
-  }, [externalUrlInput, externalApiKeyInput]);
-
-  const clearExternalWhisperX = useCallback(async () => {
-    setTxSaving(true);
-    try {
-      const updated = await api.config.updateTranscription({
-        external_url: '',
-        external_api_key: '',
-      });
-      setTxSettings(updated);
-      setExternalUrlInput('');
-      setExternalApiKeyInput('');
-      setTxSaved(true);
-    } catch (err) {
-      console.error('Failed to clear external WhisperX settings:', err);
-    } finally {
-      setTxSaving(false);
-    }
-  }, []);
 
   const refreshAiModels = useCallback(() => {
     api.ai.listModels().then((r) => setAiModels(r.models)).catch(console.error);
@@ -1057,83 +1017,6 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
               </div>
             </div>
 
-            {/* External WhisperX Service (Enterprise) */}
-            <div className={`border-t border-gray-200 dark:border-gray-700 pt-4 ${!txSettings.is_enterprise ? 'opacity-60 cursor-not-allowed' : ''}`}>
-              <div className="flex items-center gap-2 mb-1">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">External WhisperX Service</label>
-                <EnterpriseBadge size="sm" />
-              </div>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
-                Connect to an external WhisperX API server for transcription instead of running locally.
-              </p>
-
-              <div className={!txSettings.is_enterprise ? 'pointer-events-none' : ''}>
-                {/* Show configured status */}
-                {txSettings.is_enterprise && txSettings.external_url && !externalUrlInput && (
-                  <div className="flex items-center gap-2 mb-3">
-                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-purple-50 dark:bg-purple-900/20 text-sm text-purple-700 dark:text-purple-400">
-                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                      </svg>
-                      Connected: <span className="font-mono text-xs">{txSettings.external_url}</span>
-                    </span>
-                    <button
-                      onClick={clearExternalWhisperX}
-                      disabled={txSaving}
-                      className="text-xs text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
-                    >
-                      Disconnect
-                    </button>
-                  </div>
-                )}
-
-                <div className="space-y-3">
-                  {/* URL Input */}
-                  <div>
-                    <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Service URL</label>
-                    <input
-                      type="url"
-                      disabled={!txSettings.is_enterprise}
-                      value={externalUrlInput}
-                      onChange={(e) => setExternalUrlInput(e.target.value)}
-                      placeholder="https://whisperx.example.com/api"
-                      className={`w-full rounded-lg border border-gray-300 dark:border-gray-600 py-2 px-3 text-sm font-mono ${
-                        txSettings.is_enterprise
-                          ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500'
-                          : 'bg-gray-50 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
-                      }`}
-                    />
-                  </div>
-
-                  {/* API Key Input */}
-                  <div>
-                    <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">API Key</label>
-                    <input
-                      type="password"
-                      disabled={!txSettings.is_enterprise}
-                      value={externalApiKeyInput}
-                      onChange={(e) => setExternalApiKeyInput(e.target.value)}
-                      placeholder="sk-••••••••••••••••"
-                      className={`w-full rounded-lg border border-gray-300 dark:border-gray-600 py-2 px-3 text-sm font-mono ${
-                        txSettings.is_enterprise
-                          ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500'
-                          : 'bg-gray-50 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
-                      }`}
-                    />
-                  </div>
-
-                  {/* Save Button */}
-                  <button
-                    onClick={saveExternalWhisperX}
-                    disabled={!txSettings.is_enterprise || !externalUrlInput.trim() || txSaving}
-                    className="px-4 py-2 rounded-lg bg-purple-600 text-white text-sm font-medium hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    Connect
-                  </button>
-                </div>
-              </div>
-            </div>
-
             {/* Footer note */}
             <p className="text-xs text-gray-500 dark:text-gray-400 border-t border-gray-200 dark:border-gray-700 pt-3">
               Changes take effect on the next transcription job. No restart required.
@@ -1141,6 +1024,385 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
           </div>
         </div>
       )}
+
+      {/* External and/or Self-Hosted ASR Services Section (Enterprise) */}
+      <div className="mt-6 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 opacity-60 cursor-not-allowed">
+        <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">External and/or Self-Hosted ASR Services</h2>
+            <EnterpriseBadge size="sm" />
+          </div>
+        </div>
+
+        <div className="px-5 py-4 space-y-4 pointer-events-none">
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            Connect to external or self-hosted speech recognition services instead of running WhisperX locally.
+          </p>
+
+          {/* WhisperX API Card */}
+          <div className="p-4 rounded-lg border border-gray-200 dark:border-gray-600">
+            <div className="flex items-start gap-3">
+              <input type="radio" name="asr-service" disabled className="mt-1" />
+              <div className="flex-1 space-y-4">
+                <div>
+                  <span className="text-sm font-medium text-gray-900 dark:text-gray-100">WhisperX API</span>
+                  <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    Connect to a self-hosted WhisperX server or compatible API endpoint.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Service URL</label>
+                  <input
+                    type="text"
+                    disabled
+                    placeholder="https://whisperx.example.com/api"
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-500 dark:text-gray-400"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">API Key</label>
+                  <input
+                    type="password"
+                    disabled
+                    placeholder="sk-••••••••••••••••"
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-500 dark:text-gray-400"
+                  />
+                </div>
+
+                <div className="flex justify-end">
+                  <button
+                    disabled
+                    className="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-400 dark:text-gray-500"
+                  >
+                    Test Connection
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Faster Whisper Server Card */}
+          <div className="p-4 rounded-lg border border-gray-200 dark:border-gray-600">
+            <div className="flex items-start gap-3">
+              <input type="radio" name="asr-service" disabled className="mt-1" />
+              <div className="flex-1 space-y-4">
+                <div>
+                  <span className="text-sm font-medium text-gray-900 dark:text-gray-100">Faster Whisper Server</span>
+                  <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    Connect to a Faster Whisper server for GPU-accelerated transcription.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Server URL</label>
+                  <input
+                    type="text"
+                    disabled
+                    placeholder="http://localhost:8000"
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-500 dark:text-gray-400"
+                  />
+                </div>
+
+                <div className="flex justify-end">
+                  <button
+                    disabled
+                    className="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-400 dark:text-gray-500"
+                  >
+                    Test Connection
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ASR Service Providers Section (Enterprise) */}
+      <div className="mt-6 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 opacity-60 cursor-not-allowed">
+        <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">ASR Service Providers</h2>
+            <EnterpriseBadge size="sm" />
+          </div>
+        </div>
+
+        <div className="px-5 py-4 space-y-4 pointer-events-none">
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            Connect to cloud-based speech recognition APIs for transcription.
+          </p>
+
+          {/* OpenAI Whisper API Card */}
+          <div className="p-4 rounded-lg border border-gray-200 dark:border-gray-600">
+            <div className="flex items-start gap-3">
+              <input type="radio" name="asr-provider" disabled className="mt-1" />
+              <div className="flex-1 space-y-4">
+                <div>
+                  <span className="text-sm font-medium text-gray-900 dark:text-gray-100">OpenAI Whisper</span>
+                  <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    Use OpenAI's Whisper API for fast, accurate transcription.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">API Key</label>
+                  <input
+                    type="password"
+                    disabled
+                    placeholder="sk-••••••••••••••••"
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-500 dark:text-gray-400"
+                  />
+                </div>
+
+                <div className="flex justify-end">
+                  <button
+                    disabled
+                    className="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-400 dark:text-gray-500"
+                  >
+                    Test Connection
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Deepgram Card */}
+          <div className="p-4 rounded-lg border border-gray-200 dark:border-gray-600">
+            <div className="flex items-start gap-3">
+              <input type="radio" name="asr-provider" disabled className="mt-1" />
+              <div className="flex-1 space-y-4">
+                <div>
+                  <span className="text-sm font-medium text-gray-900 dark:text-gray-100">Deepgram</span>
+                  <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    Enterprise-grade speech recognition with real-time streaming support.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">API Key</label>
+                  <input
+                    type="password"
+                    disabled
+                    placeholder="••••••••••••••••"
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-500 dark:text-gray-400"
+                  />
+                </div>
+
+                <div className="flex justify-end">
+                  <button
+                    disabled
+                    className="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-400 dark:text-gray-500"
+                  >
+                    Test Connection
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* AssemblyAI Card */}
+          <div className="p-4 rounded-lg border border-gray-200 dark:border-gray-600">
+            <div className="flex items-start gap-3">
+              <input type="radio" name="asr-provider" disabled className="mt-1" />
+              <div className="flex-1 space-y-4">
+                <div>
+                  <span className="text-sm font-medium text-gray-900 dark:text-gray-100">AssemblyAI</span>
+                  <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    AI-powered transcription with speaker diarization and content moderation.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">API Key</label>
+                  <input
+                    type="password"
+                    disabled
+                    placeholder="••••••••••••••••"
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-500 dark:text-gray-400"
+                  />
+                </div>
+
+                <div className="flex justify-end">
+                  <button
+                    disabled
+                    className="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-400 dark:text-gray-500"
+                  >
+                    Test Connection
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Rev.ai Card */}
+          <div className="p-4 rounded-lg border border-gray-200 dark:border-gray-600">
+            <div className="flex items-start gap-3">
+              <input type="radio" name="asr-provider" disabled className="mt-1" />
+              <div className="flex-1 space-y-4">
+                <div>
+                  <span className="text-sm font-medium text-gray-900 dark:text-gray-100">Rev.ai</span>
+                  <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    High-accuracy speech recognition backed by human-quality transcription.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Access Token</label>
+                  <input
+                    type="password"
+                    disabled
+                    placeholder="••••••••••••••••"
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-500 dark:text-gray-400"
+                  />
+                </div>
+
+                <div className="flex justify-end">
+                  <button
+                    disabled
+                    className="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-400 dark:text-gray-500"
+                  >
+                    Test Connection
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Google Cloud Speech-to-Text Card */}
+          <div className="p-4 rounded-lg border border-gray-200 dark:border-gray-600">
+            <div className="flex items-start gap-3">
+              <input type="radio" name="asr-provider" disabled className="mt-1" />
+              <div className="flex-1 space-y-4">
+                <div>
+                  <span className="text-sm font-medium text-gray-900 dark:text-gray-100">Google Cloud Speech-to-Text</span>
+                  <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    Google's speech recognition with 125+ language support.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Service Account JSON</label>
+                  <input
+                    type="file"
+                    disabled
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-500 dark:text-gray-400"
+                  />
+                </div>
+
+                <div className="flex justify-end">
+                  <button
+                    disabled
+                    className="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-400 dark:text-gray-500"
+                  >
+                    Test Connection
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Amazon Transcribe Card */}
+          <div className="p-4 rounded-lg border border-gray-200 dark:border-gray-600">
+            <div className="flex items-start gap-3">
+              <input type="radio" name="asr-provider" disabled className="mt-1" />
+              <div className="flex-1 space-y-4">
+                <div>
+                  <span className="text-sm font-medium text-gray-900 dark:text-gray-100">Amazon Transcribe</span>
+                  <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    AWS speech recognition with custom vocabulary and redaction features.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Access Key ID</label>
+                  <input
+                    type="text"
+                    disabled
+                    placeholder="AKIA••••••••••••"
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-500 dark:text-gray-400"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Secret Access Key</label>
+                  <input
+                    type="password"
+                    disabled
+                    placeholder="••••••••••••••••"
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-500 dark:text-gray-400"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Region</label>
+                  <select
+                    disabled
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-500 dark:text-gray-400"
+                  >
+                    <option>us-east-1</option>
+                    <option>us-west-2</option>
+                    <option>eu-west-1</option>
+                  </select>
+                </div>
+
+                <div className="flex justify-end">
+                  <button
+                    disabled
+                    className="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-400 dark:text-gray-500"
+                  >
+                    Test Connection
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Azure Speech Services Card */}
+          <div className="p-4 rounded-lg border border-gray-200 dark:border-gray-600">
+            <div className="flex items-start gap-3">
+              <input type="radio" name="asr-provider" disabled className="mt-1" />
+              <div className="flex-1 space-y-4">
+                <div>
+                  <span className="text-sm font-medium text-gray-900 dark:text-gray-100">Azure Speech Services</span>
+                  <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    Microsoft's speech recognition with custom speech models and neural voices.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Subscription Key</label>
+                  <input
+                    type="password"
+                    disabled
+                    placeholder="••••••••••••••••"
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-500 dark:text-gray-400"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Region</label>
+                  <input
+                    type="text"
+                    disabled
+                    placeholder="eastus"
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-500 dark:text-gray-400"
+                  />
+                </div>
+
+                <div className="flex justify-end">
+                  <button
+                    disabled
+                    className="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-400 dark:text-gray-500"
+                  >
+                    Test Connection
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
         </>
       )}
 
@@ -1429,18 +1691,224 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
         </div>
       </div>
 
-      {/* External AI Providers Section (Enterprise) */}
+      {/* External and/or Self-Hosted LLM Services Section (Enterprise) */}
       <div className="mt-6 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 opacity-60 cursor-not-allowed">
         <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">External AI Providers</h2>
+            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">External and/or Self-Hosted LLM Services</h2>
             <EnterpriseBadge size="sm" />
           </div>
         </div>
 
         <div className="px-5 py-4 space-y-4 pointer-events-none">
           <p className="text-sm text-gray-600 dark:text-gray-400">
-            Connect to external LLM services instead of running models locally.
+            Connect to self-hosted or local LLM services instead of running models directly.
+          </p>
+
+          {/* Ollama Card */}
+          <div className="p-4 rounded-lg border border-gray-200 dark:border-gray-600">
+            <div className="flex items-start gap-3">
+              <input type="radio" name="llm-service" disabled className="mt-1" />
+              <div className="flex-1 space-y-4">
+                <div>
+                  <span className="text-sm font-medium text-gray-900 dark:text-gray-100">Ollama</span>
+                  <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    Run LLMs locally with Ollama's simple API interface.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Server URL</label>
+                  <input
+                    type="text"
+                    disabled
+                    placeholder="http://localhost:11434"
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-500 dark:text-gray-400"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Model</label>
+                  <input
+                    type="text"
+                    disabled
+                    placeholder="llama3.2"
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-500 dark:text-gray-400"
+                  />
+                </div>
+
+                <div className="flex justify-end">
+                  <button
+                    disabled
+                    className="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-400 dark:text-gray-500"
+                  >
+                    Test Connection
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* LM Studio Card */}
+          <div className="p-4 rounded-lg border border-gray-200 dark:border-gray-600">
+            <div className="flex items-start gap-3">
+              <input type="radio" name="llm-service" disabled className="mt-1" />
+              <div className="flex-1 space-y-4">
+                <div>
+                  <span className="text-sm font-medium text-gray-900 dark:text-gray-100">LM Studio</span>
+                  <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    Run local LLMs with LM Studio's OpenAI-compatible server.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Server URL</label>
+                  <input
+                    type="text"
+                    disabled
+                    placeholder="http://localhost:1234/v1"
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-500 dark:text-gray-400"
+                  />
+                </div>
+
+                <div className="flex justify-end">
+                  <button
+                    disabled
+                    className="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-400 dark:text-gray-500"
+                  >
+                    Test Connection
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* vLLM Card */}
+          <div className="p-4 rounded-lg border border-gray-200 dark:border-gray-600">
+            <div className="flex items-start gap-3">
+              <input type="radio" name="llm-service" disabled className="mt-1" />
+              <div className="flex-1 space-y-4">
+                <div>
+                  <span className="text-sm font-medium text-gray-900 dark:text-gray-100">vLLM</span>
+                  <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    High-throughput LLM serving with PagedAttention.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Server URL</label>
+                  <input
+                    type="text"
+                    disabled
+                    placeholder="http://localhost:8000/v1"
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-500 dark:text-gray-400"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Model</label>
+                  <input
+                    type="text"
+                    disabled
+                    placeholder="meta-llama/Llama-3.2-3B-Instruct"
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-500 dark:text-gray-400"
+                  />
+                </div>
+
+                <div className="flex justify-end">
+                  <button
+                    disabled
+                    className="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-400 dark:text-gray-500"
+                  >
+                    Test Connection
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* LocalAI Card */}
+          <div className="p-4 rounded-lg border border-gray-200 dark:border-gray-600">
+            <div className="flex items-start gap-3">
+              <input type="radio" name="llm-service" disabled className="mt-1" />
+              <div className="flex-1 space-y-4">
+                <div>
+                  <span className="text-sm font-medium text-gray-900 dark:text-gray-100">LocalAI</span>
+                  <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    Self-hosted OpenAI-compatible API for running LLMs locally.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Server URL</label>
+                  <input
+                    type="text"
+                    disabled
+                    placeholder="http://localhost:8080/v1"
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-500 dark:text-gray-400"
+                  />
+                </div>
+
+                <div className="flex justify-end">
+                  <button
+                    disabled
+                    className="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-400 dark:text-gray-500"
+                  >
+                    Test Connection
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Text Generation WebUI Card */}
+          <div className="p-4 rounded-lg border border-gray-200 dark:border-gray-600">
+            <div className="flex items-start gap-3">
+              <input type="radio" name="llm-service" disabled className="mt-1" />
+              <div className="flex-1 space-y-4">
+                <div>
+                  <span className="text-sm font-medium text-gray-900 dark:text-gray-100">Text Generation WebUI</span>
+                  <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    Oobabooga's text-generation-webui with OpenAI-compatible API.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">API URL</label>
+                  <input
+                    type="text"
+                    disabled
+                    placeholder="http://localhost:5000/v1"
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-500 dark:text-gray-400"
+                  />
+                </div>
+
+                <div className="flex justify-end">
+                  <button
+                    disabled
+                    className="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-400 dark:text-gray-500"
+                  >
+                    Test Connection
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* AI Model Providers Section (Enterprise) */}
+      <div className="mt-6 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 opacity-60 cursor-not-allowed">
+        <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">AI Model Providers</h2>
+            <EnterpriseBadge size="sm" />
+          </div>
+        </div>
+
+        <div className="px-5 py-4 space-y-4 pointer-events-none">
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            Connect to cloud-based AI providers for enhanced capabilities.
           </p>
 
           {/* OpenAI-compatible Card */}
@@ -1451,7 +1919,7 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
                 <div>
                   <span className="text-sm font-medium text-gray-900 dark:text-gray-100">OpenAI-compatible</span>
                   <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                    Works with OpenAI, Azure OpenAI, Ollama, vLLM, LocalAI, and other compatible APIs.
+                    Connect to any OpenAI-compatible API endpoint.
                   </p>
                 </div>
 
