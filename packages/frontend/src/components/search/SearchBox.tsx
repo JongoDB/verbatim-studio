@@ -190,6 +190,8 @@ export function SearchBox({ onResultClick, placeholder = 'Search files and conte
                           ? 'text-blue-500'
                           : result.type === 'document'
                           ? 'text-purple-500'
+                          : result.type === 'note'
+                          ? 'text-amber-500'
                           : 'text-green-500'
                       }`}>
                         {result.type === 'recording' ? (
@@ -199,6 +201,10 @@ export function SearchBox({ onResultClick, placeholder = 'Search files and conte
                         ) : result.type === 'document' ? (
                           <svg className="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                             <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
+                        ) : result.type === 'note' ? (
+                          <svg className="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
                           </svg>
                         ) : (
                           <svg className="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -214,12 +220,14 @@ export function SearchBox({ onResultClick, placeholder = 'Search files and conte
                             ? highlightMatch(result.recording_title, query)
                             : result.type === 'document'
                             ? highlightMatch(result.document_title || result.title, query)
+                            : result.type === 'note'
+                            ? (result.document_title || result.recording_title || 'Note')
                             : result.recording_title
                           }
                         </div>
 
-                        {/* Text preview (for segment or document) */}
-                        {(result.type === 'segment' || result.type === 'document') && result.text && (
+                        {/* Text preview (for segment, document, or note) */}
+                        {(result.type === 'segment' || result.type === 'document' || result.type === 'note') && result.text && (
                           <div className="mt-1 text-sm text-gray-600 dark:text-gray-300 line-clamp-2">
                             {highlightMatch(result.text, query)}
                           </div>
@@ -232,9 +240,11 @@ export function SearchBox({ onResultClick, placeholder = 'Search files and conte
                               ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
                               : result.type === 'document'
                               ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300'
+                              : result.type === 'note'
+                              ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300'
                               : 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
                           }`}>
-                            {result.type === 'recording' ? 'Recording' : result.type === 'document' ? 'Document' : 'Segment'}
+                            {result.type === 'recording' ? 'Recording' : result.type === 'document' ? 'Document' : result.type === 'note' ? 'Note' : 'Segment'}
                           </span>
                           {result.match_type === 'semantic' && (
                             <span className="px-1.5 py-0.5 rounded bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300">
@@ -243,6 +253,13 @@ export function SearchBox({ onResultClick, placeholder = 'Search files and conte
                           )}
                           {result.start_time !== null && (
                             <span>at {formatTime(result.start_time)}</span>
+                          )}
+                          {result.type === 'note' && result.anchor_type && (
+                            <span>
+                              {result.anchor_type === 'page' ? `Page ${(result.anchor_data as Record<string, unknown>)?.page || ''}` :
+                               result.anchor_type === 'selection' ? 'Selection' :
+                               result.anchor_type}
+                            </span>
                           )}
                         </div>
                       </div>
