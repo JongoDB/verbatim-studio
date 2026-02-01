@@ -266,6 +266,20 @@ export interface GlobalSearchResponse {
   total: number;
 }
 
+export interface DocumentSearchResult {
+  document_id: string;
+  document_title: string;
+  chunk_text: string;
+  chunk_index: number;
+  similarity: number;
+  page: number | null;
+}
+
+export interface DocumentSearchResponse {
+  results: DocumentSearchResult[];
+  total: number;
+}
+
 export interface RecordingStats {
   total_recordings: number;
   total_duration_seconds: number;
@@ -474,7 +488,8 @@ export interface AIChatRequest {
 
 export interface ChatMultiRequest {
   message: string;
-  recording_ids: string[];  // Recording IDs to attach for context
+  recording_ids: string[];   // Recording IDs to attach for context
+  document_ids?: string[];   // Document IDs to attach for context
   history: Array<{ role: 'user' | 'assistant'; content: string }>;
   temperature?: number;
 }
@@ -1293,6 +1308,12 @@ class ApiClient {
       if (options?.limit) params.set('limit', options.limit.toString());
       if (options?.semantic !== undefined) params.set('semantic', options.semantic.toString());
       return this.request<GlobalSearchResponse>(`/api/search/global?${params.toString()}`);
+    },
+
+    documents: (query: string, projectId?: string, limit = 20) => {
+      const params = new URLSearchParams({ query, limit: limit.toString() });
+      if (projectId) params.set('project_id', projectId);
+      return this.request<DocumentSearchResponse>(`/api/search/documents?${params.toString()}`);
     },
   };
 
