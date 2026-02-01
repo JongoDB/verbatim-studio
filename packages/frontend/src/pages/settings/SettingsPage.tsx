@@ -5,6 +5,7 @@ import { StorageSubtypeSelector } from '@/components/storage/StorageSubtypeSelec
 import { StorageConfigForm } from '@/components/storage/StorageConfigForm';
 import { OAuthCredentialsConfig } from '@/components/storage/OAuthCredentialsConfig';
 import { TIMEZONE_OPTIONS, getStoredTimezone, setStoredTimezone, type TimezoneValue } from '@/lib/utils';
+import { EnterpriseBadge } from '@/components/ui/EnterpriseBadge';
 
 interface SettingsPageProps {
   theme: 'light' | 'dark' | 'system';
@@ -1039,8 +1040,158 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
       {/* ===== AI TAB ===== */}
       {activeTab === 'ai' && (
         <>
-      {/* Large Language Model Section */}
+      {/* Vision Language Model Section */}
       <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+        <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Vision Language Model</h2>
+            {ocrModels.some((m) => m.downloaded) ? (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300">
+                <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                Ready
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400">
+                <span className="w-1.5 h-1.5 rounded-full bg-gray-400" />
+                Not installed
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div className="px-5 py-4 space-y-4">
+          {ocrError && (
+            <div className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-sm text-red-600 dark:text-red-400">
+              {ocrError}
+              <button onClick={() => setOcrError(null)} className="ml-2 underline">Dismiss</button>
+            </div>
+          )}
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Available Models</label>
+            <div className="space-y-3">
+              {ocrModels.map((model) => {
+                const isDownloading = ocrDownloading === model.id || model.downloading;
+                const isInstalled = model.downloaded && !model.downloading;
+                return (
+                <div
+                  key={model.id}
+                  className={`p-4 rounded-lg border transition-all ${
+                    isInstalled
+                      ? 'border-green-300 dark:border-green-700 bg-green-50/50 dark:bg-green-900/10'
+                      : isDownloading
+                      ? 'border-blue-300 dark:border-blue-700 bg-blue-50/50 dark:bg-blue-900/10'
+                      : 'border-gray-200 dark:border-gray-600'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{model.label}</span>
+                        {model.is_default && (
+                          <span className="px-1.5 py-0.5 text-xs rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">
+                            Recommended
+                          </span>
+                        )}
+                        {isDownloading && (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">
+                            <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                            </svg>
+                            Downloading
+                          </span>
+                        )}
+                        {isInstalled && (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs rounded bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300">
+                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                            </svg>
+                            Installed
+                          </span>
+                        )}
+                      </div>
+                      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{model.description}</p>
+                      <p className="mt-0.5 text-xs text-gray-400 dark:text-gray-500">
+                        {isInstalled && model.size_on_disk
+                          ? `${formatBytes(model.size_on_disk)} on disk`
+                          : isDownloading && model.size_on_disk
+                          ? `${formatBytes(model.size_on_disk)} / ${formatBytes(model.size_bytes)}`
+                          : `~${formatBytes(model.size_bytes)} download`}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      {!isInstalled && !isDownloading && (
+                        <button
+                          onClick={() => handleDownloadOcrModel(model.id)}
+                          className="px-3 py-1.5 text-xs font-medium rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+                        >
+                          Download
+                        </button>
+                      )}
+
+                      {isInstalled && (
+                        <button
+                          onClick={() => handleDeleteOcrModel(model.id)}
+                          className="px-3 py-1.5 text-xs font-medium rounded-lg border border-destructive/50 text-destructive hover:bg-destructive/10 transition-colors"
+                        >
+                          Delete
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Download progress */}
+                  {isDownloading && (
+                    <div className="mt-3">
+                      {ocrDownloadProgress && ocrDownloading === model.id ? (
+                        <>
+                          <div className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-blue-500 dark:bg-blue-400 transition-all duration-300"
+                              style={{ width: `${ocrDownloadProgress.percent}%` }}
+                            />
+                          </div>
+                          <div className="flex items-center justify-between mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                            <span>{formatBytes(ocrDownloadProgress.downloaded)} / {formatBytes(ocrDownloadProgress.total)}</span>
+                            <span>{ocrDownloadProgress.percent}%</span>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                          <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                          </svg>
+                          <span>{ocrDownloadMessage || 'Downloading...'}</span>
+                        </div>
+                      )}
+                      <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                        This may take several minutes depending on your connection speed.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              );
+              })}
+
+              {ocrModels.length === 0 && (
+                <p className="text-sm text-gray-500 dark:text-gray-400 py-2">
+                  Loading models...
+                </p>
+              )}
+            </div>
+          </div>
+
+          <p className="text-xs text-gray-500 dark:text-gray-400 border-t border-gray-200 dark:border-gray-700 pt-3">
+            OCR enables high-quality text extraction from scanned PDFs and images. Models run locally on your machine.
+          </p>
+        </div>
+      </div>
+
+      {/* Large Language Model Section */}
+      <div className="mt-6 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
         <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Large Language Model</h2>
@@ -1171,152 +1322,170 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
         </div>
       </div>
 
-      {/* OCR Model Section */}
-      <div className="mt-6 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+      {/* External AI Providers Section (Enterprise) */}
+      <div className="mt-6 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 opacity-60 cursor-not-allowed">
         <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Document OCR</h2>
-            {ocrModels.some((m) => m.downloaded) ? (
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300">
-                <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
-                Ready
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400">
-                <span className="w-1.5 h-1.5 rounded-full bg-gray-400" />
-                Not installed
-              </span>
-            )}
+            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">External AI Providers</h2>
+            <EnterpriseBadge size="sm" />
           </div>
         </div>
 
-        <div className="px-5 py-4 space-y-4">
-          {ocrError && (
-            <div className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-sm text-red-600 dark:text-red-400">
-              {ocrError}
-              <button onClick={() => setOcrError(null)} className="ml-2 underline">Dismiss</button>
-            </div>
-          )}
+        <div className="px-5 py-4 space-y-4 pointer-events-none">
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            Connect to external LLM services instead of running models locally.
+          </p>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">OCR Model</label>
-            <div className="space-y-3">
-              {ocrModels.map((model) => {
-                const isDownloading = ocrDownloading === model.id || model.downloading;
-                const isInstalled = model.downloaded && !model.downloading;
-                return (
-                <div
-                  key={model.id}
-                  className={`p-4 rounded-lg border transition-all ${
-                    isInstalled
-                      ? 'border-green-300 dark:border-green-700 bg-green-50/50 dark:bg-green-900/10'
-                      : isDownloading
-                      ? 'border-blue-300 dark:border-blue-700 bg-blue-50/50 dark:bg-blue-900/10'
-                      : 'border-gray-200 dark:border-gray-600'
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{model.label}</span>
-                        {model.is_default && (
-                          <span className="px-1.5 py-0.5 text-xs rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">
-                            Recommended
-                          </span>
-                        )}
-                        {isDownloading && (
-                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">
-                            <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
-                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                            </svg>
-                            Downloading
-                          </span>
-                        )}
-                        {isInstalled && (
-                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs rounded bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300">
-                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                            </svg>
-                            Installed
-                          </span>
-                        )}
-                      </div>
-                      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{model.description}</p>
-                      <p className="mt-0.5 text-xs text-gray-400 dark:text-gray-500">
-                        {isInstalled && model.size_on_disk
-                          ? `${formatBytes(model.size_on_disk)} on disk`
-                          : isDownloading && model.size_on_disk
-                          ? `${formatBytes(model.size_on_disk)} / ${formatBytes(model.size_bytes)}`
-                          : `~${formatBytes(model.size_bytes)} download`}
-                      </p>
-                    </div>
-
-                    <div className="flex items-center gap-2 shrink-0">
-                      {!isInstalled && !isDownloading && (
-                        <button
-                          onClick={() => handleDownloadOcrModel(model.id)}
-                          className="px-3 py-1.5 text-xs font-medium rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
-                        >
-                          Download
-                        </button>
-                      )}
-
-                      {isInstalled && (
-                        <button
-                          onClick={() => handleDeleteOcrModel(model.id)}
-                          className="px-3 py-1.5 text-xs font-medium rounded-lg border border-destructive/50 text-destructive hover:bg-destructive/10 transition-colors"
-                        >
-                          Delete
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Download progress */}
-                  {isDownloading && (
-                    <div className="mt-3">
-                      {ocrDownloadProgress && ocrDownloading === model.id ? (
-                        <>
-                          <div className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                            <div
-                              className="h-full bg-blue-500 dark:bg-blue-400 transition-all duration-300"
-                              style={{ width: `${ocrDownloadProgress.percent}%` }}
-                            />
-                          </div>
-                          <div className="flex items-center justify-between mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-                            <span>{formatBytes(ocrDownloadProgress.downloaded)} / {formatBytes(ocrDownloadProgress.total)}</span>
-                            <span>{ocrDownloadProgress.percent}%</span>
-                          </div>
-                        </>
-                      ) : (
-                        <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-                          <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                          </svg>
-                          <span>{ocrDownloadMessage || 'Downloading...'}</span>
-                        </div>
-                      )}
-                      <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
-                        This may take several minutes depending on your connection speed.
-                      </p>
-                    </div>
-                  )}
+          {/* OpenAI-compatible Card */}
+          <div className="p-4 rounded-lg border border-gray-200 dark:border-gray-600">
+            <div className="flex items-start gap-3">
+              <input type="radio" name="external-provider" disabled className="mt-1" />
+              <div className="flex-1 space-y-4">
+                <div>
+                  <span className="text-sm font-medium text-gray-900 dark:text-gray-100">OpenAI-compatible</span>
+                  <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    Works with OpenAI, Azure OpenAI, Ollama, vLLM, LocalAI, and other compatible APIs.
+                  </p>
                 </div>
-              );
-              })}
 
-              {ocrModels.length === 0 && (
-                <p className="text-sm text-gray-500 dark:text-gray-400 py-2">
-                  Loading OCR models...
-                </p>
-              )}
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Base URL</label>
+                  <input
+                    type="text"
+                    disabled
+                    placeholder="https://api.openai.com/v1"
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-500 dark:text-gray-400"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">API Key</label>
+                  <input
+                    type="password"
+                    disabled
+                    placeholder="sk-••••••••••••••••"
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-500 dark:text-gray-400"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Model</label>
+                  <select
+                    disabled
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-500 dark:text-gray-400"
+                  >
+                    <option>gpt-4o</option>
+                    <option>gpt-4o-mini</option>
+                    <option>gpt-4-turbo</option>
+                  </select>
+                </div>
+
+                <div className="flex justify-end">
+                  <button
+                    disabled
+                    className="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-400 dark:text-gray-500"
+                  >
+                    Test Connection
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Anthropic Card */}
+          <div className="p-4 rounded-lg border border-gray-200 dark:border-gray-600">
+            <div className="flex items-start gap-3">
+              <input type="radio" name="external-provider" disabled className="mt-1" />
+              <div className="flex-1 space-y-4">
+                <div>
+                  <span className="text-sm font-medium text-gray-900 dark:text-gray-100">Anthropic</span>
+                  <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    Access Claude models directly via the Anthropic API.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">API Key</label>
+                  <input
+                    type="password"
+                    disabled
+                    placeholder="sk-ant-••••••••••••••••"
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-500 dark:text-gray-400"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Model</label>
+                  <select
+                    disabled
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-500 dark:text-gray-400"
+                  >
+                    <option>claude-sonnet-4-20250514</option>
+                    <option>claude-opus-4-20250514</option>
+                    <option>claude-3-5-haiku-20241022</option>
+                  </select>
+                </div>
+
+                <div className="flex justify-end">
+                  <button
+                    disabled
+                    className="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-400 dark:text-gray-500"
+                  >
+                    Test Connection
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Google AI Card */}
+          <div className="p-4 rounded-lg border border-gray-200 dark:border-gray-600">
+            <div className="flex items-start gap-3">
+              <input type="radio" name="external-provider" disabled className="mt-1" />
+              <div className="flex-1 space-y-4">
+                <div>
+                  <span className="text-sm font-medium text-gray-900 dark:text-gray-100">Google AI</span>
+                  <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    Access Gemini models via the Google AI Studio API.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">API Key</label>
+                  <input
+                    type="password"
+                    disabled
+                    placeholder="AIza••••••••••••••••"
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-500 dark:text-gray-400"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Model</label>
+                  <select
+                    disabled
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-500 dark:text-gray-400"
+                  >
+                    <option>gemini-1.5-pro</option>
+                    <option>gemini-1.5-flash</option>
+                    <option>gemini-2.0-flash</option>
+                  </select>
+                </div>
+
+                <div className="flex justify-end">
+                  <button
+                    disabled
+                    className="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-400 dark:text-gray-500"
+                  >
+                    Test Connection
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
 
           <p className="text-xs text-gray-500 dark:text-gray-400 border-t border-gray-200 dark:border-gray-700 pt-3">
-            OCR enables high-quality text extraction from scanned PDFs and images. The model is ~4GB and runs locally.
+            External providers require an Enterprise license. Contact sales@verbatim.studio for more information.
           </p>
         </div>
       </div>
@@ -1553,12 +1722,30 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
                     ) : (
                       <div>
                         <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Path</label>
-                        <input
-                          type="text"
-                          value={editingLocation.config.path || ''}
-                          onChange={(e) => setEditingLocation({ ...editingLocation, config: { ...editingLocation.config, path: e.target.value } })}
-                          className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 py-2 px-3 text-sm font-mono text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        />
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            value={editingLocation.config.path || ''}
+                            onChange={(e) => setEditingLocation({ ...editingLocation, config: { ...editingLocation.config, path: e.target.value } })}
+                            className="flex-1 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 py-2 px-3 text-sm font-mono text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          />
+                          {'showDirectoryPicker' in window && (
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                try {
+                                  const dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+                                  setEditingLocation({ ...editingLocation, config: { ...editingLocation.config, path: dirHandle.name } });
+                                } catch {
+                                  // User cancelled
+                                }
+                              }}
+                              className="px-3 py-2 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 transition-colors whitespace-nowrap"
+                            >
+                              Browse...
+                            </button>
+                          )}
+                        </div>
                       </div>
                     )}
                     <div className="flex gap-2 justify-end">
