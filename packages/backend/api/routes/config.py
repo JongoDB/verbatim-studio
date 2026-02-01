@@ -117,9 +117,12 @@ class TranscriptionSettingsResponse(BaseModel):
     hf_token_set: bool
     hf_token_masked: str | None
 
-    # External mode info
+    # External mode info (enterprise feature)
     mode: str  # "local" or "external"
     external_url: str | None
+    external_api_key_set: bool
+    external_api_key_masked: str | None
+    is_enterprise: bool  # Whether enterprise mode is enabled
 
     # Available options for UI dropdowns
     available_models: list[str]
@@ -141,6 +144,9 @@ class TranscriptionSettingsUpdate(BaseModel):
     batch_size: int | None = None
     diarize: bool | None = None
     hf_token: str | None = None
+    # External WhisperX service (enterprise feature)
+    external_url: str | None = None
+    external_api_key: str | None = None
 
 
 def _mask_token(token: str | None) -> str | None:
@@ -176,6 +182,8 @@ def _get_engine_caveats(engine: str, effective_engine: str, diarize: bool) -> li
 
 def _build_response(effective: dict[str, Any]) -> TranscriptionSettingsResponse:
     hf_token = effective.get("hf_token")
+    external_url = effective.get("external_url")
+    external_api_key = effective.get("external_api_key")
 
     # Resolve engine
     engine = effective.get("engine", "auto")
@@ -192,6 +200,9 @@ def _build_response(effective: dict[str, Any]) -> TranscriptionSettingsResponse:
     # This helps the UI show only relevant device options
     available_devices = detect_available_devices()
 
+    # Determine mode based on effective settings (DB or env var)
+    mode = "external" if external_url else "local"
+
     return TranscriptionSettingsResponse(
         engine=engine,
         effective_engine=effective_engine,
@@ -204,8 +215,11 @@ def _build_response(effective: dict[str, Any]) -> TranscriptionSettingsResponse:
         diarize=effective["diarize"],
         hf_token_set=bool(hf_token),
         hf_token_masked=_mask_token(hf_token),
-        mode="external" if settings.WHISPERX_EXTERNAL_URL else "local",
-        external_url=settings.WHISPERX_EXTERNAL_URL,
+        mode=mode,
+        external_url=external_url,
+        external_api_key_set=bool(external_api_key),
+        external_api_key_masked=_mask_token(external_api_key),
+        is_enterprise=settings.MODE == "enterprise",
         available_models=VALID_MODELS,
         available_devices=available_devices,
         available_compute_types=VALID_COMPUTE_TYPES,
@@ -260,6 +274,15 @@ async def update_transcription_config(
 
     if body.hf_token is not None:
         updates["hf_token"] = body.hf_token
+
+    # External WhisperX settings (enterprise feature)
+    if body.external_url is not None:
+        # Allow empty string to clear the URL
+        updates["external_url"] = body.external_url if body.external_url else None
+
+    if body.external_api_key is not None:
+        # Allow empty string to clear the key
+        updates["external_api_key"] = body.external_api_key if body.external_api_key else None
 
     if not updates:
         raise HTTPException(400, "No valid fields provided")

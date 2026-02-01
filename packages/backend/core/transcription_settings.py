@@ -22,6 +22,9 @@ DEFAULTS: dict[str, Any] = {
     "batch_size": 16,
     "diarize": True,
     "hf_token": None,
+    # External WhisperX service (enterprise feature)
+    "external_url": None,
+    "external_api_key": None,
 }
 
 VALID_ENGINES = ["auto", "whisperx", "mlx-whisper"]
@@ -266,6 +269,11 @@ async def get_transcription_settings() -> dict[str, Any]:
         effective["compute_type"] = env_settings.WHISPERX_COMPUTE_TYPE
     if env_settings.HF_TOKEN:
         effective["hf_token"] = env_settings.HF_TOKEN
+    # External WhisperX service from env vars
+    if env_settings.WHISPERX_EXTERNAL_URL:
+        effective["external_url"] = env_settings.WHISPERX_EXTERNAL_URL
+    if env_settings.WHISPERX_API_KEY:
+        effective["external_api_key"] = env_settings.WHISPERX_API_KEY
 
     # Layer 3: DB overrides (highest priority)
     try:

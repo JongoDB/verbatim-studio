@@ -779,8 +779,14 @@ export interface TranscriptionSettings {
   diarize: boolean;
   hf_token_set: boolean;
   hf_token_masked: string | null;
+
+  // External WhisperX (enterprise feature)
   mode: 'local' | 'external';
   external_url: string | null;
+  external_api_key_set: boolean;
+  external_api_key_masked: string | null;
+  is_enterprise: boolean;
+
   available_models: string[];
   available_devices: string[];
   available_compute_types: string[];
@@ -796,6 +802,9 @@ export interface TranscriptionSettingsUpdate {
   batch_size?: number;
   diarize?: boolean;
   hf_token?: string;
+  // External WhisperX (enterprise feature)
+  external_url?: string;
+  external_api_key?: string;
 }
 
 // System Info Types
