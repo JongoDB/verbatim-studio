@@ -1,9 +1,11 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { renderAsync } from 'docx-preview';
 import ExcelJS from 'exceljs';
+import { MessageSquare } from 'lucide-react';
 import { api, type Document } from '@/lib/api';
+import { NotesPanel, PDFViewer } from '@/components/documents';
 
 interface DocumentViewerPageProps {
   documentId: string;
@@ -39,7 +41,30 @@ export function DocumentViewerPage({ documentId, onBack }: DocumentViewerPagePro
   const [slides, setSlides] = useState<SlideData[]>([]);
   const [activeSlide, setActiveSlide] = useState(0);
   const [ocrContent, setOcrContent] = useState<string | null>(null);
+  const [showNotes, setShowNotes] = useState(false);
+  const [currentPdfPage, setCurrentPdfPage] = useState(1);
+  const [pendingAnchor, setPendingAnchor] = useState<{ type: 'selection'; data: { text: string; page: number } } | null>(null);
+  const [highlightText, setHighlightText] = useState<string | null>(null);
   const docxContainerRef = useRef<HTMLDivElement>(null);
+
+  // Handle text selection in PDF to create a note
+  const handlePdfSelectionNote = useCallback((selection: { text: string; page: number }) => {
+    setPendingAnchor({ type: 'selection', data: selection });
+    setShowNotes(true);
+  }, []);
+
+  // Handle navigation to anchor from notes panel
+  const handleNavigateToAnchor = useCallback((anchorType: string, anchorData: Record<string, unknown>) => {
+    if (anchorType === 'page' && typeof anchorData.page === 'number') {
+      setCurrentPdfPage(anchorData.page);
+    } else if (anchorType === 'selection' && typeof anchorData.text === 'string') {
+      // Navigate to page and highlight text
+      if (typeof anchorData.page === 'number') {
+        setCurrentPdfPage(anchorData.page);
+      }
+      setHighlightText(anchorData.text);
+    }
+  }, []);
 
   const handleRunOcr = async () => {
     if (!document || ocrRunning) return;
@@ -397,11 +422,25 @@ export function DocumentViewerPage({ documentId, onBack }: DocumentViewerPagePro
             </svg>
             Download
           </a>
+          {/* Notes toggle button */}
+          <button
+            onClick={() => setShowNotes(!showNotes)}
+            className={`inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
+              showNotes
+                ? 'text-white bg-blue-600 hover:bg-blue-700'
+                : 'text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700'
+            }`}
+          >
+            <MessageSquare className="w-4 h-4" />
+            Notes
+          </button>
         </div>
       </div>
 
-      {/* Content */}
-      <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden">
+      {/* Content with optional notes panel */}
+      <div className="flex gap-4">
+        {/* Main document area */}
+        <div className={`flex-1 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden ${showNotes ? 'w-2/3' : 'w-full'}`}>
         {document.status === 'processing' && (
           <div className="p-8 text-center">
             <svg className="w-8 h-8 animate-spin text-blue-500 mx-auto" viewBox="0 0 24 24" fill="none">
@@ -446,22 +485,25 @@ export function DocumentViewerPage({ documentId, onBack }: DocumentViewerPagePro
         {document.status === 'completed' && (
           <>
             {isPdf && (
-              <div className="flex flex-col">
-                <iframe
-                  src={api.documents.getFileUrl(documentId, true)}
-                  className={`w-full ${ocrContent ? 'h-[50vh]' : 'h-[calc(100vh-260px)]'}`}
-                  title={document.title}
+              <div className="flex flex-col h-[calc(100vh-260px)]">
+                <PDFViewer
+                  url={api.documents.getFileUrl(documentId, true)}
+                  onSelectionNote={handlePdfSelectionNote}
+                  currentPage={currentPdfPage}
+                  onPageChange={setCurrentPdfPage}
+                  highlightText={highlightText}
+                  onHighlightCleared={() => setHighlightText(null)}
                 />
                 {/* OCR Results */}
                 {ocrContent && (
-                  <div className="border-t border-gray-200 dark:border-gray-700 p-4">
+                  <div className="border-t border-gray-200 dark:border-gray-700 p-4 max-h-[30vh] overflow-auto">
                     <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2">
                       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                       </svg>
                       Extracted Text (OCR)
                     </h3>
-                    <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-4 max-h-[30vh] overflow-auto">
+                    <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-4">
                       <pre className="text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap font-mono">
                         {ocrContent}
                       </pre>
@@ -671,6 +713,21 @@ export function DocumentViewerPage({ documentId, onBack }: DocumentViewerPagePro
         {document.status === 'pending' && (
           <div className="p-8 text-center">
             <p className="text-gray-500 dark:text-gray-400">Document queued for processing...</p>
+          </div>
+        )}
+        </div>
+
+        {/* Notes Panel Sidebar */}
+        {showNotes && (
+          <div className="w-80 flex-shrink-0 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden h-[calc(100vh-260px)]">
+            <NotesPanel
+              documentId={documentId}
+              currentPage={currentPdfPage}
+              onNavigateToAnchor={handleNavigateToAnchor}
+              onClose={() => setShowNotes(false)}
+              pendingAnchor={pendingAnchor}
+              onPendingAnchorUsed={() => setPendingAnchor(null)}
+            />
           </div>
         )}
       </div>

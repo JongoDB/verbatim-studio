@@ -640,7 +640,7 @@ export interface Document {
   mime_type: string;
   file_size_bytes: number;
   project_id: string | null;
-  status: 'pending' | 'processing' | 'completed' | 'failed';
+  status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
   error_message: string | null;
   page_count: number | null;
   metadata: Record<string, unknown>;
