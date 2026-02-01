@@ -60,6 +60,25 @@ export function DocumentViewerPage({ documentId, onBack }: DocumentViewerPagePro
     (document.mime_type.startsWith('image/') || document.mime_type === 'application/pdf') &&
     document.metadata?.ocr_engine !== 'chandra';
 
+  // Poll for status updates when document is processing
+  useEffect(() => {
+    if (!document || (document.status !== 'pending' && document.status !== 'processing')) {
+      return;
+    }
+
+    const pollStatus = async () => {
+      try {
+        const updatedDoc = await api.documents.get(documentId);
+        setDocument(updatedDoc);
+      } catch (err) {
+        console.error('Failed to poll document status:', err);
+      }
+    };
+
+    const interval = setInterval(pollStatus, 2000);
+    return () => clearInterval(interval);
+  }, [document?.status, documentId]);
+
   useEffect(() => {
     async function load() {
       try {
