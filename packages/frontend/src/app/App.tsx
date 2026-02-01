@@ -205,12 +205,20 @@ export function App() {
   })();
 
   const handleSearchResult = useCallback((result: GlobalSearchResult) => {
-    // Navigate to the recording's transcript, seeking to the segment time if available
-    setNavigation({
-      type: 'transcript',
-      recordingId: result.recording_id,
-      initialSeekTime: result.start_time ?? undefined,
-    });
+    if (result.type === 'document' && result.document_id) {
+      // Navigate to document viewer
+      setNavigation({
+        type: 'document-viewer',
+        documentId: result.document_id,
+      });
+    } else if (result.recording_id) {
+      // Navigate to the recording's transcript, seeking to the segment time if available
+      setNavigation({
+        type: 'transcript',
+        recordingId: result.recording_id,
+        initialSeekTime: result.start_time ?? undefined,
+      });
+    }
   }, []);
 
   // Sync theme to document and localStorage

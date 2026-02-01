@@ -24,7 +24,8 @@ function formatTime(seconds: number): string {
   return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
-function highlightMatch(text: string, query: string): React.ReactNode {
+function highlightMatch(text: string | null | undefined, query: string): React.ReactNode {
+  if (!text) return text;
   if (!query.trim()) return text;
 
   const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
@@ -41,7 +42,7 @@ function highlightMatch(text: string, query: string): React.ReactNode {
   );
 }
 
-export function SearchBox({ onResultClick, placeholder = 'Search transcripts...' }: SearchBoxProps) {
+export function SearchBox({ onResultClick, placeholder = 'Search files and content...' }: SearchBoxProps) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<GlobalSearchResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -187,11 +188,17 @@ export function SearchBox({ onResultClick, placeholder = 'Search transcripts...'
                       <div className={`flex-shrink-0 mt-0.5 ${
                         result.type === 'recording'
                           ? 'text-blue-500'
+                          : result.type === 'document'
+                          ? 'text-purple-500'
                           : 'text-green-500'
                       }`}>
                         {result.type === 'recording' ? (
                           <svg className="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                             <path strokeLinecap="round" strokeLinejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                          </svg>
+                        ) : result.type === 'document' ? (
+                          <svg className="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                           </svg>
                         ) : (
                           <svg className="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -201,16 +208,18 @@ export function SearchBox({ onResultClick, placeholder = 'Search transcripts...'
                       </div>
 
                       <div className="flex-1 min-w-0">
-                        {/* Recording title */}
+                        {/* Title */}
                         <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
                           {result.type === 'recording'
                             ? highlightMatch(result.recording_title, query)
+                            : result.type === 'document'
+                            ? highlightMatch(result.document_title || result.title, query)
                             : result.recording_title
                           }
                         </div>
 
-                        {/* Segment text (if segment) */}
-                        {result.type === 'segment' && result.text && (
+                        {/* Text preview (for segment or document) */}
+                        {(result.type === 'segment' || result.type === 'document') && result.text && (
                           <div className="mt-1 text-sm text-gray-600 dark:text-gray-300 line-clamp-2">
                             {highlightMatch(result.text, query)}
                           </div>
@@ -221,9 +230,11 @@ export function SearchBox({ onResultClick, placeholder = 'Search transcripts...'
                           <span className={`px-1.5 py-0.5 rounded ${
                             result.type === 'recording'
                               ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+                              : result.type === 'document'
+                              ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300'
                               : 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
                           }`}>
-                            {result.type === 'recording' ? 'Recording' : 'Segment'}
+                            {result.type === 'recording' ? 'Recording' : result.type === 'document' ? 'Document' : 'Segment'}
                           </span>
                           {result.match_type === 'semantic' && (
                             <span className="px-1.5 py-0.5 rounded bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300">

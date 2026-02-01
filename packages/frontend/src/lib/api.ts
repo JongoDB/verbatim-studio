@@ -248,16 +248,19 @@ export interface SearchResponse {
 }
 
 export interface GlobalSearchResult {
-  type: 'recording' | 'segment';
+  type: 'recording' | 'segment' | 'document';
   id: string;
   title: string | null;
   text: string | null;
-  recording_id: string;
-  recording_title: string;
+  recording_id: string | null;
+  recording_title: string | null;
+  document_id: string | null;
+  document_title: string | null;
   start_time: number | null;
   end_time: number | null;
   created_at: string;
   match_type?: 'keyword' | 'semantic' | null;
+  similarity?: number | null;
 }
 
 export interface GlobalSearchResponse {
