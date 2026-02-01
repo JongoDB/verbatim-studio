@@ -6,11 +6,21 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 
-def _check_chandra_available() -> bool:
-    """Check if Chandra OCR is installed."""
+def _check_chandra_installed() -> bool:
+    """Check if Chandra OCR package is installed."""
     try:
-        from chandra_ocr import ocr
+        from chandra.input import load_file
+        from chandra.model import InferenceManager
         return True
+    except ImportError:
+        return False
+
+
+def _check_chandra_model_ready() -> bool:
+    """Check if Chandra OCR model is downloaded and ready."""
+    try:
+        from core.ocr_catalog import is_model_downloaded
+        return is_model_downloaded("chandra")
     except ImportError:
         return False
 
@@ -33,13 +43,19 @@ def _check_pypdf_available() -> bool:
         return False
 
 
-CHANDRA_AVAILABLE = _check_chandra_available()
+CHANDRA_INSTALLED = _check_chandra_installed()
 PYMUPDF_AVAILABLE = _check_pymupdf_available()
 PYPDF_AVAILABLE = _check_pypdf_available()
 
 
 class DocumentProcessor:
     """Extracts text from various document formats."""
+
+    def _is_chandra_available(self) -> bool:
+        """Check if Chandra OCR is both installed and model is downloaded."""
+        if not CHANDRA_INSTALLED:
+            return False
+        return _check_chandra_model_ready()
 
     def process(self, file_path: Path, mime_type: str) -> dict:
         """
@@ -65,25 +81,43 @@ class DocumentProcessor:
 
     def _process_pdf(self, file_path: Path) -> dict:
         """Process PDF using Chandra OCR with PyMuPDF fallback."""
-        if CHANDRA_AVAILABLE:
+        if self._is_chandra_available():
             try:
-                from chandra_ocr import ocr
+                from chandra.input import load_file
+                from chandra.model import InferenceManager
+
                 logger.info(f"Processing {file_path.name} with Chandra OCR")
-                result = ocr(str(file_path), output_format="markdown")
+
+                # Load the PDF file
+                pages = load_file(str(file_path))
+
+                # Initialize the inference manager (uses HuggingFace by default)
+                manager = InferenceManager(method="hf")
+
+                # Process all pages
+                markdown_parts = []
+                for page in pages:
+                    result = manager.run_inference(page)
+                    markdown_parts.append(result.markdown)
+
+                combined_markdown = "\n\n".join(markdown_parts)
+                # Strip markdown formatting for plain text
+                plain_text = combined_markdown.replace("#", "").replace("*", "").replace("|", " ")
+
                 return {
-                    "text": result.plain_text if hasattr(result, 'plain_text') else str(result),
-                    "markdown": result.markdown if hasattr(result, 'markdown') else str(result),
-                    "page_count": result.page_count if hasattr(result, 'page_count') else None,
-                    "metadata": {
-                        "ocr_engine": "chandra",
-                        "ocr_confidence": getattr(result, 'confidence', None),
-                    },
+                    "text": plain_text,
+                    "markdown": combined_markdown,
+                    "page_count": len(pages),
+                    "metadata": {"ocr_engine": "chandra"},
                 }
             except Exception as e:
                 logger.warning(f"Chandra OCR failed, falling back to PyMuPDF: {e}")
                 return self._process_pdf_fallback(file_path)
         else:
-            logger.info(f"Chandra OCR not available, using PyMuPDF for {file_path.name}")
+            if CHANDRA_INSTALLED:
+                logger.info(f"Chandra model not downloaded, using fallback for {file_path.name}")
+            else:
+                logger.info(f"Chandra OCR not installed, using fallback for {file_path.name}")
             return self._process_pdf_fallback(file_path)
 
     def _process_pdf_fallback(self, file_path: Path) -> dict:
@@ -140,27 +174,47 @@ class DocumentProcessor:
 
     def _process_image(self, file_path: Path) -> dict:
         """Process image using Chandra OCR."""
-        if not CHANDRA_AVAILABLE:
-            logger.warning(f"Chandra OCR not available for image processing: {file_path.name}")
+        if not self._is_chandra_available():
+            if CHANDRA_INSTALLED:
+                logger.warning(f"Chandra model not downloaded for image OCR: {file_path.name}")
+                msg = "OCR model not downloaded. Download it in Settings > AI."
+            else:
+                logger.warning(f"Chandra OCR not installed for image processing: {file_path.name}")
+                msg = "OCR not available"
             return {
                 "text": "",
                 "markdown": "",
                 "page_count": 1,
-                "metadata": {"error": "No OCR processor available for images"},
+                "metadata": {"error": msg},
             }
 
         try:
-            from chandra_ocr import ocr
+            from chandra.input import load_file
+            from chandra.model import InferenceManager
+
             logger.info(f"Processing {file_path.name} with Chandra OCR")
-            result = ocr(str(file_path), output_format="markdown")
+
+            # Load the image file
+            pages = load_file(str(file_path))
+
+            # Initialize the inference manager (uses HuggingFace by default)
+            manager = InferenceManager(method="hf")
+
+            # Process the image (should be single page)
+            markdown_parts = []
+            for page in pages:
+                result = manager.run_inference(page)
+                markdown_parts.append(result.markdown)
+
+            combined_markdown = "\n\n".join(markdown_parts)
+            # Strip markdown formatting for plain text
+            plain_text = combined_markdown.replace("#", "").replace("*", "").replace("|", " ")
+
             return {
-                "text": result.plain_text if hasattr(result, 'plain_text') else str(result),
-                "markdown": result.markdown if hasattr(result, 'markdown') else str(result),
+                "text": plain_text,
+                "markdown": combined_markdown,
                 "page_count": 1,
-                "metadata": {
-                    "ocr_engine": "chandra",
-                    "ocr_confidence": getattr(result, 'confidence', None),
-                },
+                "metadata": {"ocr_engine": "chandra"},
             }
         except Exception as e:
             logger.error(f"Image OCR failed: {e}")

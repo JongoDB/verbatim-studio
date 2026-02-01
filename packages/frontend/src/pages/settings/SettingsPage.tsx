@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { api, type ArchiveInfo, type TranscriptionSettings, type AIModel, type AIModelDownloadEvent, type SystemInfo, type StorageLocation, type MigrationStatus, type StorageType, type StorageSubtype, type StorageLocationConfig, type OAuthStatusResponse } from '@/lib/api';
+import { api, type ArchiveInfo, type TranscriptionSettings, type AIModel, type AIModelDownloadEvent, type OCRModel, type OCRModelDownloadEvent, type SystemInfo, type StorageLocation, type MigrationStatus, type StorageType, type StorageSubtype, type StorageLocationConfig, type OAuthStatusResponse } from '@/lib/api';
 import { StorageTypeSelector } from '@/components/storage/StorageTypeSelector';
 import { StorageSubtypeSelector } from '@/components/storage/StorageSubtypeSelector';
 import { StorageConfigForm } from '@/components/storage/StorageConfigForm';
@@ -102,6 +102,13 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
   const [aiError, setAiError] = useState<string | null>(null);
   const downloadAbortRef = useRef<{ abort: () => void } | null>(null);
 
+  // OCR model state
+  const [ocrModels, setOcrModels] = useState<OCRModel[]>([]);
+  const [ocrDownloading, setOcrDownloading] = useState<string | null>(null);
+  const [ocrDownloadMessage, setOcrDownloadMessage] = useState<string | null>(null);
+  const [ocrError, setOcrError] = useState<string | null>(null);
+  const ocrDownloadAbortRef = useRef<{ abort: () => void } | null>(null);
+
   // System info state
   const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
 
@@ -136,11 +143,12 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
       .catch(console.error);
   }, []);
 
-  // Load archive info, config status, transcription settings, AI models, system info, and storage locations
+  // Load archive info, config status, transcription settings, AI models, OCR models, system info, and storage locations
   useEffect(() => {
     api.archive.info().then(setArchiveInfo).catch(console.error);
     api.config.getTranscription().then(setTxSettings).catch(console.error);
     api.ai.listModels().then((r) => setAiModels(r.models)).catch(console.error);
+    api.ocr.listModels().then((r) => setOcrModels(r.models)).catch(console.error);
     api.system.info().then(setSystemInfo).catch(console.error);
     loadStorageLocations();
   }, [loadStorageLocations]);
@@ -295,6 +303,42 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
       setAiError(err instanceof Error ? err.message : 'Delete failed');
     }
   }, [refreshAiModels]);
+
+  // OCR model handlers
+  const refreshOcrModels = useCallback(() => {
+    api.ocr.listModels().then((r) => setOcrModels(r.models)).catch(console.error);
+  }, []);
+
+  const handleDownloadOcrModel = useCallback((modelId: string) => {
+    setOcrDownloading(modelId);
+    setOcrDownloadMessage('Starting download...');
+    setOcrError(null);
+
+    const handle = api.ocr.downloadModel(modelId, (event: OCRModelDownloadEvent) => {
+      if (event.status === 'progress') {
+        setOcrDownloadMessage(event.message || 'Downloading model files...');
+      } else if (event.status === 'complete') {
+        setOcrDownloading(null);
+        setOcrDownloadMessage(null);
+        refreshOcrModels();
+      } else if (event.status === 'error') {
+        setOcrError(event.error || 'Download failed');
+        setOcrDownloading(null);
+        setOcrDownloadMessage(null);
+      }
+    });
+
+    ocrDownloadAbortRef.current = handle;
+  }, [refreshOcrModels]);
+
+  const handleDeleteOcrModel = useCallback(async (modelId: string) => {
+    try {
+      await api.ocr.deleteModel(modelId);
+      refreshOcrModels();
+    } catch (err) {
+      setOcrError(err instanceof Error ? err.message : 'Delete failed');
+    }
+  }, [refreshOcrModels]);
 
   // Storage location handlers
   const resetAddLocationForm = useCallback(() => {
@@ -1113,6 +1157,124 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
 
           <p className="text-xs text-gray-500 dark:text-gray-400 border-t border-gray-200 dark:border-gray-700 pt-3">
             Models are downloaded from HuggingFace and stored locally. All AI processing happens on your machine.
+          </p>
+        </div>
+      </div>
+
+      {/* OCR Model Section */}
+      <div className="mt-6 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+        <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Document OCR</h2>
+            {ocrModels.some((m) => m.downloaded) ? (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300">
+                <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                Ready
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400">
+                <span className="w-1.5 h-1.5 rounded-full bg-gray-400" />
+                Not installed
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div className="px-5 py-4 space-y-4">
+          {ocrError && (
+            <div className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-sm text-red-600 dark:text-red-400">
+              {ocrError}
+              <button onClick={() => setOcrError(null)} className="ml-2 underline">Dismiss</button>
+            </div>
+          )}
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">OCR Model</label>
+            <div className="space-y-3">
+              {ocrModels.map((model) => (
+                <div
+                  key={model.id}
+                  className={`p-4 rounded-lg border transition-all ${
+                    model.downloaded
+                      ? 'border-green-300 dark:border-green-700 bg-green-50/50 dark:bg-green-900/10'
+                      : 'border-gray-200 dark:border-gray-600'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{model.label}</span>
+                        {model.is_default && (
+                          <span className="px-1.5 py-0.5 text-xs rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">
+                            Recommended
+                          </span>
+                        )}
+                        {model.downloaded && (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs rounded bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300">
+                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                            </svg>
+                            Installed
+                          </span>
+                        )}
+                      </div>
+                      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{model.description}</p>
+                      <p className="mt-0.5 text-xs text-gray-400 dark:text-gray-500">
+                        {model.downloaded && model.size_on_disk
+                          ? `${formatBytes(model.size_on_disk)} on disk`
+                          : `~${formatBytes(model.size_bytes)} download`}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      {!model.downloaded && ocrDownloading !== model.id && (
+                        <button
+                          onClick={() => handleDownloadOcrModel(model.id)}
+                          className="px-3 py-1.5 text-xs font-medium rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+                        >
+                          Download
+                        </button>
+                      )}
+
+                      {model.downloaded && ocrDownloading !== model.id && (
+                        <button
+                          onClick={() => handleDeleteOcrModel(model.id)}
+                          className="px-3 py-1.5 text-xs font-medium rounded-lg border border-destructive/50 text-destructive hover:bg-destructive/10 transition-colors"
+                        >
+                          Delete
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Download progress */}
+                  {ocrDownloading === model.id && (
+                    <div className="mt-3">
+                      <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                        <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                        </svg>
+                        <span>{ocrDownloadMessage || 'Downloading...'}</span>
+                      </div>
+                      <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                        This may take several minutes depending on your connection speed.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              ))}
+
+              {ocrModels.length === 0 && (
+                <p className="text-sm text-gray-500 dark:text-gray-400 py-2">
+                  Loading OCR models...
+                </p>
+              )}
+            </div>
+          </div>
+
+          <p className="text-xs text-gray-500 dark:text-gray-400 border-t border-gray-200 dark:border-gray-700 pt-3">
+            OCR enables high-quality text extraction from scanned PDFs and images. The model is ~16GB and runs locally.
           </p>
         </div>
       </div>

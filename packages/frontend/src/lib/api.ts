@@ -551,6 +551,36 @@ export interface AIModelDownloadEvent {
   total_bytes?: number;
 }
 
+// OCR Model Types
+export interface OCRModel {
+  id: string;
+  label: string;
+  description: string;
+  repo: string;
+  size_bytes: number;
+  is_default: boolean;
+  downloaded: boolean;
+  size_on_disk: number | null;
+}
+
+export interface OCRModelListResponse {
+  models: OCRModel[];
+}
+
+export interface OCRStatusResponse {
+  available: boolean;
+  model_id: string | null;
+  model_path: string | null;
+}
+
+export interface OCRModelDownloadEvent {
+  status: 'starting' | 'progress' | 'complete' | 'error';
+  model_id?: string;
+  path?: string;
+  error?: string;
+  message?: string;
+}
+
 // Archive Types
 export interface ArchiveInfo {
   version: string;
@@ -1492,6 +1522,68 @@ class ApiClient {
       }
       return streamGenerator();
     },
+  };
+
+  // OCR
+  ocr = {
+    listModels: () => this.request<OCRModelListResponse>('/api/ocr/models'),
+
+    status: () => this.request<OCRStatusResponse>('/api/ocr/status'),
+
+    downloadModel: (modelId: string, onEvent: (event: OCRModelDownloadEvent) => void): { abort: () => void } => {
+      const abortController = new AbortController();
+
+      fetch(`${this.baseUrl}/api/ocr/models/${modelId}/download`, {
+        method: 'POST',
+        signal: abortController.signal,
+      }).then(async (response) => {
+        if (!response.ok) {
+          onEvent({ status: 'error', error: `HTTP ${response.status}` });
+          return;
+        }
+
+        const reader = response.body?.getReader();
+        if (!reader) {
+          onEvent({ status: 'error', error: 'No response body' });
+          return;
+        }
+
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const event = JSON.parse(line.slice(6)) as OCRModelDownloadEvent;
+                onEvent(event);
+              } catch {
+                // skip malformed lines
+              }
+            }
+          }
+        }
+      }).catch((err) => {
+        if (err.name !== 'AbortError') {
+          onEvent({ status: 'error', error: err.message });
+        }
+      });
+
+      return { abort: () => abortController.abort() };
+    },
+
+    deleteModel: (modelId: string) =>
+      this.request<{ status: string; model_id: string }>(
+        `/api/ocr/models/${modelId}`,
+        { method: 'DELETE' }
+      ),
   };
 
   // Projects
