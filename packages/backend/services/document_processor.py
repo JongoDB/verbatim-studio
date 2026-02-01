@@ -27,6 +27,36 @@ def get_inference_manager():
     global _inference_manager
     with _inference_manager_lock:
         if _inference_manager is None:
+            import torch
+
+            # Apply CUDA workaround first (must happen before any model loading)
+            _apply_cuda_workaround()
+
+            # Configure Chandra settings BEFORE importing InferenceManager
+            # (InferenceManager.__init__ calls load_model() immediately)
+            from chandra.settings import settings as chandra_settings
+
+            # Set model path to our local copy
+            model_path = _get_chandra_model_path()
+            if model_path:
+                chandra_settings.MODEL_CHECKPOINT = model_path
+
+            # Set device: MPS for Mac, CUDA for GPU, CPU fallback
+            if torch.backends.mps.is_available():
+                chandra_settings.TORCH_DEVICE = "mps"
+            elif torch.cuda.is_available():
+                chandra_settings.TORCH_DEVICE = "cuda"
+            else:
+                chandra_settings.TORCH_DEVICE = "cpu"
+
+            # Note: TORCH_DTYPE is a computed property in Chandra that returns bfloat16
+            # (cannot be overridden, which is fine as bfloat16 is optimal)
+
+            logger.info(f"Chandra settings: device={chandra_settings.TORCH_DEVICE}, "
+                       f"dtype={chandra_settings.TORCH_DTYPE}, "
+                       f"model={chandra_settings.MODEL_CHECKPOINT}")
+
+            # Now import and create InferenceManager
             from chandra.model import InferenceManager
             logger.info("Creating InferenceManager singleton (loading model)...")
             _inference_manager = InferenceManager(method="hf")
@@ -58,11 +88,13 @@ def cleanup_inference_manager():
 
 def _apply_cuda_workaround():
     """
-    Monkey-patch torch.Tensor.to() to intercept hardcoded 'cuda' calls.
+    Monkey-patch torch.Tensor.to() and transformers BatchFeature.to() to intercept hardcoded 'cuda' calls.
 
     Chandra's hf.py has `inputs = inputs.to("cuda")` hardcoded on line 31,
-    which fails on Mac (no CUDA). This patch redirects 'cuda' to the
-    appropriate device (MPS on Mac, CPU otherwise).
+    which fails on Mac (no CUDA). The `inputs` object is a transformers BatchFeature,
+    not a torch Tensor, so we need to patch both classes.
+
+    This patch redirects 'cuda' to the appropriate device (MPS on Mac, CPU otherwise).
     """
     global _cuda_workaround_applied
     if _cuda_workaround_applied:
@@ -79,20 +111,42 @@ def _apply_cuda_workaround():
     else:
         target_device = "cpu"
 
-    # Store original method
-    original_to = torch.Tensor.to
+    # Patch torch.Tensor.to
+    original_tensor_to = torch.Tensor.to
 
-    def patched_to(self, *args, **kwargs):
+    def patched_tensor_to(self, *args, **kwargs):
         # Intercept .to("cuda") or .to(device="cuda") calls
         if args and isinstance(args[0], str) and args[0] == "cuda":
             args = (target_device,) + args[1:]
-            logger.debug(f"Redirecting .to('cuda') to .to('{target_device}')")
+            logger.debug(f"Tensor: Redirecting .to('cuda') to .to('{target_device}')")
         if kwargs.get("device") == "cuda":
             kwargs["device"] = target_device
-            logger.debug(f"Redirecting .to(device='cuda') to .to(device='{target_device}')")
-        return original_to(self, *args, **kwargs)
+            logger.debug(f"Tensor: Redirecting .to(device='cuda') to .to(device='{target_device}')")
+        return original_tensor_to(self, *args, **kwargs)
 
-    torch.Tensor.to = patched_to
+    torch.Tensor.to = patched_tensor_to
+    logger.info(f"Patched torch.Tensor.to: redirecting 'cuda' to '{target_device}'")
+
+    # Patch transformers BatchFeature.to (this is what Chandra's hf.py actually uses)
+    try:
+        from transformers.feature_extraction_utils import BatchFeature
+        original_batch_feature_to = BatchFeature.to
+
+        def patched_batch_feature_to(self, *args, **kwargs):
+            # Intercept .to("cuda") or .to(device="cuda") calls
+            if args and isinstance(args[0], str) and args[0] == "cuda":
+                args = (target_device,) + args[1:]
+                logger.debug(f"BatchFeature: Redirecting .to('cuda') to .to('{target_device}')")
+            if kwargs.get("device") == "cuda":
+                kwargs["device"] = target_device
+                logger.debug(f"BatchFeature: Redirecting .to(device='cuda') to .to(device='{target_device}')")
+            return original_batch_feature_to(self, *args, **kwargs)
+
+        BatchFeature.to = patched_batch_feature_to
+        logger.info(f"Patched transformers.BatchFeature.to: redirecting 'cuda' to '{target_device}'")
+    except ImportError:
+        logger.warning("transformers not installed, BatchFeature patch skipped")
+
     _cuda_workaround_applied = True
     logger.info(f"Applied CUDA workaround: redirecting 'cuda' to '{target_device}'")
 
