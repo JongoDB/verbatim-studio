@@ -89,14 +89,14 @@ async def list_ocr_models() -> OCRModelListResponse:
 @router.get("/status", response_model=OCRStatusResponse)
 async def get_ocr_status() -> OCRStatusResponse:
     """Get OCR service status."""
-    # Check if chandra model is available
-    chandra_downloaded = is_model_downloaded("chandra")
+    # Check if qwen2-vl-ocr model is available
+    model_downloaded = is_model_downloaded("qwen2-vl-ocr")
 
-    if chandra_downloaded:
-        path = get_model_path("chandra")
+    if model_downloaded:
+        path = get_model_path("qwen2-vl-ocr")
         return OCRStatusResponse(
             available=True,
-            model_id="chandra",
+            model_id="qwen2-vl-ocr",
             model_path=str(path) if path else None,
         )
 
@@ -116,11 +116,35 @@ def _do_download_sync(model_id: str, repo: str, dest_path: Path, marker_file: Pa
         from huggingface_hub import snapshot_download
 
         logger.info("Starting OCR model download: %s -> %s", repo, dest_path)
+
+        # Only download files needed for inference (exclude demos, docs, examples)
         snapshot_download(
             repo_id=repo,
             repo_type="model",
             local_dir=str(dest_path),
             local_dir_use_symlinks=False,
+            allow_patterns=[
+                "*.safetensors",
+                "*.json",
+                "*.txt",
+                "tokenizer*",
+                "vocab*",
+                "merges*",
+            ],
+            ignore_patterns=[
+                "Demo/*",
+                "Sample*/*",
+                "*.ipynb",
+                "*.md",
+                "*.py",
+                "examples/*",
+                "font/*",
+                "*.png",
+                "*.jpg",
+                "*.TTF",
+                "*.ttf",
+                "Qwen2vl*/*",
+            ],
         )
         logger.info("OCR model download complete: %s", model_id)
     except Exception as exc:
