@@ -12,7 +12,7 @@ from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 
 from persistence.database import async_session
-from persistence.models import StorageLocation
+from persistence.models import Document, Recording, StorageLocation
 from services.encryption import encrypt_config, SENSITIVE_FIELDS
 from storage import StorageError, StorageAuthError, StorageUnavailableError
 from storage.factory import get_adapter
@@ -501,6 +501,10 @@ async def _run_migration(source: Path, destination: Path, files: list[Path]) -> 
                 except OSError:
                     pass  # Directory not empty, skip
 
+        # Update database file paths to point to new location
+        progress["current_file"] = "Updating database records..."
+        await _update_database_paths(source, destination)
+
         progress["status"] = "completed"
         progress["current_file"] = None
         logger.info(f"Migration completed: {progress['migrated_files']} files, {progress['migrated_bytes']} bytes")
@@ -509,6 +513,34 @@ async def _run_migration(source: Path, destination: Path, files: list[Path]) -> 
         progress["status"] = "failed"
         progress["error"] = str(e)
         logger.exception("Migration failed")
+
+
+async def _update_database_paths(source: Path, destination: Path) -> None:
+    """Update file paths in database after migration.
+
+    Replaces source path prefix with destination path prefix in all
+    Document and Recording file_path fields.
+    """
+    source_str = str(source)
+    dest_str = str(destination)
+
+    async with async_session() as session:
+        # Update Documents
+        doc_result = await session.execute(select(Document))
+        for doc in doc_result.scalars():
+            if doc.file_path and doc.file_path.startswith(source_str):
+                doc.file_path = doc.file_path.replace(source_str, dest_str, 1)
+                logger.debug(f"Updated document {doc.id} path to {doc.file_path}")
+
+        # Update Recordings
+        rec_result = await session.execute(select(Recording))
+        for rec in rec_result.scalars():
+            if rec.file_path and rec.file_path.startswith(source_str):
+                rec.file_path = rec.file_path.replace(source_str, dest_str, 1)
+                logger.debug(f"Updated recording {rec.id} path to {rec.file_path}")
+
+        await session.commit()
+        logger.info(f"Updated database paths from {source_str} to {dest_str}")
 
 
 @router.get("/migrate/status", response_model=MigrationStatus)
