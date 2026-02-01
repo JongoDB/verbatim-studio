@@ -4,6 +4,7 @@ export interface TourStep {
   title: string;
   description: string;
   position: 'right' | 'left' | 'top' | 'bottom';
+  navigateTo?: string; // optional navigation target (page or settings tab)
 }
 
 export const TOUR_STEPS: TourStep[] = [
@@ -18,49 +19,82 @@ export const TOUR_STEPS: TourStep[] = [
     id: 'live',
     target: '[data-tour="live"]',
     title: 'Live Transcription',
-    description: 'Real-time transcription as you speak—perfect for meetings or taking quick notes',
+    description: 'Start transcribing instantly as you speak — capture meetings, interviews, or thoughts on the fly',
     position: 'right',
   },
   {
     id: 'documents',
     target: '[data-tour="documents"]',
     title: 'Documents',
-    description: 'Extract and search text from PDFs, images, and scanned files',
+    description: 'Turn PDFs, images, and scans into searchable text with AI-powered OCR',
     position: 'right',
   },
   {
     id: 'projects',
     target: '[data-tour="projects"]',
     title: 'Projects',
-    description: 'Organize your transcripts and documents into folders that are visible on your computer at the location you specify',
+    description: 'Organize your work into projects. Each project is a real folder on your computer — accessible anytime, with or without Verbatim',
     position: 'right',
   },
   {
     id: 'search',
     target: '[data-tour="search"]',
     title: 'Search',
-    description: 'Find anything across your entire workspace instantly',
+    description: 'Search by keyword or meaning — find what you need across transcripts, documents, and notes',
     position: 'right',
   },
   {
     id: 'browser',
     target: '[data-tour="browser"]',
     title: 'Files',
-    description: 'Browse and manage all your files in one place—choose local storage or cloud storage for real-time sync',
+    description: 'Browse and manage all your files in one place — choose local storage or cloud storage for real-time sync',
     position: 'right',
   },
   {
     id: 'settings',
     target: '[data-tour="settings"]',
     title: 'Settings',
-    description: 'Configure transcription, AI models, storage locations, appearance, and more',
+    description: "Let's take a quick look at the settings — you can configure everything from here",
     position: 'right',
+    navigateTo: 'settings',
+  },
+  {
+    id: 'settings-general',
+    target: '[data-tour="settings-general"]',
+    title: 'General Settings',
+    description: 'Set your theme, timezone, keyboard shortcuts, and playback preferences',
+    position: 'bottom',
+    navigateTo: 'settings#general',
+  },
+  {
+    id: 'settings-transcription',
+    target: '[data-tour="settings-transcription"]',
+    title: 'Transcription Settings',
+    description: 'Configure transcription models, languages, speaker detection, and output formats',
+    position: 'bottom',
+    navigateTo: 'settings#transcription',
+  },
+  {
+    id: 'settings-ai',
+    target: '[data-tour="settings-ai"]',
+    title: 'AI Settings',
+    description: 'Set up AI providers and models for transcription, chat, and document processing',
+    position: 'bottom',
+    navigateTo: 'settings#ai',
+  },
+  {
+    id: 'settings-system',
+    target: '[data-tour="settings-system"]',
+    title: 'System Settings',
+    description: 'Manage storage locations, database, and view system information',
+    position: 'bottom',
+    navigateTo: 'settings#system',
   },
   {
     id: 'assistant',
     target: '[data-tour="assistant"]',
     title: 'Assistant',
-    description: 'Quick AI help—ask questions about anything, including how to use this app',
+    description: 'Quick AI help — ask questions about anything, including how to use this app',
     position: 'top',
   },
   {

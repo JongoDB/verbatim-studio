@@ -7,14 +7,25 @@ interface OnboardingTourProps {
   isActive: boolean;
   onComplete: () => void;
   onSkip: () => void;
+  onNavigate?: (target: string) => void;
 }
 
-export function OnboardingTour({ isActive, onComplete, onSkip }: OnboardingTourProps) {
+export function OnboardingTour({ isActive, onComplete, onSkip, onNavigate }: OnboardingTourProps) {
   const [currentStep, setCurrentStep] = useState(0);
   const [targetRect, setTargetRect] = useState<DOMRect | null>(null);
   const [targetElement, setTargetElement] = useState<HTMLElement | null>(null);
 
   const step = TOUR_STEPS[currentStep];
+
+  // Handle navigation when step changes
+  useEffect(() => {
+    if (!isActive || !step) return;
+
+    // If this step requires navigation, trigger it
+    if (step.navigateTo && onNavigate) {
+      onNavigate(step.navigateTo);
+    }
+  }, [isActive, step, onNavigate, currentStep]);
 
   // Find and highlight the target element
   useEffect(() => {
@@ -31,8 +42,15 @@ export function OnboardingTour({ isActive, onComplete, onSkip }: OnboardingTourP
       }
     };
 
-    // Initial find
-    findTarget();
+    // Initial find with a small delay to allow for navigation/rendering
+    const initialTimeout = setTimeout(findTarget, 100);
+
+    // Retry finding target if not found immediately (for navigation cases)
+    const retryTimeout = setTimeout(() => {
+      if (!targetElement) {
+        findTarget();
+      }
+    }, 300);
 
     // Update position on scroll/resize
     const handleUpdate = () => {
@@ -46,6 +64,8 @@ export function OnboardingTour({ isActive, onComplete, onSkip }: OnboardingTourP
     window.addEventListener('resize', handleUpdate);
 
     return () => {
+      clearTimeout(initialTimeout);
+      clearTimeout(retryTimeout);
       window.removeEventListener('scroll', handleUpdate, true);
       window.removeEventListener('resize', handleUpdate);
 
@@ -64,6 +84,13 @@ export function OnboardingTour({ isActive, onComplete, onSkip }: OnboardingTourP
       }
     };
   }, [targetElement]);
+
+  // Reset step when tour starts
+  useEffect(() => {
+    if (isActive) {
+      setCurrentStep(0);
+    }
+  }, [isActive]);
 
   const handleNext = useCallback(() => {
     // Remove highlight from current target

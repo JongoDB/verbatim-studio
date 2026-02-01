@@ -586,6 +586,19 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
     window.history.replaceState(null, '', `#${tab}`);
   };
 
+  // Listen for hash changes (for tour navigation)
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash.slice(1);
+      if (['general', 'transcription', 'ai', 'system'].includes(hash)) {
+        setActiveTab(hash as 'general' | 'transcription' | 'ai' | 'system');
+      }
+    };
+
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
+
   const TABS = [
     { id: 'general' as const, label: 'General', icon: (
       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -625,6 +638,7 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
           {TABS.map((tab) => (
             <button
               key={tab.id}
+              data-tour={`settings-${tab.id}`}
               onClick={() => handleTabChange(tab.id)}
               className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                 activeTab === tab.id

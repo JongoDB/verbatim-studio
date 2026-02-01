@@ -355,6 +355,21 @@ export function App() {
     setIsTourActive(true);
   }, []);
 
+  const handleTourNavigate = useCallback((target: string) => {
+    if (target === 'settings') {
+      // Navigate to settings without specific tab
+      setNavigation({ type: 'settings' });
+    } else if (target.startsWith('settings#')) {
+      // Navigate to settings with specific tab
+      const tab = target.split('#')[1];
+      setNavigation({ type: 'settings' });
+      // Update hash for tab selection (SettingsPage listens for hashchange)
+      setTimeout(() => {
+        window.location.hash = tab;
+      }, 50);
+    }
+  }, []);
+
   const handleTourComplete = useCallback(() => {
     setIsTourActive(false);
     setShowTourToast(true);
@@ -564,6 +579,7 @@ export function App() {
         isActive={isTourActive}
         onComplete={handleTourComplete}
         onSkip={handleTourSkip}
+        onNavigate={handleTourNavigate}
       />
       <TourToast
         isVisible={showTourToast}
