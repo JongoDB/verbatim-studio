@@ -5,6 +5,7 @@ from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 
 from persistence.models import Document, DocumentEmbedding
 from services.document_processor import document_processor
@@ -48,7 +49,9 @@ def process_document_job(db: Session, document_id: str) -> None:
         doc.extracted_text = result.get("text")
         doc.extracted_markdown = result.get("markdown")
         doc.page_count = result.get("page_count")
-        doc.metadata_.update(result.get("metadata", {}))
+        if result.get("metadata"):
+            doc.metadata_.update(result.get("metadata", {}))
+            flag_modified(doc, "metadata_")
 
         # Generate embeddings if text was extracted
         if doc.extracted_text and len(doc.extracted_text.strip()) > 0:
