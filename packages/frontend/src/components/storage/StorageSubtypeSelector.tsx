@@ -7,132 +7,75 @@ interface StorageSubtypeSelectorProps {
   onChange: (subtype: StorageSubtype) => void;
 }
 
-const subtypes: Record<StorageType, { subtype: StorageSubtype; label: string; description: string }[]> = {
+const subtypes: Record<StorageType, { subtype: StorageSubtype; label: string; description: string; comingSoon?: boolean }[]> = {
   local: [],
   network: [
-    { subtype: 'smb', label: 'SMB / Windows Share', description: 'Samba, Windows file sharing' },
-    { subtype: 'nfs', label: 'NFS', description: 'Network File System (Unix/Linux)' },
+    { subtype: 'smb', label: 'SMB / Windows Share', description: 'Samba, Windows file sharing', comingSoon: true },
+    { subtype: 'nfs', label: 'NFS', description: 'Network File System (Unix/Linux)', comingSoon: true },
   ],
-  cloud: [], // Handled separately with column layout
+  cloud: [
+    // Interleaved: OAuth providers (left), Object storage (right)
+    { subtype: 'gdrive', label: 'Google Drive', description: 'Personal or Workspace account' },
+    { subtype: 's3', label: 'S3-Compatible', description: 'AWS S3, Backblaze B2, MinIO, Wasabi', comingSoon: true },
+    { subtype: 'onedrive', label: 'OneDrive', description: 'Microsoft OneDrive' },
+    { subtype: 'azure', label: 'Azure Blob', description: 'Microsoft Azure Blob Storage', comingSoon: true },
+    { subtype: 'dropbox', label: 'Dropbox', description: 'Dropbox cloud storage' },
+    { subtype: 'gcs', label: 'Google Cloud Storage', description: 'GCS bucket', comingSoon: true },
+  ],
 };
 
-// Cloud subtypes split into two columns
-const oauthProviders: { subtype: StorageSubtype; label: string; description: string }[] = [
-  { subtype: 'gdrive', label: 'Google Drive', description: 'Personal or Workspace account' },
-  { subtype: 'onedrive', label: 'OneDrive', description: 'Microsoft OneDrive' },
-  { subtype: 'dropbox', label: 'Dropbox', description: 'Dropbox cloud storage' },
-];
-
-const objectStorage: { subtype: StorageSubtype; label: string; description: string }[] = [
-  { subtype: 's3', label: 'S3-Compatible', description: 'AWS S3, Backblaze B2, MinIO, Wasabi' },
-  { subtype: 'azure', label: 'Azure Blob', description: 'Microsoft Azure Blob Storage' },
-  { subtype: 'gcs', label: 'Google Cloud Storage', description: 'GCS bucket' },
-];
-
-function ProviderButton({
-  subtype,
-  label,
-  description,
-  selected,
-  onClick
-}: {
-  subtype: StorageSubtype;
-  label: string;
-  description: string;
-  selected: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        'flex flex-col items-start p-3 rounded-lg border transition-all text-left',
-        'hover:border-primary hover:bg-primary/5',
-        selected
-          ? 'border-primary bg-primary/10'
-          : 'border-gray-200 dark:border-gray-700'
-      )}
-    >
-      <span className="font-medium text-sm">{label}</span>
-      <span className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-        {description}
-      </span>
-    </button>
-  );
-}
-
 export function StorageSubtypeSelector({ storageType, value, onChange }: StorageSubtypeSelectorProps) {
-  // Special layout for cloud storage with labeled columns
-  if (storageType === 'cloud') {
-    return (
-      <div className="space-y-2">
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-          Select Provider
-        </label>
-        <div className="grid grid-cols-2 gap-4">
-          {/* OAuth Providers column */}
-          <div className="space-y-2">
-            <span className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
-              OAuth Providers
-            </span>
-            <div className="space-y-2">
-              {oauthProviders.map(({ subtype, label, description }) => (
-                <ProviderButton
-                  key={subtype}
-                  subtype={subtype}
-                  label={label}
-                  description={description}
-                  selected={value === subtype}
-                  onClick={() => onChange(subtype)}
-                />
-              ))}
-            </div>
-          </div>
-          {/* Object Storage column */}
-          <div className="space-y-2">
-            <span className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
-              Object Storage
-            </span>
-            <div className="space-y-2">
-              {objectStorage.map(({ subtype, label, description }) => (
-                <ProviderButton
-                  key={subtype}
-                  subtype={subtype}
-                  label={label}
-                  description={description}
-                  selected={value === subtype}
-                  onClick={() => onChange(subtype)}
-                />
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   const options = subtypes[storageType];
 
   if (options.length === 0) {
     return null;
   }
 
+  // Add column headers for cloud storage
+  const showColumnHeaders = storageType === 'cloud';
+
   return (
     <div className="space-y-2">
       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
         Select Provider
       </label>
+      {showColumnHeaders && (
+        <div className="grid grid-cols-2 gap-2 mb-1">
+          <span className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+            OAuth Providers
+          </span>
+          <span className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+            Object Storage
+          </span>
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-2">
-        {options.map(({ subtype, label, description }) => (
-          <ProviderButton
+        {options.map(({ subtype, label, description, comingSoon }) => (
+          <button
             key={subtype}
-            subtype={subtype}
-            label={label}
-            description={description}
-            selected={value === subtype}
-            onClick={() => onChange(subtype)}
-          />
+            type="button"
+            onClick={() => !comingSoon && onChange(subtype)}
+            disabled={comingSoon}
+            className={cn(
+              'flex flex-col items-start p-3 rounded-lg border transition-all text-left relative',
+              comingSoon
+                ? 'opacity-60 cursor-not-allowed border-gray-200 dark:border-gray-700'
+                : 'hover:border-primary hover:bg-primary/5',
+              value === subtype && !comingSoon
+                ? 'border-primary bg-primary/10'
+                : 'border-gray-200 dark:border-gray-700'
+            )}
+          >
+            {comingSoon && (
+              <span className="absolute top-1 right-1 text-[10px] font-medium bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-1.5 py-0.5 rounded">
+                Coming Soon
+              </span>
+            )}
+            <span className="font-medium text-sm">{label}</span>
+            <span className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+              {description}
+            </span>
+          </button>
         ))}
       </div>
     </div>
