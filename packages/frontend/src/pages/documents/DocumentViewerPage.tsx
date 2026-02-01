@@ -3,7 +3,9 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { renderAsync } from 'docx-preview';
 import ExcelJS from 'exceljs';
+import { MessageSquare } from 'lucide-react';
 import { api, type Document } from '@/lib/api';
+import { NotesPanel } from '@/components/documents/NotesPanel';
 
 interface DocumentViewerPageProps {
   documentId: string;
@@ -36,6 +38,8 @@ export function DocumentViewerPage({ documentId, onBack }: DocumentViewerPagePro
   const [activeSheet, setActiveSheet] = useState(0);
   const [slides, setSlides] = useState<SlideData[]>([]);
   const [activeSlide, setActiveSlide] = useState(0);
+  const [notesOpen, setNotesOpen] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
   const docxContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -236,6 +240,29 @@ export function DocumentViewerPage({ documentId, onBack }: DocumentViewerPagePro
     }
   }, [document, documentId]);
 
+  const handleNavigateToAnchor = (anchorType: string, anchorData: Record<string, unknown>) => {
+    switch (anchorType) {
+      case 'page':
+        // For PDF/PPTX, navigate to page
+        if (anchorData.page) {
+          setCurrentPage(anchorData.page as number);
+          // If PPTX, also set current slide
+          if (document?.mime_type?.includes('presentation')) {
+            setActiveSlide((anchorData.page as number) - 1);
+          }
+        }
+        break;
+      case 'paragraph':
+        // Scroll to paragraph (would need paragraph refs)
+        console.log('Navigate to paragraph:', anchorData.paragraph);
+        break;
+      case 'selection':
+        // Highlight selection (future enhancement)
+        console.log('Navigate to selection:', anchorData.text);
+        break;
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -265,9 +292,9 @@ export function DocumentViewerPage({ documentId, onBack }: DocumentViewerPagePro
   const isPptx = document.mime_type === PPTX_MIME;
 
   return (
-    <div className="space-y-4">
+    <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-4 p-4 border-b border-gray-200 dark:border-gray-700">
         <button
           onClick={onBack}
           className="p-2 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
@@ -296,8 +323,21 @@ export function DocumentViewerPage({ documentId, onBack }: DocumentViewerPagePro
         </a>
       </div>
 
-      {/* Content */}
-      <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden">
+      {/* Main layout with notes panel */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Main content area */}
+        <div className="flex-1 overflow-auto relative">
+          {/* Notes toggle button - floating */}
+          <button
+            onClick={() => setNotesOpen(!notesOpen)}
+            className="absolute right-4 top-4 z-10 p-2 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700"
+            title={notesOpen ? 'Hide notes' : 'Show notes'}
+          >
+            <MessageSquare className="h-5 w-5" />
+          </button>
+
+          {/* Content */}
+          <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden m-4">
         {document.status === 'processing' && (
           <div className="p-8 text-center">
             <svg className="w-8 h-8 animate-spin text-blue-500 mx-auto" viewBox="0 0 24 24" fill="none">
@@ -516,19 +556,33 @@ export function DocumentViewerPage({ documentId, onBack }: DocumentViewerPagePro
             <p className="text-gray-500 dark:text-gray-400">Document queued for processing...</p>
           </div>
         )}
-      </div>
+          </div>
 
-      {/* Styles for docx-preview */}
-      <style>{`
-        .docx-container .docx-wrapper {
-          background: white;
-          padding: 20px;
-        }
-        .docx-container .docx-wrapper > section.docx {
-          box-shadow: 0 0 10px rgba(0,0,0,0.1);
-          margin-bottom: 20px;
-        }
-      `}</style>
+          {/* Styles for docx-preview */}
+          <style>{`
+            .docx-container .docx-wrapper {
+              background: white;
+              padding: 20px;
+            }
+            .docx-container .docx-wrapper > section.docx {
+              box-shadow: 0 0 10px rgba(0,0,0,0.1);
+              margin-bottom: 20px;
+            }
+          `}</style>
+        </div>
+
+        {/* Notes panel */}
+        {notesOpen && document && (
+          <div className="w-80 border-l border-gray-200 dark:border-gray-700 flex-shrink-0">
+            <NotesPanel
+              documentId={document.id}
+              currentPage={currentPage}
+              onNavigateToAnchor={handleNavigateToAnchor}
+              onClose={() => setNotesOpen(false)}
+            />
+          </div>
+        )}
+      </div>
     </div>
   );
 }
