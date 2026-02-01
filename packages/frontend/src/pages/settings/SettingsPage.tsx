@@ -1316,7 +1316,7 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
           </div>
 
           <p className="text-xs text-gray-500 dark:text-gray-400 border-t border-gray-200 dark:border-gray-700 pt-3">
-            OCR enables high-quality text extraction from scanned PDFs and images. The model is ~16GB and runs locally.
+            OCR enables high-quality text extraction from scanned PDFs and images. The model is ~4GB and runs locally.
           </p>
         </div>
       </div>
