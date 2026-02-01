@@ -74,7 +74,7 @@ export function DocumentViewerPage({ documentId, onBack }: DocumentViewerPagePro
   const canRunOcr = document &&
     document.status === 'completed' &&
     (document.mime_type.startsWith('image/') || document.mime_type === 'application/pdf') &&
-    document.metadata?.ocr_engine !== 'chandra';
+    document.metadata?.ocr_engine !== 'qwen2-vl-ocr';
 
   // Poll for status updates when document is processing
   useEffect(() => {

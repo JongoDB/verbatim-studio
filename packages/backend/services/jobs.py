@@ -694,7 +694,7 @@ async def handle_document_processing(
 
     async with async_session() as session:
         from persistence.models import Document, DocumentEmbedding
-        from services.document_processor import document_processor, ProcessingCancelledError, cleanup_inference_manager
+        from services.document_processor import document_processor, ProcessingCancelledError, cleanup_ocr_model
         from services.storage import storage_service
 
         # Create cancellation check function
@@ -796,7 +796,7 @@ async def handle_document_processing(
 
             # Clean up OCR model if it was used (free memory)
             if enable_ocr:
-                cleanup_inference_manager()
+                cleanup_ocr_model()
 
             return {"document_id": document_id, "status": "completed"}
 
@@ -805,7 +805,7 @@ async def handle_document_processing(
             if temp_file:
                 Path(temp_file.name).unlink(missing_ok=True)
             # Clean up OCR model
-            cleanup_inference_manager()
+            cleanup_ocr_model()
             # Set status to cancelled
             doc.status = "cancelled"
             doc.error_message = "Processing was cancelled"
@@ -819,7 +819,7 @@ async def handle_document_processing(
                 Path(temp_file.name).unlink(missing_ok=True)
             # Clean up OCR model on error
             if enable_ocr:
-                cleanup_inference_manager()
+                cleanup_ocr_model()
             doc.status = "failed"
             doc.error_message = str(e)
             await session.commit()

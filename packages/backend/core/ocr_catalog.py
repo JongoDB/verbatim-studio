@@ -8,15 +8,15 @@ from pathlib import Path
 
 from core.config import settings
 
-# Chandra OCR model repository
-CHANDRA_REPO = "datalab-to/chandra"
+# Qwen2-VL OCR model repository (fine-tuned for OCR)
+QWEN2_VL_OCR_REPO = "prithivMLmods/Qwen2-VL-OCR-2B-Instruct"
 
 OCR_MODEL_CATALOG: dict[str, dict] = {
-    "chandra": {
-        "repo": CHANDRA_REPO,
-        "size_bytes": 19_500_000_000,  # ~18.2 GiB (9B params, BF16 + tokenizer/config)
-        "label": "Chandra VLM (9B)",
-        "description": "Vision-language model for high-quality document OCR. Handles complex tables, handwriting, and scanned documents.",
+    "qwen2-vl-ocr": {
+        "repo": QWEN2_VL_OCR_REPO,
+        "size_bytes": 4_750_000_000,  # ~4.42 GB (2B params, BF16 + tokenizer)
+        "label": "Qwen2-VL OCR (2B)",
+        "description": "Lightweight vision-language model fine-tuned for OCR. Fast inference on CPU/GPU/MPS with good accuracy.",
         "default": True,
     },
 }
