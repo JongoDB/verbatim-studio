@@ -2,7 +2,22 @@ import { useState, useEffect, useCallback } from 'react';
 import { api, type OAuthCredentialsResponse } from '@/lib/api';
 import { MarkdownModal } from '@/components/ui/MarkdownModal';
 
-const SETUP_GUIDE = `## Google Drive
+const SETUP_GUIDE = `## Redirect URIs (Required for All Providers)
+
+Add **all 4** of these URIs to your OAuth app configuration:
+
+\`\`\`
+http://localhost:9876/callback
+http://localhost:9877/callback
+http://localhost:9878/callback
+http://localhost:9879/callback
+\`\`\`
+
+The app tries different ports if one is busy.
+
+---
+
+## Google Drive
 
 1. [Create a Google Cloud Project](https://console.cloud.google.com/projectcreate)
 2. [Enable the Drive API](https://console.cloud.google.com/apis/library/drive.googleapis.com) ← **Required**
@@ -10,13 +25,13 @@ const SETUP_GUIDE = `## Google Drive
 4. [Add Scopes](https://console.cloud.google.com/auth/scopes) → Add \`drive.file\`
 5. [Add Test User](https://console.cloud.google.com/auth/audience) → Add your email
 6. [Create OAuth Credentials](https://console.cloud.google.com/apis/credentials) → OAuth client ID → Web application
-7. Add all 4 redirect URIs below, copy Client ID & Secret
+7. Add all 4 redirect URIs, copy Client ID & Secret
 
 **Troubleshooting**
 
 - \`access_denied\` → [Verify test user](https://console.cloud.google.com/auth/audience) is added
 - \`API not enabled\` → [Enable Drive API](https://console.cloud.google.com/apis/library/drive.googleapis.com)
-- \`Invalid redirect URI\` → Add all 4 URIs exactly as shown
+- \`Invalid redirect URI\` → Add all 4 URIs exactly as shown above
 
 ---
 
@@ -30,7 +45,7 @@ const SETUP_GUIDE = `## Google Drive
 
 **Troubleshooting**
 
-- \`AADSTS50011\` → Redirect URI mismatch, add all 4 URIs exactly as shown
+- \`AADSTS50011\` → Redirect URI mismatch, add all 4 URIs exactly as shown above
 - \`AADSTS7000215\` → Invalid client secret, create a new one and copy the **Value** (not ID)
 - \`AADSTS65001\` → Missing permissions, add \`Files.ReadWrite\` scope
 
@@ -71,14 +86,6 @@ const PROVIDERS = [
   },
 ] as const;
 
-// OAuth callback URIs - the backend tries these ports in order if one is busy
-const OAUTH_REDIRECT_URIS = [
-  'http://localhost:9876/callback',
-  'http://localhost:9877/callback',
-  'http://localhost:9878/callback',
-  'http://localhost:9879/callback',
-];
-
 export function OAuthCredentialsConfig({ onUpdate }: OAuthCredentialsConfigProps) {
   const [credentials, setCredentials] = useState<OAuthCredentialsResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -86,27 +93,7 @@ export function OAuthCredentialsConfig({ onUpdate }: OAuthCredentialsConfigProps
   const [editingProvider, setEditingProvider] = useState<string | null>(null);
   const [formData, setFormData] = useState({ client_id: '', client_secret: '' });
   const [saving, setSaving] = useState(false);
-  const [copiedUri, setCopiedUri] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
-
-  const copyRedirectUris = useCallback(async () => {
-    const urisText = OAUTH_REDIRECT_URIS.join('\n');
-    try {
-      await navigator.clipboard.writeText(urisText);
-      setCopiedUri(true);
-      setTimeout(() => setCopiedUri(false), 2000);
-    } catch {
-      // Fallback for older browsers
-      const input = document.createElement('textarea');
-      input.value = urisText;
-      document.body.appendChild(input);
-      input.select();
-      document.execCommand('copy');
-      document.body.removeChild(input);
-      setCopiedUri(true);
-      setTimeout(() => setCopiedUri(false), 2000);
-    }
-  }, []);
 
   const loadCredentials = useCallback(async () => {
     try {
@@ -275,37 +262,6 @@ export function OAuthCredentialsConfig({ onUpdate }: OAuthCredentialsConfigProps
               {/* Edit form */}
               {isEditing && (
                 <div className="mt-4 pt-4 border-t border-border space-y-3">
-                  {/* Redirect URIs - for copying into provider's OAuth app config */}
-                  <div className="p-3 rounded-lg bg-muted/50 border border-border">
-                    <div className="flex items-start justify-between gap-2 mb-2">
-                      <div>
-                        <label className="block text-xs font-medium text-muted-foreground">
-                          Redirect URIs (add ALL of these to your OAuth app)
-                        </label>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          The app tries different ports if one is busy
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={copyRedirectUris}
-                        className="px-2.5 py-1 text-xs font-medium rounded-md border border-border hover:bg-muted shrink-0"
-                      >
-                        {copiedUri ? 'Copied!' : 'Copy All'}
-                      </button>
-                    </div>
-                    <div className="space-y-1">
-                      {OAUTH_REDIRECT_URIS.map((uri) => (
-                        <code
-                          key={uri}
-                          className="block text-xs font-mono text-foreground bg-background px-2 py-1 rounded border border-border select-all"
-                        >
-                          {uri}
-                        </code>
-                      ))}
-                    </div>
-                  </div>
-
                   <div>
                     <label className="block text-sm font-medium text-foreground mb-1">
                       Client ID
