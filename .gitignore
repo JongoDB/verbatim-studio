@@ -48,3 +48,5 @@ models/
 *.pt
 .worktrees/
 .playwright-mcp/
+*.db-wal
+*.db-shm
