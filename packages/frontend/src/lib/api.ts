@@ -248,21 +248,38 @@ export interface SearchResponse {
 }
 
 export interface GlobalSearchResult {
-  type: 'recording' | 'segment';
+  type: 'recording' | 'segment' | 'document';
   id: string;
   title: string | null;
   text: string | null;
-  recording_id: string;
-  recording_title: string;
+  recording_id: string | null;
+  recording_title: string | null;
+  document_id: string | null;
+  document_title: string | null;
   start_time: number | null;
   end_time: number | null;
   created_at: string;
   match_type?: 'keyword' | 'semantic' | null;
+  similarity?: number | null;
 }
 
 export interface GlobalSearchResponse {
   query: string;
   results: GlobalSearchResult[];
+  total: number;
+}
+
+export interface DocumentSearchResult {
+  document_id: string;
+  document_title: string;
+  chunk_text: string;
+  chunk_index: number;
+  similarity: number;
+  page: number | null;
+}
+
+export interface DocumentSearchResponse {
+  results: DocumentSearchResult[];
   total: number;
 }
 
@@ -474,7 +491,8 @@ export interface AIChatRequest {
 
 export interface ChatMultiRequest {
   message: string;
-  recording_ids: string[];  // Recording IDs to attach for context
+  recording_ids: string[];   // Recording IDs to attach for context
+  document_ids?: string[];   // Document IDs to attach for context
   history: Array<{ role: 'user' | 'assistant'; content: string }>;
   temperature?: number;
 }
@@ -531,6 +549,40 @@ export interface AIModelDownloadEvent {
   error?: string;
   downloaded_bytes?: number;
   total_bytes?: number;
+}
+
+// OCR Model Types
+export interface OCRModel {
+  id: string;
+  label: string;
+  description: string;
+  repo: string;
+  size_bytes: number;
+  is_default: boolean;
+  downloaded: boolean;
+  downloading: boolean;
+  size_on_disk: number | null;
+}
+
+export interface OCRModelListResponse {
+  models: OCRModel[];
+}
+
+export interface OCRStatusResponse {
+  available: boolean;
+  model_id: string | null;
+  model_path: string | null;
+}
+
+export interface OCRModelDownloadEvent {
+  status: 'starting' | 'progress' | 'complete' | 'error';
+  model_id?: string;
+  path?: string;
+  error?: string;
+  message?: string;
+  downloaded_bytes?: number;
+  total_bytes?: number;
+  percent?: number;
 }
 
 // Archive Types
@@ -593,6 +645,9 @@ export interface Document {
   metadata: Record<string, unknown>;
   created_at: string;
   updated_at: string;
+  // Extracted content (may be null in list responses)
+  extracted_text: string | null;
+  extracted_markdown: string | null;
 }
 
 export interface DocumentListResponse {
@@ -730,6 +785,8 @@ export interface ModelBreakdown {
   asr_bytes: number;
   diarization_count: number;
   diarization_bytes: number;
+  ocr_count: number;
+  ocr_bytes: number;
 }
 
 export interface StorageBreakdown {
@@ -1294,6 +1351,12 @@ class ApiClient {
       if (options?.semantic !== undefined) params.set('semantic', options.semantic.toString());
       return this.request<GlobalSearchResponse>(`/api/search/global?${params.toString()}`);
     },
+
+    documents: (query: string, projectId?: string, limit = 20) => {
+      const params = new URLSearchParams({ query, limit: limit.toString() });
+      if (projectId) params.set('project_id', projectId);
+      return this.request<DocumentSearchResponse>(`/api/search/documents?${params.toString()}`);
+    },
   };
 
   // Stats
@@ -1470,6 +1533,68 @@ class ApiClient {
     },
   };
 
+  // OCR
+  ocr = {
+    listModels: () => this.request<OCRModelListResponse>('/api/ocr/models'),
+
+    status: () => this.request<OCRStatusResponse>('/api/ocr/status'),
+
+    downloadModel: (modelId: string, onEvent: (event: OCRModelDownloadEvent) => void): { abort: () => void } => {
+      const abortController = new AbortController();
+
+      fetch(`${this.baseUrl}/api/ocr/models/${modelId}/download`, {
+        method: 'POST',
+        signal: abortController.signal,
+      }).then(async (response) => {
+        if (!response.ok) {
+          onEvent({ status: 'error', error: `HTTP ${response.status}` });
+          return;
+        }
+
+        const reader = response.body?.getReader();
+        if (!reader) {
+          onEvent({ status: 'error', error: 'No response body' });
+          return;
+        }
+
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const event = JSON.parse(line.slice(6)) as OCRModelDownloadEvent;
+                onEvent(event);
+              } catch {
+                // skip malformed lines
+              }
+            }
+          }
+        }
+      }).catch((err) => {
+        if (err.name !== 'AbortError') {
+          onEvent({ status: 'error', error: err.message });
+        }
+      });
+
+      return { abort: () => abortController.abort() };
+    },
+
+    deleteModel: (modelId: string) =>
+      this.request<{ status: string; model_id: string }>(
+        `/api/ocr/models/${modelId}`,
+        { method: 'DELETE' }
+      ),
+  };
+
   // Projects
   projects = {
     list: (options?: { search?: string; projectTypeId?: string; tag?: string }) => {
@@ -1580,11 +1705,17 @@ class ApiClient {
       return this.request<Document>(`/api/documents/${id}`);
     },
 
-    upload: async (file: File, title?: string, projectId?: string): Promise<Document> => {
+    upload: async (
+      file: File,
+      title?: string,
+      projectId?: string,
+      enableOcr?: boolean
+    ): Promise<Document> => {
       const formData = new FormData();
       formData.append('file', file);
       if (title) formData.append('title', title);
       if (projectId) formData.append('project_id', projectId);
+      formData.append('enable_ocr', enableOcr ? 'true' : 'false');
 
       const response = await fetch(`${this.baseUrl}/api/documents`, {
         method: 'POST',
@@ -1592,6 +1723,12 @@ class ApiClient {
       });
       if (!response.ok) throw new Error('Failed to upload document');
       return response.json();
+    },
+
+    runOcr: async (id: string): Promise<void> => {
+      await this.request<{ message: string }>(`/api/documents/${id}/ocr`, {
+        method: 'POST',
+      });
     },
 
     update: async (id: string, data: { title?: string; project_id?: string | null }): Promise<Document> => {
