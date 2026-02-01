@@ -874,7 +874,7 @@ export interface OAuthStartResponse {
 }
 
 export interface OAuthStatusResponse {
-  status: 'pending' | 'complete' | 'error';
+  status: 'pending' | 'complete' | 'error' | 'cancelled' | 'timeout';
   provider: string;
   error?: string;
   tokens?: {
@@ -1788,6 +1788,10 @@ class ApiClient {
       }),
     status: (state: string) =>
       this.request<OAuthStatusResponse>(`/api/oauth/status/${state}`),
+    cancel: (state: string) =>
+      this.request<{ message: string; state: string }>(`/api/oauth/cancel/${state}`, {
+        method: 'POST',
+      }),
   };
 }
 

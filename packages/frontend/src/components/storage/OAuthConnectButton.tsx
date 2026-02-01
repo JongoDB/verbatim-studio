@@ -61,6 +61,15 @@ export function OAuthConnectButton({
 
   const config = PROVIDER_CONFIG[provider];
 
+  // Cancel OAuth flow and release port
+  const cancelOAuth = useCallback(async (state: string) => {
+    try {
+      await api.oauth.cancel(state);
+    } catch {
+      // Ignore errors - flow may already be complete
+    }
+  }, []);
+
   // Poll for OAuth completion
   useEffect(() => {
     if (!pollState) return;
@@ -79,15 +88,21 @@ export function OAuthConnectButton({
           setIsConnecting(false);
           setPollState(null);
           onError?.(status.error || 'Authentication failed');
+        } else if (status.status === 'cancelled' || status.status === 'timeout') {
+          clearInterval(pollInterval);
+          setIsConnecting(false);
+          setPollState(null);
+          onError?.(status.error || 'Authentication was cancelled');
         }
-      } catch (err) {
+      } catch {
         // Continue polling - state might not be ready yet
       }
     }, 1000);
 
     // Stop polling after 5 minutes
-    const timeout = setTimeout(() => {
+    const timeout = setTimeout(async () => {
       clearInterval(pollInterval);
+      await cancelOAuth(pollState);
       setIsConnecting(false);
       setPollState(null);
       onError?.('Authentication timed out');
@@ -96,8 +111,12 @@ export function OAuthConnectButton({
     return () => {
       clearInterval(pollInterval);
       clearTimeout(timeout);
+      // Cancel OAuth on unmount if still pending
+      if (pollState) {
+        cancelOAuth(pollState);
+      }
     };
-  }, [pollState, onSuccess, onError]);
+  }, [pollState, onSuccess, onError, cancelOAuth]);
 
   const handleConnect = useCallback(async () => {
     setIsConnecting(true);
@@ -126,13 +145,25 @@ export function OAuthConnectButton({
       const checkClosed = setInterval(() => {
         if (authWindow.closed) {
           clearInterval(checkClosed);
-          // Don't immediately stop - give polling a chance to catch the result
-          setTimeout(() => {
-            if (pollState) {
-              // Still waiting, user may have closed without completing
-              // Let polling handle the timeout
+          // Give polling a brief chance to catch the result, then cancel
+          setTimeout(async () => {
+            // Check if we're still connecting (no result yet)
+            if (isConnecting && response.state) {
+              try {
+                const status = await api.oauth.status(response.state);
+                if (status.status === 'pending') {
+                  // User closed without completing - cancel to release port
+                  await api.oauth.cancel(response.state);
+                  setIsConnecting(false);
+                  setPollState(null);
+                }
+              } catch {
+                // State may be gone, that's fine
+                setIsConnecting(false);
+                setPollState(null);
+              }
             }
-          }, 2000);
+          }, 1500);
         }
       }, 500);
     } catch (err) {

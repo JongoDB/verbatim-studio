@@ -236,6 +236,18 @@ def get_oauth_status(state: str) -> dict[str, Any] | None:
     }
 
 
+async def cancel_oauth(state: str) -> bool:
+    """Cancel an OAuth flow and cleanup resources."""
+    if state not in oauth_states:
+        return False
+
+    oauth_states[state]["status"] = "cancelled"
+    await _cleanup_callback_server(state)
+    oauth_states.pop(state, None)
+    logger.info(f"Cancelled OAuth flow for state={state[:8]}...")
+    return True
+
+
 async def _start_callback_server(state: str) -> int:
     """Start a temporary HTTP server to receive OAuth callback."""
     app = web.Application()
@@ -250,12 +262,26 @@ async def _start_callback_server(state: str) -> int:
             await site.start()
             _callback_servers[state] = runner
             logger.info(f"OAuth callback server started on port {port}")
+
+            # Auto-cleanup after 5 minutes if no callback received
+            asyncio.create_task(_auto_cleanup_timeout(state, timeout=300))
+
             return port
         except OSError:
             continue
 
     await runner.cleanup()
     raise RuntimeError("No available ports for OAuth callback server")
+
+
+async def _auto_cleanup_timeout(state: str, timeout: float = 300) -> None:
+    """Auto-cleanup callback server after timeout if still pending."""
+    await asyncio.sleep(timeout)
+    if state in oauth_states and oauth_states[state]["status"] == "pending":
+        logger.info(f"OAuth timeout for state={state[:8]}..., cleaning up")
+        oauth_states[state]["status"] = "timeout"
+        oauth_states[state]["error"] = "OAuth flow timed out"
+        await _cleanup_callback_server(state)
 
 
 async def _handle_callback(request: web.Request, expected_state: str) -> web.Response:

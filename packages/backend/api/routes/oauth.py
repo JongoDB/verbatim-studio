@@ -5,6 +5,7 @@ from pydantic import BaseModel
 
 from services.oauth import (
     OAUTH_PROVIDERS,
+    cancel_oauth,
     get_oauth_status,
     start_oauth,
 )
@@ -94,3 +95,21 @@ async def oauth_status(state: str) -> OAuthStatusResponse:
         error=status.get("error"),
         tokens=status.get("tokens"),
     )
+
+
+@router.post("/cancel/{state}")
+async def oauth_cancel(state: str) -> dict:
+    """
+    Cancel an OAuth flow and release the callback server port.
+
+    Call this when the user closes the OAuth dialog without completing.
+    """
+    cancelled = await cancel_oauth(state)
+
+    if not cancelled:
+        raise HTTPException(
+            status_code=404,
+            detail="OAuth session not found or already completed",
+        )
+
+    return {"message": "OAuth flow cancelled", "state": state}
