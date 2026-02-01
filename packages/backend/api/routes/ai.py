@@ -8,7 +8,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,7 +17,7 @@ from core.factory import get_factory
 from core.interfaces import ChatMessage, ChatOptions
 from core.model_catalog import MODEL_CATALOG
 from persistence.database import get_db
-from persistence.models import Recording, Transcript, Segment
+from persistence.models import Document, Recording, Transcript, Segment
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/ai", tags=["ai"])
@@ -97,11 +97,18 @@ class HistoryMessage(BaseModel):
 
 
 class MultiChatRequest(BaseModel):
-    """Request model for multi-transcript chat."""
+    """Request model for multi-source chat (transcripts and documents)."""
     message: str
     recording_ids: list[str] = []  # Recording IDs (frontend sends these, we look up transcripts)
+    document_ids: list[str] = []  # Document IDs for document context
     history: list[HistoryMessage] = []
     temperature: float = Field(default=0.7, ge=0, le=2)
+
+    @model_validator(mode='after')
+    def check_at_least_one_source(self):
+        if not self.recording_ids and not self.document_ids:
+            raise ValueError("At least one recording_id or document_id required")
+        return self
 
 
 class StreamToken(BaseModel):
@@ -481,13 +488,28 @@ async def chat_multi_stream(
                 logger.warning("Could not load recording %s", recording_id)
                 continue
 
+    # Fetch documents and build context
+    if request.document_ids:
+        doc_result = await db.execute(
+            select(Document)
+            .where(Document.id.in_(request.document_ids))
+            .where(Document.status == "completed")
+        )
+        documents = doc_result.scalars().all()
+
+        for doc in documents:
+            label = chr(ord('A') + len(context_parts))  # Continue labeling after recordings
+            content = doc.extracted_markdown or doc.extracted_text or ""
+            if content:
+                context_parts.append(f"=== Document {label} ({doc.title}) ===\n{content[:8000]}\n")  # Limit context size
+
     # Build system message
     system_content = MAX_SYSTEM_PROMPT
     if context_parts:
-        system_content += f"\n\nYou have access to {len(context_parts)} transcript(s):\n\n"
+        system_content += f"\n\nYou have access to {len(context_parts)} source(s):\n\n"
         system_content += "\n".join(context_parts)
     else:
-        system_content += "\n\nNo transcripts are currently attached. Help with general questions."
+        system_content += "\n\nNo sources are currently attached. Help with general questions."
 
     # Build messages list
     messages = [ChatMessage(role="system", content=system_content)]
