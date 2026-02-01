@@ -58,8 +58,14 @@ The app tries different ports if one is busy.
 ## Dropbox
 
 1. [Create App](https://www.dropbox.com/developers/apps/create) → Scoped access → Full Dropbox
-2. Settings → Add all 4 redirect URIs
-3. Copy **App key** and **App secret**
+2. **Permissions** → Enable \`files.metadata.read\`, \`files.metadata.write\`, \`files.content.read\`, \`files.content.write\`
+3. **Settings** → Add all 4 redirect URIs
+4. Copy **App key** (Client ID) and **App secret** (Client Secret)
+
+**Troubleshooting**
+
+- \`invalid_scope\` → Go to Permissions tab and enable all Files and folders permissions
+- \`invalid_redirect_uri\` → Add all 4 URIs exactly as shown above
 `;
 
 interface OAuthCredentialsConfigProps {

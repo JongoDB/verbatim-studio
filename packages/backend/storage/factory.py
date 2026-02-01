@@ -6,6 +6,7 @@ from storage.base import StorageAdapter
 from storage.adapters.local import LocalAdapter
 from storage.adapters.gdrive import GDriveAdapter
 from storage.adapters.onedrive import OneDriveAdapter
+from storage.adapters.dropbox import DropboxAdapter
 
 
 # Registry of adapter classes by (type, subtype)
@@ -13,6 +14,7 @@ ADAPTER_REGISTRY: dict[tuple[str, str | None], type[StorageAdapter]] = {
     ("local", None): LocalAdapter,
     ("cloud", "gdrive"): GDriveAdapter,
     ("cloud", "onedrive"): OneDriveAdapter,
+    ("cloud", "dropbox"): DropboxAdapter,
 }
 
 

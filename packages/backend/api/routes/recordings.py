@@ -756,10 +756,25 @@ async def bulk_assign_recordings(
         # Move file if project changed
         if recording.project_id != body.project_id and recording.file_path:
             try:
-                old_path = Path(recording.file_path)
-                if old_path.exists():
-                    new_path = await storage_service.move_to_project(old_path, new_project_name)
+                # Check if recording is in cloud storage
+                is_cloud = False
+                if recording.storage_location_id:
+                    loc_result = await db.execute(
+                        select(StorageLocation).where(StorageLocation.id == recording.storage_location_id)
+                    )
+                    storage_loc = loc_result.scalar_one_or_none()
+                    is_cloud = storage_loc and storage_loc.type == "cloud"
+
+                if is_cloud:
+                    # Cloud storage - move via adapter
+                    new_path = await storage_service.move_to_project(recording.file_path, new_project_name)
                     recording.file_path = str(new_path)
+                else:
+                    # Local storage - check if file exists first
+                    old_path = Path(recording.file_path)
+                    if old_path.exists():
+                        new_path = await storage_service.move_to_project(old_path, new_project_name)
+                        recording.file_path = str(new_path)
             except Exception as e:
                 logger.warning("Could not move file for recording %s: %s", recording.id, e)
         recording.project_id = body.project_id

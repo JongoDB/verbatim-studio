@@ -4,5 +4,6 @@
 from storage.adapters.local import LocalAdapter
 from storage.adapters.gdrive import GDriveAdapter
 from storage.adapters.onedrive import OneDriveAdapter
+from storage.adapters.dropbox import DropboxAdapter
 
-__all__ = ["LocalAdapter", "GDriveAdapter", "OneDriveAdapter"]
+__all__ = ["LocalAdapter", "GDriveAdapter", "OneDriveAdapter", "DropboxAdapter"]
