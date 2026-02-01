@@ -122,6 +122,7 @@ class DocumentProcessor:
 
                 from chandra.input import load_file
                 from chandra.model import InferenceManager
+                from chandra.model.schema import BatchInputItem
 
                 logger.info(f"Processing {file_path.name} with Chandra OCR")
 
@@ -132,11 +133,12 @@ class DocumentProcessor:
                 # Initialize the inference manager (uses HuggingFace by default)
                 manager = InferenceManager(method="hf")
 
-                # Process all pages
-                markdown_parts = []
-                for page in pages:
-                    result = manager.generate(page)
-                    markdown_parts.append(result.markdown)
+                # Create batch input items from pages
+                batch = [BatchInputItem(image=page) for page in pages]
+
+                # Process all pages in batch
+                results = manager.generate(batch)
+                markdown_parts = [result.markdown for result in results]
 
                 combined_markdown = "\n\n".join(markdown_parts)
                 # Strip markdown formatting for plain text
@@ -232,6 +234,7 @@ class DocumentProcessor:
 
             from chandra.input import load_file
             from chandra.model import InferenceManager
+            from chandra.model.schema import BatchInputItem
 
             logger.info(f"Processing {file_path.name} with Chandra OCR")
 
@@ -242,11 +245,12 @@ class DocumentProcessor:
             # Initialize the inference manager (uses HuggingFace by default)
             manager = InferenceManager(method="hf")
 
-            # Process the image (should be single page)
-            markdown_parts = []
-            for page in pages:
-                result = manager.generate(page)
-                markdown_parts.append(result.markdown)
+            # Create batch input items from pages
+            batch = [BatchInputItem(image=page) for page in pages]
+
+            # Process the image in batch
+            results = manager.generate(batch)
+            markdown_parts = [result.markdown for result in results]
 
             combined_markdown = "\n\n".join(markdown_parts)
             # Strip markdown formatting for plain text
