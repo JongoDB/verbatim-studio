@@ -560,6 +560,7 @@ export interface OCRModel {
   size_bytes: number;
   is_default: boolean;
   downloaded: boolean;
+  downloading: boolean;
   size_on_disk: number | null;
 }
 
@@ -579,6 +580,9 @@ export interface OCRModelDownloadEvent {
   path?: string;
   error?: string;
   message?: string;
+  downloaded_bytes?: number;
+  total_bytes?: number;
+  percent?: number;
 }
 
 // Archive Types

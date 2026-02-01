@@ -15,6 +15,7 @@ from core.ocr_catalog import (
     get_model_path,
     get_ocr_models_dir,
     is_model_downloaded,
+    is_model_downloading,
     get_model_size_on_disk,
 )
 
@@ -32,6 +33,7 @@ class OCRModelInfo(BaseModel):
     size_bytes: int
     is_default: bool
     downloaded: bool
+    downloading: bool
     size_on_disk: int | None
 
 
@@ -59,8 +61,10 @@ async def list_ocr_models() -> OCRModelListResponse:
     items: list[OCRModelInfo] = []
 
     for model_id, entry in OCR_MODEL_CATALOG.items():
+        downloading = is_model_downloading(model_id)
         downloaded = is_model_downloaded(model_id)
-        size_on_disk = get_model_size_on_disk(model_id) if downloaded else None
+        # Show current size even while downloading
+        size_on_disk = get_model_size_on_disk(model_id) if (downloaded or downloading) else None
 
         items.append(
             OCRModelInfo(
@@ -71,6 +75,7 @@ async def list_ocr_models() -> OCRModelListResponse:
                 size_bytes=entry["size_bytes"],
                 is_default=entry.get("default", False),
                 downloaded=downloaded,
+                downloading=downloading,
                 size_on_disk=size_on_disk,
             )
         )
@@ -109,6 +114,9 @@ async def download_ocr_model(model_id: str) -> StreamingResponse:
     if is_model_downloaded(model_id):
         raise HTTPException(status_code=409, detail="Model already downloaded")
 
+    if is_model_downloading(model_id):
+        raise HTTPException(status_code=409, detail="Download already in progress")
+
     async def _stream_progress():
         try:
             from huggingface_hub import snapshot_download
@@ -116,37 +124,63 @@ async def download_ocr_model(model_id: str) -> StreamingResponse:
             yield f"data: {json.dumps({'status': 'error', 'error': 'huggingface-hub is not installed'})}\n\n"
             return
 
+        # Ensure directories exist
+        settings.ensure_directories()
+        ocr_dir = get_ocr_models_dir()
+        ocr_dir.mkdir(parents=True, exist_ok=True)
+
+        # Get destination path
+        dest_path = get_model_path(model_id)
+        dest_path.mkdir(parents=True, exist_ok=True)
+
+        # Create download marker
+        marker_file = dest_path / ".downloading"
+        marker_file.touch()
+
         yield f"data: {json.dumps({'status': 'starting', 'model_id': model_id})}\n\n"
 
         try:
-            # Ensure directories exist
-            settings.ensure_directories()
-            ocr_dir = get_ocr_models_dir()
-            ocr_dir.mkdir(parents=True, exist_ok=True)
-
-            # Get destination path
-            dest_path = get_model_path(model_id)
-
-            # Download in a thread to not block
             loop = asyncio.get_event_loop()
+            total_bytes = entry["size_bytes"]
 
-            yield f"data: {json.dumps({'status': 'progress', 'model_id': model_id, 'message': 'Downloading model files to Verbatim storage...'})}\n\n"
+            # Start download in background thread
+            import concurrent.futures
+            executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
 
             def do_download():
                 return snapshot_download(
                     repo_id=entry["repo"],
                     repo_type="model",
                     local_dir=str(dest_path),
-                    local_dir_use_symlinks=False,  # Copy files instead of symlinks
+                    local_dir_use_symlinks=False,
                 )
 
-            # Run the download in a thread pool
-            path = await loop.run_in_executor(None, do_download)
+            future = executor.submit(do_download)
 
-            yield f"data: {json.dumps({'status': 'complete', 'model_id': model_id, 'path': str(path)})}\n\n"
+            # Poll for progress while download runs
+            last_size = 0
+            while not future.done():
+                await asyncio.sleep(2)  # Check every 2 seconds
+                current_size = get_model_size_on_disk(model_id) or 0
+                if current_size != last_size:
+                    last_size = current_size
+                    percent = min(99, int((current_size / total_bytes) * 100)) if total_bytes > 0 else 0
+                    yield f"data: {json.dumps({'status': 'progress', 'model_id': model_id, 'downloaded_bytes': current_size, 'total_bytes': total_bytes, 'percent': percent})}\n\n"
+
+            # Get result (raises exception if download failed)
+            path = future.result()
+            executor.shutdown(wait=False)
+
+            # Remove download marker
+            marker_file.unlink(missing_ok=True)
+
+            final_size = get_model_size_on_disk(model_id) or 0
+            yield f"data: {json.dumps({'status': 'complete', 'model_id': model_id, 'path': str(path), 'size_bytes': final_size})}\n\n"
 
         except Exception as exc:
             logger.exception("OCR model download failed")
+            # Remove marker on error
+            marker_file.unlink(missing_ok=True)
             yield f"data: {json.dumps({'status': 'error', 'error': str(exc)})}\n\n"
 
     return StreamingResponse(_stream_progress(), media_type="text/event-stream")

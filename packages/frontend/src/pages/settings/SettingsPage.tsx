@@ -106,6 +106,7 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
   const [ocrModels, setOcrModels] = useState<OCRModel[]>([]);
   const [ocrDownloading, setOcrDownloading] = useState<string | null>(null);
   const [ocrDownloadMessage, setOcrDownloadMessage] = useState<string | null>(null);
+  const [ocrDownloadProgress, setOcrDownloadProgress] = useState<{ percent: number; downloaded: number; total: number } | null>(null);
   const [ocrError, setOcrError] = useState<string | null>(null);
   const ocrDownloadAbortRef = useRef<{ abort: () => void } | null>(null);
 
@@ -312,19 +313,28 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
   const handleDownloadOcrModel = useCallback((modelId: string) => {
     setOcrDownloading(modelId);
     setOcrDownloadMessage('Starting download...');
+    setOcrDownloadProgress(null);
     setOcrError(null);
 
     const handle = api.ocr.downloadModel(modelId, (event: OCRModelDownloadEvent) => {
-      if (event.status === 'progress') {
-        setOcrDownloadMessage(event.message || 'Downloading model files...');
+      if (event.status === 'starting') {
+        setOcrDownloadMessage('Initializing download...');
+      } else if (event.status === 'progress') {
+        const percent = event.percent ?? 0;
+        const downloaded = event.downloaded_bytes ?? 0;
+        const total = event.total_bytes ?? 0;
+        setOcrDownloadProgress({ percent, downloaded, total });
+        setOcrDownloadMessage(`Downloading... ${percent}%`);
       } else if (event.status === 'complete') {
         setOcrDownloading(null);
         setOcrDownloadMessage(null);
+        setOcrDownloadProgress(null);
         refreshOcrModels();
       } else if (event.status === 'error') {
         setOcrError(event.error || 'Download failed');
         setOcrDownloading(null);
         setOcrDownloadMessage(null);
+        setOcrDownloadProgress(null);
       }
     });
 
@@ -1191,12 +1201,17 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">OCR Model</label>
             <div className="space-y-3">
-              {ocrModels.map((model) => (
+              {ocrModels.map((model) => {
+                const isDownloading = ocrDownloading === model.id || model.downloading;
+                const isInstalled = model.downloaded && !model.downloading;
+                return (
                 <div
                   key={model.id}
                   className={`p-4 rounded-lg border transition-all ${
-                    model.downloaded
+                    isInstalled
                       ? 'border-green-300 dark:border-green-700 bg-green-50/50 dark:bg-green-900/10'
+                      : isDownloading
+                      ? 'border-blue-300 dark:border-blue-700 bg-blue-50/50 dark:bg-blue-900/10'
                       : 'border-gray-200 dark:border-gray-600'
                   }`}
                 >
@@ -1209,7 +1224,16 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
                             Recommended
                           </span>
                         )}
-                        {model.downloaded && (
+                        {isDownloading && (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">
+                            <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                            </svg>
+                            Downloading
+                          </span>
+                        )}
+                        {isInstalled && (
                           <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs rounded bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300">
                             <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                               <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
@@ -1220,14 +1244,16 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
                       </div>
                       <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{model.description}</p>
                       <p className="mt-0.5 text-xs text-gray-400 dark:text-gray-500">
-                        {model.downloaded && model.size_on_disk
+                        {isInstalled && model.size_on_disk
                           ? `${formatBytes(model.size_on_disk)} on disk`
+                          : isDownloading && model.size_on_disk
+                          ? `${formatBytes(model.size_on_disk)} / ${formatBytes(model.size_bytes)}`
                           : `~${formatBytes(model.size_bytes)} download`}
                       </p>
                     </div>
 
                     <div className="flex items-center gap-2 shrink-0">
-                      {!model.downloaded && ocrDownloading !== model.id && (
+                      {!isInstalled && !isDownloading && (
                         <button
                           onClick={() => handleDownloadOcrModel(model.id)}
                           className="px-3 py-1.5 text-xs font-medium rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
@@ -1236,7 +1262,7 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
                         </button>
                       )}
 
-                      {model.downloaded && ocrDownloading !== model.id && (
+                      {isInstalled && (
                         <button
                           onClick={() => handleDeleteOcrModel(model.id)}
                           className="px-3 py-1.5 text-xs font-medium rounded-lg border border-destructive/50 text-destructive hover:bg-destructive/10 transition-colors"
@@ -1248,22 +1274,38 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
                   </div>
 
                   {/* Download progress */}
-                  {ocrDownloading === model.id && (
+                  {isDownloading && (
                     <div className="mt-3">
-                      <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-                        <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                        </svg>
-                        <span>{ocrDownloadMessage || 'Downloading...'}</span>
-                      </div>
+                      {ocrDownloadProgress && ocrDownloading === model.id ? (
+                        <>
+                          <div className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-blue-500 dark:bg-blue-400 transition-all duration-300"
+                              style={{ width: `${ocrDownloadProgress.percent}%` }}
+                            />
+                          </div>
+                          <div className="flex items-center justify-between mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                            <span>{formatBytes(ocrDownloadProgress.downloaded)} / {formatBytes(ocrDownloadProgress.total)}</span>
+                            <span>{ocrDownloadProgress.percent}%</span>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                          <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                          </svg>
+                          <span>{ocrDownloadMessage || 'Downloading...'}</span>
+                        </div>
+                      )}
                       <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
                         This may take several minutes depending on your connection speed.
                       </p>
                     </div>
                   )}
                 </div>
-              ))}
+              );
+              })}
 
               {ocrModels.length === 0 && (
                 <p className="text-sm text-gray-500 dark:text-gray-400 py-2">

@@ -35,10 +35,23 @@ def get_model_path(model_id: str) -> Path | None:
     return get_ocr_models_dir() / model_id
 
 
+def is_model_downloading(model_id: str) -> bool:
+    """Check if a model download is in progress."""
+    path = get_model_path(model_id)
+    if not path:
+        return False
+    marker = path / ".downloading"
+    return marker.exists()
+
+
 def is_model_downloaded(model_id: str) -> bool:
-    """Check if an OCR model is downloaded."""
+    """Check if an OCR model is fully downloaded (not in progress)."""
     path = get_model_path(model_id)
     if not path or not path.exists():
+        return False
+
+    # If download is in progress, not yet complete
+    if is_model_downloading(model_id):
         return False
 
     # Check for key model files (safetensors or pytorch files)
