@@ -20,6 +20,7 @@ import { ChatPanel } from '@/components/ai/ChatPanel';
 import type { ChatMessage } from '@/components/ai/ChatMessages';
 import type { ChatAttachment } from '@/components/ai/AttachmentPicker';
 import { ChatsPage } from '@/pages/chats/ChatsPage';
+import { OnboardingTour, WelcomeModal, TourToast, TOUR_STORAGE_KEYS } from '@/components/onboarding';
 
 type NavigationState =
   | { type: 'dashboard' }
@@ -132,6 +133,16 @@ export function App() {
     if (typeof window === 'undefined') return false;
     return localStorage.getItem('sidebar-collapsed') === 'true';
   });
+
+  // Onboarding tour state
+  const [showWelcomeModal, setShowWelcomeModal] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    const completed = localStorage.getItem(TOUR_STORAGE_KEYS.completed);
+    const skipped = localStorage.getItem(TOUR_STORAGE_KEYS.skipped);
+    return !completed && !skipped;
+  });
+  const [isTourActive, setIsTourActive] = useState(false);
+  const [showTourToast, setShowTourToast] = useState(false);
 
   // Persist sidebar collapsed state
   useEffect(() => {
@@ -338,6 +349,27 @@ export function App() {
     setChatAttachments([]);
   }, []);
 
+  // Tour handlers
+  const handleStartTour = useCallback(() => {
+    setShowWelcomeModal(false);
+    setIsTourActive(true);
+  }, []);
+
+  const handleTourComplete = useCallback(() => {
+    setIsTourActive(false);
+    setShowTourToast(true);
+  }, []);
+
+  const handleTourSkip = useCallback(() => {
+    setIsTourActive(false);
+    setShowWelcomeModal(false);
+  }, []);
+
+  const handleWelcomeSkip = useCallback(() => {
+    localStorage.setItem(TOUR_STORAGE_KEYS.skipped, 'true');
+    setShowWelcomeModal(false);
+  }, []);
+
   // Show loading state while connecting
   if (isConnecting) {
     return (
@@ -442,6 +474,7 @@ export function App() {
                 onNavigateToRecordings={handleNavigateToRecordings}
                 onNavigateToProjects={handleNavigateToProjects}
                 onViewRecording={handleViewTranscript}
+                onStartTour={handleStartTour}
               />
             )}
             {navigation.type === 'recordings' && (
@@ -519,6 +552,22 @@ export function App() {
         attached={chatAttachments}
         setAttached={setChatAttachments}
         onNavigateToChats={handleNavigateToChats}
+      />
+
+      {/* Onboarding Tour */}
+      <WelcomeModal
+        isOpen={showWelcomeModal && !isConnecting && !error}
+        onStartTour={handleStartTour}
+        onSkip={handleWelcomeSkip}
+      />
+      <OnboardingTour
+        isActive={isTourActive}
+        onComplete={handleTourComplete}
+        onSkip={handleTourSkip}
+      />
+      <TourToast
+        isVisible={showTourToast}
+        onDismiss={() => setShowTourToast(false)}
       />
     </div>
   );
