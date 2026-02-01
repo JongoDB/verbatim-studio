@@ -6,12 +6,14 @@ import { AudioRecorder } from '@/components/recordings/AudioRecorder';
 import { RecordingSetupPanel, type RecordingSettings } from '@/components/recordings/RecordingSetupPanel';
 import { UploadSetupDialog, type UploadOptions } from '@/components/recordings/UploadSetupDialog';
 import { UploadDocumentDialog } from '@/components/documents/UploadDocumentDialog';
+import { TourSection } from '@/components/onboarding/TourSection';
 
 interface DashboardProps {
   onNavigateToRecordings?: () => void;
   onNavigateToProjects?: () => void;
   onViewRecording?: (recordingId: string) => void;
   onRecordingUploaded?: () => void;
+  onStartTour?: () => void;
 }
 
 function formatDuration(seconds: number): string {
@@ -87,7 +89,7 @@ function StatCard({
   );
 }
 
-export function Dashboard({ onNavigateToRecordings, onNavigateToProjects, onViewRecording, onRecordingUploaded }: DashboardProps) {
+export function Dashboard({ onNavigateToRecordings, onNavigateToProjects, onViewRecording, onRecordingUploaded, onStartTour }: DashboardProps) {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [recentRecordings, setRecentRecordings] = useState<Recording[]>([]);
   const [recentProjects, setRecentProjects] = useState<Project[]>([]);
@@ -583,34 +585,9 @@ export function Dashboard({ onNavigateToRecordings, onNavigateToProjects, onView
         </div>
       </div>
 
-      {/* Quick Action - Empty State */}
-      {onNavigateToRecordings && recordings.total_recordings === 0 && (
-        <div className="rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600 p-8 text-center">
-          <svg
-            className="w-12 h-12 mx-auto text-gray-400 mb-4"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth="1.5"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-          </svg>
-          <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">
-            Get Started
-          </h3>
-          <p className="text-gray-500 dark:text-gray-400 mb-4">
-            Upload your first recording to begin transcribing
-          </p>
-          <button
-            onClick={onNavigateToRecordings}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
-          >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-            </svg>
-            Upload Recording
-          </button>
-        </div>
+      {/* Tour Section */}
+      {onStartTour && (
+        <TourSection onStartTour={onStartTour} />
       )}
 
       {/* Create Project Dialog */}
