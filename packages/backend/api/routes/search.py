@@ -270,16 +270,19 @@ async def _semantic_search(
 class GlobalSearchResult(BaseModel):
     """A result from global search."""
 
-    type: str  # "recording" or "segment"
+    type: str  # "recording", "segment", or "document"
     id: str
     title: str | None
     text: str | None
-    recording_id: str
-    recording_title: str
-    start_time: float | None
-    end_time: float | None
+    recording_id: str | None = None
+    recording_title: str | None = None
+    document_id: str | None = None
+    document_title: str | None = None
+    start_time: float | None = None
+    end_time: float | None = None
     created_at: datetime
     match_type: str | None = None  # "keyword" or "semantic"
+    similarity: float | None = None  # For semantic results
 
 
 class GlobalSearchResponse(BaseModel):
@@ -290,6 +293,83 @@ class GlobalSearchResponse(BaseModel):
     total: int
 
 
+async def _document_semantic_search(
+    db: AsyncSession,
+    query_embedding: list[float],
+    limit: int,
+    exclude_ids: set[str],
+    threshold: float = 0.3,
+) -> list["GlobalSearchResult"]:
+    """Perform semantic search on document embeddings.
+
+    Args:
+        db: Database session.
+        query_embedding: The embedded query vector.
+        limit: Maximum results.
+        exclude_ids: Document IDs to exclude (already found by keyword).
+        threshold: Minimum similarity threshold.
+
+    Returns:
+        List of document semantic search results.
+    """
+    import math
+
+    # Fetch document embeddings for completed documents
+    stmt = (
+        select(DocumentEmbedding, Document)
+        .join(Document, DocumentEmbedding.document_id == Document.id)
+        .where(Document.status == "completed")
+    )
+    result = await db.execute(stmt)
+    rows = result.all()
+
+    if not rows:
+        return []
+
+    def cosine_similarity(a: list[float], b: list[float]) -> float:
+        dot = sum(x * y for x, y in zip(a, b))
+        norm_a = math.sqrt(sum(x * x for x in a))
+        norm_b = math.sqrt(sum(x * x for x in b))
+        if norm_a == 0 or norm_b == 0:
+            return 0.0
+        return dot / (norm_a * norm_b)
+
+    # Score all embeddings, group by document to get best chunk per doc
+    doc_best_scores: dict[str, tuple[float, DocumentEmbedding, Document]] = {}
+    for doc_emb, doc in rows:
+        if doc.id in exclude_ids:
+            continue
+
+        emb = bytes_to_embedding(doc_emb.embedding)
+        score = cosine_similarity(query_embedding, emb)
+
+        if score >= threshold:
+            if doc.id not in doc_best_scores or score > doc_best_scores[doc.id][0]:
+                doc_best_scores[doc.id] = (score, doc_emb, doc)
+
+    # Sort by score descending
+    sorted_results = sorted(doc_best_scores.values(), key=lambda x: x[0], reverse=True)
+
+    # Convert to GlobalSearchResult
+    results = []
+    for score, doc_emb, doc in sorted_results[:limit]:
+        results.append(
+            GlobalSearchResult(
+                type="document",
+                id=doc.id,
+                title=doc.title,
+                text=doc_emb.chunk_text[:300] if doc_emb.chunk_text else None,
+                document_id=doc.id,
+                document_title=doc.title,
+                created_at=doc.created_at,
+                match_type="semantic",
+                similarity=round(score, 4),
+            )
+        )
+
+    return results
+
+
 @router.get("/global", response_model=GlobalSearchResponse)
 async def global_search(
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -297,27 +377,31 @@ async def global_search(
     limit: Annotated[int, Query(ge=1, le=50, description="Maximum results")] = 20,
     semantic: Annotated[bool, Query(description="Include semantic search results")] = True,
 ) -> GlobalSearchResponse:
-    """Search across recordings and segments.
+    """Search across recordings, segments, and documents.
 
-    Returns a combined list of matching recordings (by title) and
-    segments (by text content).
+    Returns a combined list of matching recordings (by title),
+    segments (by text content), and documents (by title and content).
 
     Args:
         db: Database session.
         q: Search query string.
         limit: Maximum number of results.
+        semantic: Whether to include semantic search results.
 
     Returns:
         Combined search results.
     """
     results: list[GlobalSearchResult] = []
 
+    # Allocate slots: recordings ~1/3, segments ~1/3, documents ~1/3
+    slot_size = max(1, limit // 3)
+
     # Search recordings by title
     recording_query = (
         select(Recording)
         .where(Recording.title.ilike(f"%{q}%"))
         .order_by(Recording.created_at.desc())
-        .limit(limit // 2)
+        .limit(slot_size)
     )
     recording_result = await db.execute(recording_query)
     recordings = recording_result.scalars().all()
@@ -331,8 +415,6 @@ async def global_search(
                 text=None,
                 recording_id=rec.id,
                 recording_title=rec.title,
-                start_time=None,
-                end_time=None,
                 created_at=rec.created_at,
                 match_type="keyword",
             )
@@ -350,7 +432,7 @@ async def global_search(
         .join(Recording, Transcript.recording_id == Recording.id)
         .where(Segment.text.ilike(f"%{q}%"))
         .order_by(Recording.created_at.desc(), Segment.start_time)
-        .limit(limit - len(results))
+        .limit(slot_size)
     )
     segment_result = await db.execute(segment_query)
     segments = segment_result.all()
@@ -376,15 +458,53 @@ async def global_search(
             )
         )
 
+    # Search documents by title (keyword search)
+    document_query = (
+        select(Document)
+        .where(Document.title.ilike(f"%{q}%"))
+        .where(Document.status == "completed")
+        .order_by(Document.created_at.desc())
+        .limit(slot_size)
+    )
+    document_result = await db.execute(document_query)
+    documents = document_result.scalars().all()
+
+    for doc in documents:
+        results.append(
+            GlobalSearchResult(
+                type="document",
+                id=doc.id,
+                title=doc.title,
+                text=None,
+                document_id=doc.id,
+                document_title=doc.title,
+                created_at=doc.created_at,
+                match_type="keyword",
+            )
+        )
+
     # Semantic search (if enabled and available)
     if semantic and embedding_service.is_available():
         try:
-            seen_ids = {r.id for r in results}
+            seen_segment_ids = {r.id for r in results if r.type == "segment"}
+            seen_document_ids = {r.id for r in results if r.type == "document"}
             query_embedding = await embedding_service.embed_query(q)
-            semantic_results = await _semantic_search(
-                db, query_embedding, limit - len(results), seen_ids
-            )
-            results.extend(semantic_results)
+
+            remaining_slots = limit - len(results)
+            if remaining_slots > 0:
+                # Semantic search for segments
+                segment_semantic_results = await _semantic_search(
+                    db, query_embedding, remaining_slots // 2, seen_segment_ids
+                )
+                results.extend(segment_semantic_results)
+
+                # Semantic search for documents
+                remaining_slots = limit - len(results)
+                if remaining_slots > 0:
+                    doc_semantic_results = await _document_semantic_search(
+                        db, query_embedding, remaining_slots, seen_document_ids
+                    )
+                    results.extend(doc_semantic_results)
         except Exception as e:
             logger.warning("Semantic search failed: %s", e)
 
