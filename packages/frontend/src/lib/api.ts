@@ -723,12 +723,20 @@ export interface DiskUsage {
   percent_used: number;
 }
 
+export interface ModelBreakdown {
+  llm_count: number;
+  llm_bytes: number;
+  asr_count: number;
+  asr_bytes: number;
+  diarization_count: number;
+  diarization_bytes: number;
+}
+
 export interface StorageBreakdown {
   media_bytes: number;
   media_count: number;
   database_bytes: number;
-  models_bytes: number;
-  models_count: number;
+  models: ModelBreakdown;
   total_bytes: number;
 }
 

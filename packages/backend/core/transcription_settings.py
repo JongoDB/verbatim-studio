@@ -26,7 +26,7 @@ DEFAULTS: dict[str, Any] = {
 
 VALID_ENGINES = ["auto", "whisperx", "mlx-whisper"]
 
-VALID_MODELS = ["tiny", "base", "small", "medium", "large-v2", "large-v3"]
+VALID_MODELS = ["tiny", "base", "small", "medium", "large-v3"]
 
 # Device support depends on engine:
 # - WhisperX (ctranslate2): cpu, cuda only

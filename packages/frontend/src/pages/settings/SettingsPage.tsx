@@ -1781,9 +1781,21 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-500 dark:text-gray-400">AI Models</span>
+                  <span className="text-gray-500 dark:text-gray-400">LLM Models</span>
                   <span className="text-gray-900 dark:text-gray-100">
-                    {systemInfo.storage_breakdown.models_count} models ({formatBytes(systemInfo.storage_breakdown.models_bytes)})
+                    {systemInfo.storage_breakdown.models.llm_count} ({formatBytes(systemInfo.storage_breakdown.models.llm_bytes)})
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500 dark:text-gray-400">ASR Models</span>
+                  <span className="text-gray-900 dark:text-gray-100">
+                    {systemInfo.storage_breakdown.models.asr_count} ({formatBytes(systemInfo.storage_breakdown.models.asr_bytes)})
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500 dark:text-gray-400">Diarization</span>
+                  <span className="text-gray-900 dark:text-gray-100">
+                    {systemInfo.storage_breakdown.models.diarization_count} ({formatBytes(systemInfo.storage_breakdown.models.diarization_bytes)})
                   </span>
                 </div>
                 <div className="flex justify-between pt-2 border-t border-gray-100 dark:border-gray-700 font-medium">

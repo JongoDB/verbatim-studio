@@ -49,14 +49,24 @@ class DiskUsage(BaseModel):
     percent_used: float
 
 
+class ModelBreakdown(BaseModel):
+    """Breakdown of AI models by type."""
+
+    llm_count: int
+    llm_bytes: int
+    asr_count: int
+    asr_bytes: int
+    diarization_count: int
+    diarization_bytes: int
+
+
 class StorageBreakdown(BaseModel):
     """Breakdown of Verbatim storage usage."""
 
     media_bytes: int
     media_count: int
     database_bytes: int
-    models_bytes: int
-    models_count: int
+    models: ModelBreakdown
     total_bytes: int
 
 
@@ -112,6 +122,70 @@ def get_file_size(path: Path) -> int:
     return 0
 
 
+def count_llm_models(models_dir: Path) -> tuple[int, int]:
+    """Count LLM models (.gguf files) in the models directory."""
+    count, size = 0, 0
+    if models_dir.exists() and models_dir.is_dir():
+        for f in models_dir.glob("*.gguf"):
+            try:
+                count += 1
+                size += f.stat().st_size
+            except (OSError, PermissionError):
+                pass
+    return count, size
+
+
+def count_huggingface_models(pattern: str) -> tuple[int, int]:
+    """Count models in HuggingFace cache matching a pattern.
+
+    Args:
+        pattern: Glob pattern to match model directories (e.g., '*whisper*')
+
+    Returns:
+        Tuple of (model_count, total_bytes)
+    """
+    hf_cache = Path.home() / ".cache" / "huggingface" / "hub"
+    count, size = 0, 0
+    if not hf_cache.exists():
+        return count, size
+
+    for d in hf_cache.glob(f"models--{pattern}"):
+        if d.is_dir():
+            count += 1
+            for f in d.rglob("*"):
+                if f.is_file():
+                    try:
+                        size += f.stat().st_size
+                    except (OSError, PermissionError):
+                        pass
+    return count, size
+
+
+def count_pyannote_models() -> tuple[int, int]:
+    """Count pyannote diarization models in torch cache.
+
+    Pyannote stores models in ~/.cache/torch/pyannote/ rather than HuggingFace cache.
+
+    Returns:
+        Tuple of (model_count, total_bytes)
+    """
+    pyannote_cache = Path.home() / ".cache" / "torch" / "pyannote"
+    count, size = 0, 0
+    if not pyannote_cache.exists():
+        return count, size
+
+    for d in pyannote_cache.glob("models--pyannote--*"):
+        if d.is_dir():
+            count += 1
+            for f in d.rglob("*"):
+                if f.is_file():
+                    try:
+                        size += f.stat().st_size
+                    except (OSError, PermissionError):
+                        pass
+    return count, size
+
+
 @router.get("/info", response_model=SystemInfo)
 async def get_system_info() -> SystemInfo:
     """Get system information including storage usage and content counts."""
@@ -151,16 +225,30 @@ async def get_system_info() -> SystemInfo:
 
     # Storage breakdown
     media_bytes, media_count = get_dir_size(settings.MEDIA_DIR)
-    models_bytes, models_count = get_dir_size(settings.MODELS_DIR)
     database_bytes = get_file_size(db_path)
+
+    # Count models by type
+    llm_count, llm_bytes = count_llm_models(settings.MODELS_DIR)
+    asr_count, asr_bytes = count_huggingface_models("*whisper*")
+    diarization_count, diarization_bytes = count_pyannote_models()
+
+    models = ModelBreakdown(
+        llm_count=llm_count,
+        llm_bytes=llm_bytes,
+        asr_count=asr_count,
+        asr_bytes=asr_bytes,
+        diarization_count=diarization_count,
+        diarization_bytes=diarization_bytes,
+    )
+
+    total_models_bytes = llm_bytes + asr_bytes + diarization_bytes
 
     storage_breakdown = StorageBreakdown(
         media_bytes=media_bytes,
         media_count=media_count,
         database_bytes=database_bytes,
-        models_bytes=models_bytes,
-        models_count=models_count,
-        total_bytes=media_bytes + database_bytes + models_bytes,
+        models=models,
+        total_bytes=media_bytes + database_bytes + total_models_bytes,
     )
 
     # Content counts from database
