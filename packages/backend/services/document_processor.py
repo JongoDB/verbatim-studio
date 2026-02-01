@@ -24,8 +24,18 @@ def _check_pymupdf_available() -> bool:
         return False
 
 
+def _check_pypdf_available() -> bool:
+    """Check if pypdf is installed."""
+    try:
+        from pypdf import PdfReader
+        return True
+    except ImportError:
+        return False
+
+
 CHANDRA_AVAILABLE = _check_chandra_available()
 PYMUPDF_AVAILABLE = _check_pymupdf_available()
+PYPDF_AVAILABLE = _check_pypdf_available()
 
 
 class DocumentProcessor:
@@ -77,35 +87,56 @@ class DocumentProcessor:
             return self._process_pdf_fallback(file_path)
 
     def _process_pdf_fallback(self, file_path: Path) -> dict:
-        """Fallback PDF processing using PyMuPDF."""
-        if not PYMUPDF_AVAILABLE:
-            logger.error("No PDF processing library available (install chandra-ocr or pymupdf)")
-            return {
-                "text": "",
-                "markdown": "",
-                "page_count": None,
-                "metadata": {"error": "No PDF processor available"},
-            }
+        """Fallback PDF processing using PyMuPDF or pypdf."""
+        # Try PyMuPDF first
+        if PYMUPDF_AVAILABLE:
+            try:
+                import fitz  # PyMuPDF
+                logger.info(f"Processing {file_path.name} with PyMuPDF")
+                doc = fitz.open(file_path)
+                text_parts = []
+                for page in doc:
+                    text_parts.append(page.get_text())
+                text = "\n\n".join(text_parts)
+                page_count = len(doc)
+                doc.close()
+                return {
+                    "text": text,
+                    "markdown": text,
+                    "page_count": page_count,
+                    "metadata": {"ocr_engine": "pymupdf"},
+                }
+            except Exception as e:
+                logger.warning(f"PyMuPDF processing failed, trying pypdf: {e}")
 
-        try:
-            import fitz  # PyMuPDF
-            logger.info(f"Processing {file_path.name} with PyMuPDF")
-            doc = fitz.open(file_path)
-            text_parts = []
-            for page in doc:
-                text_parts.append(page.get_text())
-            text = "\n\n".join(text_parts)
-            page_count = len(doc)
-            doc.close()
-            return {
-                "text": text,
-                "markdown": text,
-                "page_count": page_count,
-                "metadata": {"ocr_engine": "pymupdf"},
-            }
-        except Exception as e:
-            logger.error(f"PyMuPDF processing failed: {e}")
-            return {"text": "", "markdown": "", "page_count": None, "metadata": {"error": str(e)}}
+        # Try pypdf as fallback
+        if PYPDF_AVAILABLE:
+            try:
+                from pypdf import PdfReader
+                logger.info(f"Processing {file_path.name} with pypdf")
+                reader = PdfReader(file_path)
+                text_parts = []
+                for page in reader.pages:
+                    page_text = page.extract_text()
+                    if page_text:
+                        text_parts.append(page_text)
+                text = "\n\n".join(text_parts)
+                return {
+                    "text": text,
+                    "markdown": text,
+                    "page_count": len(reader.pages),
+                    "metadata": {"ocr_engine": "pypdf"},
+                }
+            except Exception as e:
+                logger.error(f"pypdf processing failed: {e}")
+
+        logger.error("No PDF processing library available (install chandra-ocr, pymupdf, or pypdf)")
+        return {
+            "text": "",
+            "markdown": "",
+            "page_count": None,
+            "metadata": {"error": "No PDF processor available"},
+        }
 
     def _process_image(self, file_path: Path) -> dict:
         """Process image using Chandra OCR."""
