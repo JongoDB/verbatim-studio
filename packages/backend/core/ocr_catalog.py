@@ -14,7 +14,7 @@ CHANDRA_REPO = "datalab-to/chandra"
 OCR_MODEL_CATALOG: dict[str, dict] = {
     "chandra": {
         "repo": CHANDRA_REPO,
-        "size_bytes": 17_200_000_000,  # ~17GB (9B params, BF16)
+        "size_bytes": 19_500_000_000,  # ~18.2 GiB (9B params, BF16 + tokenizer/config)
         "label": "Chandra VLM (9B)",
         "description": "Vision-language model for high-quality document OCR. Handles complex tables, handwriting, and scanned documents.",
         "default": True,
