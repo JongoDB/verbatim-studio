@@ -53,6 +53,9 @@ class DocumentResponse(BaseModel):
     metadata: dict
     created_at: str
     updated_at: str
+    # Extracted content (only included when requested or for single doc)
+    extracted_text: str | None = None
+    extracted_markdown: str | None = None
 
 
 class DocumentListResponse(BaseModel):
@@ -76,8 +79,13 @@ class MessageResponse(BaseModel):
     id: str | None = None
 
 
-def _doc_to_response(doc: Document) -> DocumentResponse:
-    """Convert Document model to response."""
+def _doc_to_response(doc: Document, include_content: bool = False) -> DocumentResponse:
+    """Convert Document model to response.
+
+    Args:
+        doc: The document model
+        include_content: If True, include extracted_text and extracted_markdown
+    """
     return DocumentResponse(
         id=doc.id,
         title=doc.title,
@@ -92,6 +100,8 @@ def _doc_to_response(doc: Document) -> DocumentResponse:
         metadata=doc.metadata_,
         created_at=doc.created_at.isoformat(),
         updated_at=doc.updated_at.isoformat(),
+        extracted_text=doc.extracted_text if include_content else None,
+        extracted_markdown=doc.extracted_markdown if include_content else None,
     )
 
 
@@ -101,8 +111,16 @@ async def upload_document(
     file: UploadFile = File(...),
     title: str = Form(None),
     project_id: str = Form(None),
+    enable_ocr: bool = Form(False),
 ) -> DocumentResponse:
-    """Upload a new document."""
+    """Upload a new document.
+
+    Args:
+        file: The file to upload
+        title: Optional title (defaults to filename)
+        project_id: Optional project to assign to
+        enable_ocr: If True, run OCR processing on the document
+    """
     if not file.filename:
         raise HTTPException(status_code=400, detail="Filename required")
 
@@ -182,7 +200,7 @@ async def upload_document(
         else:
             final_title = filename
 
-    # Create document record
+    # Create document record with OCR preference in metadata
     doc = Document(
         id=doc_id,
         title=final_title,
@@ -193,6 +211,7 @@ async def upload_document(
         project_id=project_id,
         storage_location_id=storage_location_id,
         status="pending",
+        metadata_={"enable_ocr": enable_ocr},
     )
     db.add(doc)
     await db.commit()
@@ -235,12 +254,13 @@ async def list_documents(
 async def get_document(
     db: Annotated[AsyncSession, Depends(get_db)],
     document_id: str,
+    include_content: Annotated[bool, Query(description="Include extracted text content")] = True,
 ) -> DocumentResponse:
     """Get a single document by ID."""
     doc = await db.get(Document, document_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
-    return _doc_to_response(doc)
+    return _doc_to_response(doc, include_content=include_content)
 
 
 @router.patch("/{document_id}", response_model=DocumentResponse)
@@ -486,6 +506,39 @@ async def reprocess_document(
     await job_queue.enqueue("process_document", {"document_id": document_id})
 
     return MessageResponse(message="Processing queued", id=document_id)
+
+
+@router.post("/{document_id}/ocr", response_model=MessageResponse)
+async def run_ocr(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    document_id: str,
+) -> MessageResponse:
+    """Run OCR processing on a document.
+
+    This enables OCR for the document and triggers reprocessing.
+    Can be used on documents that were uploaded without OCR enabled.
+    """
+    from sqlalchemy.orm.attributes import flag_modified
+
+    doc = await db.get(Document, document_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    # Enable OCR in metadata
+    doc.metadata_["enable_ocr"] = True
+    flag_modified(doc, "metadata_")
+
+    # Reset status and queue job
+    doc.status = "pending"
+    doc.error_message = None
+    doc.extracted_text = None
+    doc.extracted_markdown = None
+    await db.commit()
+
+    from services.jobs import job_queue
+    await job_queue.enqueue("process_document", {"document_id": document_id})
+
+    return MessageResponse(message="OCR processing queued", id=document_id)
 
 
 @router.get("/{document_id}/content")
