@@ -49,6 +49,12 @@ const config: Config = {
         md: 'calc(var(--radius) - 2px)',
         sm: 'calc(var(--radius) - 4px)',
       },
+      minWidth: {
+        touch: '44px',
+      },
+      minHeight: {
+        touch: '44px',
+      },
     },
   },
   plugins: [],
