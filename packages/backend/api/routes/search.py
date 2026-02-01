@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from persistence import get_db
-from persistence.models import Recording, Segment, SegmentEmbedding, Transcript
+from persistence.models import Document, DocumentEmbedding, Recording, Segment, SegmentEmbedding, Transcript
 from services.embedding import bytes_to_embedding, embedding_service
 
 logger = logging.getLogger(__name__)
@@ -47,6 +47,36 @@ class SearchResponse(BaseModel):
     page: int
     page_size: int
     total_pages: int
+
+
+class DocumentSearchResult(BaseModel):
+    """Single document search result."""
+
+    document_id: str
+    document_title: str
+    chunk_text: str
+    chunk_index: int
+    similarity: float
+    page: int | None = None
+
+
+class DocumentSearchResponse(BaseModel):
+    """Document search response."""
+
+    results: list[DocumentSearchResult]
+    total: int
+
+
+def _cosine_similarity(a: list[float], b: list[float]) -> float:
+    """Compute cosine similarity between two vectors."""
+    import math
+
+    dot = sum(x * y for x, y in zip(a, b))
+    norm_a = math.sqrt(sum(x * x for x in a))
+    norm_b = math.sqrt(sum(x * x for x in b))
+    if norm_a == 0 or norm_b == 0:
+        return 0.0
+    return dot / (norm_a * norm_b)
 
 
 @router.get("/segments", response_model=SearchResponse)
@@ -362,4 +392,79 @@ async def global_search(
         query=q,
         results=results,
         total=len(results),
+    )
+
+
+@router.get("/documents", response_model=DocumentSearchResponse)
+async def search_documents(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    query: Annotated[str, Query(min_length=1, description="Search query")],
+    project_id: Annotated[str | None, Query(description="Filter by project")] = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    threshold: Annotated[float, Query(ge=0, le=1)] = 0.3,
+) -> DocumentSearchResponse:
+    """Semantic search across document content.
+
+    Searches document chunks using embedding similarity. Returns matching
+    chunks ranked by cosine similarity to the query.
+
+    Args:
+        db: Database session.
+        query: Search query string.
+        project_id: Optional filter to specific project.
+        limit: Maximum number of results.
+        threshold: Minimum similarity threshold (0-1).
+
+    Returns:
+        Document search results with similarity scores.
+    """
+    if not embedding_service.is_available():
+        return DocumentSearchResponse(results=[], total=0)
+
+    # Embed the query
+    try:
+        query_embedding = await embedding_service.embed_query(query)
+    except Exception as e:
+        logger.error(f"Failed to embed query: {e}")
+        return DocumentSearchResponse(results=[], total=0)
+
+    # Fetch document embeddings
+    stmt = (
+        select(DocumentEmbedding, Document)
+        .join(Document, DocumentEmbedding.document_id == Document.id)
+        .where(Document.status == "completed")
+    )
+    if project_id:
+        stmt = stmt.where(Document.project_id == project_id)
+
+    result = await db.execute(stmt)
+    rows = result.all()
+
+    if not rows:
+        return DocumentSearchResponse(results=[], total=0)
+
+    # Compute similarities
+    scored_results = []
+    for doc_emb, doc in rows:
+        emb_vector = bytes_to_embedding(doc_emb.embedding)
+        similarity = _cosine_similarity(query_embedding, emb_vector)
+
+        if similarity >= threshold:
+            scored_results.append(
+                DocumentSearchResult(
+                    document_id=doc.id,
+                    document_title=doc.title,
+                    chunk_text=doc_emb.chunk_text[:500],  # Truncate for response
+                    chunk_index=doc_emb.chunk_index,
+                    similarity=round(similarity, 4),
+                    page=doc_emb.chunk_metadata.get("page") if doc_emb.chunk_metadata else None,
+                )
+            )
+
+    # Sort by similarity descending
+    scored_results.sort(key=lambda x: x.similarity, reverse=True)
+
+    return DocumentSearchResponse(
+        results=scored_results[:limit],
+        total=len(scored_results),
     )
