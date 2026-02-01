@@ -198,6 +198,15 @@ def _run_ocr_on_image(image, check_cancelled: Callable[[], bool] | None = None) 
         clean_up_tokenization_spaces=False,
     )[0]
 
+    # Clean up tensors to free memory
+    del inputs, generated_ids, generated_ids_trimmed, image_inputs, video_inputs
+
+    # Clear device cache
+    if device == "mps":
+        torch.mps.empty_cache()
+    elif device == "cuda":
+        torch.cuda.empty_cache()
+
     # Clean up any remaining special tokens that weren't filtered
     for token in ["<|im_end|>", "<|im_start|>", "<|endoftext|>"]:
         output_text = output_text.replace(token, "")
@@ -304,15 +313,24 @@ class DocumentProcessor:
 
                     logger.info(f"OCR processing page {i+1}/{len(doc)} of {file_path.name}")
 
-                    # Render page to image (300 DPI for good OCR quality)
-                    mat = fitz.Matrix(300/72, 300/72)
+                    # Render page to image (150 DPI - balance between quality and memory)
+                    mat = fitz.Matrix(150/72, 150/72)
                     pix = page.get_pixmap(matrix=mat)
                     img_data = pix.tobytes("png")
+
+                    # Clean up pixmap immediately to free memory
+                    del pix
+
                     image = Image.open(io.BytesIO(img_data))
+                    del img_data  # Free the PNG bytes
 
                     # Run OCR on the page image
                     page_text = _run_ocr_on_image(image, check_cancelled)
                     markdown_parts.append(f"## Page {i+1}\n\n{page_text}")
+
+                    # Clean up image and force garbage collection
+                    del image
+                    gc.collect()
 
                 doc.close()
 
