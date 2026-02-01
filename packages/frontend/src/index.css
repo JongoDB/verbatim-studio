@@ -61,3 +61,22 @@
     @apply bg-background text-foreground;
   }
 }
+
+@keyframes tour-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 4px hsl(var(--primary) / 0.3);
+  }
+  50% {
+    box-shadow: 0 0 0 8px hsl(var(--primary) / 0.5);
+  }
+}
+
+.animate-tour-pulse {
+  animation: tour-pulse 2s ease-in-out infinite;
+}
+
+/* Style for highlighted tour elements */
+[data-tour-active="true"] {
+  position: relative;
+  z-index: 51;
+}
