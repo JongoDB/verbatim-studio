@@ -161,7 +161,7 @@ export function ChatPanel({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed bottom-24 right-6 z-40 w-[400px] h-[500px] bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 flex flex-col animate-in slide-in-from-bottom-4 fade-in duration-200">
+    <div className="fixed inset-0 z-40 bg-white dark:bg-gray-800 flex flex-col animate-in slide-in-from-bottom-4 fade-in duration-200 sm:inset-auto sm:bottom-24 sm:right-6 sm:w-[400px] sm:h-[500px] sm:rounded-xl sm:shadow-2xl sm:border sm:border-gray-200 sm:dark:border-gray-700">
       <ChatHeader
         attached={attached}
         onDetach={handleDetach}
