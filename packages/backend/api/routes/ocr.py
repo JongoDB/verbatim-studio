@@ -118,11 +118,11 @@ def _do_download_sync(model_id: str, repo: str, dest_path: Path, marker_file: Pa
         logger.info("Starting OCR model download: %s -> %s", repo, dest_path)
 
         # Only download files needed for inference (exclude demos, docs, examples)
-        snapshot_download(
+        # Note: resume_download=True is the default, allowing interrupted downloads to resume
+        result = snapshot_download(
             repo_id=repo,
             repo_type="model",
             local_dir=str(dest_path),
-            local_dir_use_symlinks=False,
             allow_patterns=[
                 "*.safetensors",
                 "*.json",
@@ -146,9 +146,22 @@ def _do_download_sync(model_id: str, repo: str, dest_path: Path, marker_file: Pa
                 "Qwen2vl*/*",
             ],
         )
-        logger.info("OCR model download complete: %s", model_id)
+        logger.info("OCR model download complete: %s -> %s", model_id, result)
+
+        # Verify the model.safetensors file exists
+        safetensors_path = dest_path / "model.safetensors"
+        if not safetensors_path.exists():
+            raise RuntimeError(f"Download completed but model.safetensors not found at {safetensors_path}")
+        logger.info("Verified model.safetensors exists: %s (%.2f GB)",
+                    safetensors_path, safetensors_path.stat().st_size / 1e9)
     except Exception as exc:
-        logger.exception("OCR model download failed: %s", model_id)
+        logger.exception("OCR model download failed: %s - %s", model_id, exc)
+        # Clean up partial download on failure
+        if dest_path.exists():
+            cache_dir = dest_path / ".cache"
+            if cache_dir.exists():
+                shutil.rmtree(cache_dir)
+                logger.info("Cleaned up cache directory after failed download")
         raise
     finally:
         # Always clean up marker when done (success or failure)

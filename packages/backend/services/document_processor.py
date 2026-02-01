@@ -198,7 +198,11 @@ def _run_ocr_on_image(image, check_cancelled: Callable[[], bool] | None = None) 
         clean_up_tokenization_spaces=False,
     )[0]
 
-    return output_text
+    # Clean up any remaining special tokens that weren't filtered
+    for token in ["<|im_end|>", "<|im_start|>", "<|endoftext|>"]:
+        output_text = output_text.replace(token, "")
+
+    return output_text.strip()
 
 
 def _check_pymupdf_available() -> bool:
