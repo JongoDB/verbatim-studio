@@ -3,7 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { renderAsync } from 'docx-preview';
 import ExcelJS from 'exceljs';
-import { MessageSquare, AlertCircle, RefreshCw, FileText, ChevronDown, ChevronUp } from 'lucide-react';
+import { MessageSquare, AlertCircle, RefreshCw, FileText, ChevronDown, ChevronUp, ScanText } from 'lucide-react';
 import { api, type Document } from '@/lib/api';
 import { NotesPanel } from '@/components/documents/NotesPanel';
 import { PDFViewer } from '@/components/documents/PDFViewer';
@@ -48,6 +48,7 @@ export function DocumentViewerPage({ documentId, onBack }: DocumentViewerPagePro
   } | null>(null);
   const [highlightText, setHighlightText] = useState<string | null>(null);
   const [showExtractedText, setShowExtractedText] = useState(false);
+  const [isRunningOcr, setIsRunningOcr] = useState(false);
   const docxContainerRef = useRef<HTMLDivElement>(null);
 
   // Handle text selection from PDF viewer
@@ -299,6 +300,21 @@ export function DocumentViewerPage({ documentId, onBack }: DocumentViewerPagePro
     }
   };
 
+  const handleRunOcr = async () => {
+    if (!document) return;
+    setIsRunningOcr(true);
+    try {
+      await api.documents.runOcr(document.id);
+      // Refetch document to get updated status
+      const updated = await api.documents.get(document.id);
+      setDocument(updated);
+    } catch (e) {
+      console.error('Run OCR failed:', e);
+    } finally {
+      setIsRunningOcr(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -347,6 +363,17 @@ export function DocumentViewerPage({ documentId, onBack }: DocumentViewerPagePro
             {document.filename} • {document.status}
           </p>
         </div>
+        {/* Run OCR button - show when no OCR has been run */}
+        {document.status === 'completed' && !document.metadata?.enable_ocr && (
+          <button
+            onClick={handleRunOcr}
+            disabled={isRunningOcr}
+            className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50"
+          >
+            <ScanText className={`w-4 h-4 ${isRunningOcr ? 'animate-pulse' : ''}`} />
+            {isRunningOcr ? 'Processing...' : 'Run OCR'}
+          </button>
+        )}
         <a
           href={api.documents.getFileUrl(documentId)}
           download={document.filename}

@@ -146,23 +146,28 @@ class DocumentProcessor:
             return False
         return _check_chandra_model_ready()
 
-    def process(self, file_path: Path, mime_type: str) -> dict:
+    def process(self, file_path: Path, mime_type: str, enable_ocr: bool = False) -> dict:
         """
         Process a document and extract text content.
+
+        Args:
+            file_path: Path to the document file
+            mime_type: MIME type of the document
+            enable_ocr: If True, use OCR for text extraction (for scanned docs/images)
 
         Returns:
             dict with keys: text, markdown, page_count, metadata
         """
         if mime_type == "application/pdf":
-            return self._process_pdf(file_path)
+            return self._process_pdf(file_path, enable_ocr=enable_ocr)
         elif mime_type.startswith("image/"):
-            return self._process_image(file_path)
+            return self._process_image(file_path, enable_ocr=enable_ocr)
         elif mime_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
-            return self._process_docx(file_path)
+            return self._process_docx(file_path, enable_ocr=enable_ocr)
         elif mime_type == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
             return self._process_xlsx(file_path)
         elif mime_type == "application/vnd.openxmlformats-officedocument.presentationml.presentation":
-            return self._process_pptx(file_path)
+            return self._process_pptx(file_path, enable_ocr=enable_ocr)
         elif mime_type in ("text/plain", "text/markdown"):
             return self._process_text(file_path)
         else:
@@ -186,9 +191,9 @@ class DocumentProcessor:
             "TORCH_DEVICE": device,
         }
 
-    def _process_pdf(self, file_path: Path) -> dict:
-        """Process PDF using Chandra OCR with PyMuPDF fallback."""
-        if self._is_chandra_available():
+    def _process_pdf(self, file_path: Path, enable_ocr: bool = False) -> dict:
+        """Process PDF using Chandra OCR (if enabled) with PyMuPDF fallback."""
+        if enable_ocr and self._is_chandra_available():
             try:
                 # Configure Chandra to use Verbatim storage path
                 _configure_chandra_model_path()
@@ -227,10 +232,13 @@ class DocumentProcessor:
                 logger.warning(f"Chandra OCR failed, falling back to PyMuPDF: {e}")
                 return self._process_pdf_fallback(file_path)
         else:
-            if CHANDRA_INSTALLED:
-                logger.info(f"Chandra model not downloaded, using fallback for {file_path.name}")
+            if enable_ocr:
+                if CHANDRA_INSTALLED:
+                    logger.info(f"OCR enabled but Chandra model not downloaded for {file_path.name}")
+                else:
+                    logger.info(f"OCR enabled but Chandra OCR not installed for {file_path.name}")
             else:
-                logger.info(f"Chandra OCR not installed, using fallback for {file_path.name}")
+                logger.debug(f"OCR not enabled, using standard extraction for {file_path.name}")
             return self._process_pdf_fallback(file_path)
 
     def _process_pdf_fallback(self, file_path: Path) -> dict:
@@ -285,8 +293,19 @@ class DocumentProcessor:
             "metadata": {"error": "No PDF processor available"},
         }
 
-    def _process_image(self, file_path: Path) -> dict:
-        """Process image using Chandra OCR."""
+    def _process_image(self, file_path: Path, enable_ocr: bool = False) -> dict:
+        """Process image using Chandra OCR if enabled."""
+        # If OCR not enabled, just return basic metadata
+        if not enable_ocr:
+            logger.debug(f"OCR not enabled for image: {file_path.name}")
+            return {
+                "text": "",
+                "markdown": "",
+                "page_count": 1,
+                "metadata": {"format": "image", "ocr_enabled": False},
+            }
+
+        # OCR enabled - check if Chandra is available
         if not self._is_chandra_available():
             if CHANDRA_INSTALLED:
                 logger.warning(f"Chandra model not downloaded for image OCR: {file_path.name}")
@@ -298,7 +317,7 @@ class DocumentProcessor:
                 "text": "",
                 "markdown": "",
                 "page_count": 1,
-                "metadata": {"error": msg},
+                "metadata": {"error": msg, "ocr_enabled": True},
             }
 
         try:
@@ -339,8 +358,12 @@ class DocumentProcessor:
             logger.error(f"Image OCR failed: {e}")
             return {"text": "", "markdown": "", "page_count": 1, "metadata": {"error": str(e)}}
 
-    def _process_docx(self, file_path: Path) -> dict:
-        """Process DOCX using python-docx."""
+    def _process_docx(self, file_path: Path, enable_ocr: bool = False) -> dict:
+        """Process DOCX using python-docx.
+
+        Note: OCR is not currently used for DOCX but parameter is accepted for API consistency.
+        """
+        # TODO: If enable_ocr, could OCR embedded images in DOCX
         try:
             from docx import Document as DocxDocument
             from docx.oxml.ns import qn
@@ -476,8 +499,12 @@ class DocumentProcessor:
             logger.error(f"XLSX processing failed: {e}")
             return {"text": "", "markdown": "", "page_count": None, "metadata": {}}
 
-    def _process_pptx(self, file_path: Path) -> dict:
-        """Process PPTX using python-pptx."""
+    def _process_pptx(self, file_path: Path, enable_ocr: bool = False) -> dict:
+        """Process PPTX using python-pptx.
+
+        Note: OCR is not currently used for PPTX but parameter is accepted for API consistency.
+        """
+        # TODO: If enable_ocr, could OCR slide images
         try:
             from pptx import Presentation
             prs = Presentation(file_path)

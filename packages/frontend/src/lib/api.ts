@@ -1705,11 +1705,17 @@ class ApiClient {
       return this.request<Document>(`/api/documents/${id}`);
     },
 
-    upload: async (file: File, title?: string, projectId?: string): Promise<Document> => {
+    upload: async (
+      file: File,
+      title?: string,
+      projectId?: string,
+      enableOcr?: boolean
+    ): Promise<Document> => {
       const formData = new FormData();
       formData.append('file', file);
       if (title) formData.append('title', title);
       if (projectId) formData.append('project_id', projectId);
+      formData.append('enable_ocr', enableOcr ? 'true' : 'false');
 
       const response = await fetch(`${this.baseUrl}/api/documents`, {
         method: 'POST',
@@ -1717,6 +1723,12 @@ class ApiClient {
       });
       if (!response.ok) throw new Error('Failed to upload document');
       return response.json();
+    },
+
+    runOcr: async (id: string): Promise<void> => {
+      await this.request<{ message: string }>(`/api/documents/${id}/ocr`, {
+        method: 'POST',
+      });
     },
 
     update: async (id: string, data: { title?: string; project_id?: string | null }): Promise<Document> => {

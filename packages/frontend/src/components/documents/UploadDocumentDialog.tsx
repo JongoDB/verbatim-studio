@@ -30,6 +30,7 @@ export function UploadDocumentDialog({
 }: UploadDocumentDialogProps) {
   const [files, setFiles] = useState<File[]>([]);
   const [projectId, setProjectId] = useState(defaultProjectId || '');
+  const [enableOcr, setEnableOcr] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState<Record<string, number>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -61,7 +62,7 @@ export function UploadDocumentDialog({
     for (const file of files) {
       try {
         setProgress((prev) => ({ ...prev, [file.name]: 0 }));
-        await api.documents.upload(file, file.name, projectId || undefined);
+        await api.documents.upload(file, file.name, projectId || undefined, enableOcr);
         setProgress((prev) => ({ ...prev, [file.name]: 100 }));
       } catch (err) {
         setErrors((prev) => ({
@@ -171,6 +172,24 @@ export function UploadDocumentDialog({
             </select>
           </div>
         )}
+
+        {/* OCR toggle */}
+        <div className="mt-4">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={enableOcr}
+              onChange={(e) => setEnableOcr(e.target.checked)}
+              className="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500"
+            />
+            <span className="text-sm text-gray-700 dark:text-gray-300">
+              Enable OCR processing
+            </span>
+          </label>
+          <p className="mt-1 ml-6 text-xs text-gray-500 dark:text-gray-400">
+            Extract text from scanned documents and images
+          </p>
+        </div>
 
         {/* Actions */}
         <div className="mt-6 flex justify-end gap-3">
