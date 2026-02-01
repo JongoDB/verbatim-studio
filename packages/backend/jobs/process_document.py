@@ -38,8 +38,11 @@ def process_document_job(db: Session, document_id: str) -> None:
         if not file_path.exists():
             raise FileNotFoundError(f"File not found: {file_path}")
 
+        # Check if OCR is enabled for this document
+        enable_ocr = doc.metadata_.get("enable_ocr", False)
+
         # Extract text
-        result = document_processor.process(file_path, doc.mime_type)
+        result = document_processor.process(file_path, doc.mime_type, enable_ocr=enable_ocr)
 
         # Update document with extracted content
         doc.extracted_text = result.get("text")
