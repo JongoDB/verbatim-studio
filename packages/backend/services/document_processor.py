@@ -106,6 +106,13 @@ class DocumentProcessor:
         else:
             raise ValueError(f"Unsupported MIME type: {mime_type}")
 
+    def _get_chandra_config(self) -> dict:
+        """Get Chandra config with model path set to Verbatim storage."""
+        model_path = _get_chandra_model_path()
+        return {
+            "MODEL_CHECKPOINT": model_path or "datalab-to/chandra",
+        }
+
     def _process_pdf(self, file_path: Path) -> dict:
         """Process PDF using Chandra OCR with PyMuPDF fallback."""
         if self._is_chandra_available():
@@ -118,8 +125,9 @@ class DocumentProcessor:
 
                 logger.info(f"Processing {file_path.name} with Chandra OCR")
 
-                # Load the PDF file
-                pages = load_file(str(file_path))
+                # Load the PDF file with config
+                config = self._get_chandra_config()
+                pages = load_file(str(file_path), config)
 
                 # Initialize the inference manager (uses HuggingFace by default)
                 manager = InferenceManager(method="hf")
@@ -227,8 +235,9 @@ class DocumentProcessor:
 
             logger.info(f"Processing {file_path.name} with Chandra OCR")
 
-            # Load the image file
-            pages = load_file(str(file_path))
+            # Load the image file with config
+            config = self._get_chandra_config()
+            pages = load_file(str(file_path), config)
 
             # Initialize the inference manager (uses HuggingFace by default)
             manager = InferenceManager(method="hf")
