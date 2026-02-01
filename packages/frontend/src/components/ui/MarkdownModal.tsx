@@ -78,8 +78,20 @@ export function MarkdownModal({ isOpen, onClose, title, content }: MarkdownModal
                 strong: ({ children }) => (
                   <strong className="text-foreground font-semibold">{children}</strong>
                 ),
-                code: ({ children }) => (
-                  <code className="text-amber-400 bg-muted px-1.5 py-0.5 rounded text-xs font-mono">{children}</code>
+                code: ({ children, className }) => {
+                  // Check if it's a code block (has language class) vs inline code
+                  const isBlock = className?.includes('language-') || (typeof children === 'string' && children.includes('\n'));
+                  if (isBlock) {
+                    return (
+                      <code className="block text-amber-400 text-xs font-mono whitespace-pre">{children}</code>
+                    );
+                  }
+                  return (
+                    <code className="text-amber-400 bg-muted px-1.5 py-0.5 rounded text-xs font-mono">{children}</code>
+                  );
+                },
+                pre: ({ children }) => (
+                  <pre className="bg-muted rounded-lg p-3 overflow-x-auto my-2">{children}</pre>
                 ),
                 hr: () => (
                   <hr className="border-border my-5" />
