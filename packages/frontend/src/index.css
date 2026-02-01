@@ -75,8 +75,7 @@
   animation: tour-pulse 2s ease-in-out infinite;
 }
 
-/* Style for highlighted tour elements */
+/* Style for highlighted tour elements - raise above tour backdrop (z-45) */
 [data-tour-active="true"] {
-  position: relative;
-  z-index: 51;
+  z-index: 51 !important;
 }

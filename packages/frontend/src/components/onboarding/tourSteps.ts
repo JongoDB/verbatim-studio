@@ -93,7 +93,7 @@ export const TOUR_STEPS: TourStep[] = [
   {
     id: 'assistant',
     target: '[data-tour="assistant"]',
-    title: 'Assistant',
+    title: 'Verbatim Assistant',
     description: 'Quick AI help — ask questions about anything, including how to use this app',
     position: 'top',
   },
