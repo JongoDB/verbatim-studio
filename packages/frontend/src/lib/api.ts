@@ -645,6 +645,9 @@ export interface Document {
   metadata: Record<string, unknown>;
   created_at: string;
   updated_at: string;
+  // Extracted content (may be null in list responses)
+  extracted_text: string | null;
+  extracted_markdown: string | null;
 }
 
 export interface DocumentListResponse {

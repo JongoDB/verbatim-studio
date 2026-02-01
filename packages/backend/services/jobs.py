@@ -10,6 +10,7 @@ from typing import Any
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.attributes import flag_modified
 
 from persistence.database import async_session
 from persistence.models import Job, Recording, Segment, SegmentEmbedding, Speaker, Transcript
@@ -761,6 +762,7 @@ async def handle_document_processing(
             doc.page_count = extraction_result.get("page_count")
             if extraction_result.get("metadata"):
                 doc.metadata_.update(extraction_result.get("metadata", {}))
+                flag_modified(doc, "metadata_")
 
             await update_progress(70)
 

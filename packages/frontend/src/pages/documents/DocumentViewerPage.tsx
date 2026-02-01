@@ -3,7 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { renderAsync } from 'docx-preview';
 import ExcelJS from 'exceljs';
-import { MessageSquare, AlertCircle, RefreshCw } from 'lucide-react';
+import { MessageSquare, AlertCircle, RefreshCw, FileText, ChevronDown, ChevronUp } from 'lucide-react';
 import { api, type Document } from '@/lib/api';
 import { NotesPanel } from '@/components/documents/NotesPanel';
 import { PDFViewer } from '@/components/documents/PDFViewer';
@@ -47,6 +47,7 @@ export function DocumentViewerPage({ documentId, onBack }: DocumentViewerPagePro
     data: { text: string; page: number };
   } | null>(null);
   const [highlightText, setHighlightText] = useState<string | null>(null);
+  const [showExtractedText, setShowExtractedText] = useState(false);
   const docxContainerRef = useRef<HTMLDivElement>(null);
 
   // Handle text selection from PDF viewer
@@ -406,25 +407,113 @@ export function DocumentViewerPage({ documentId, onBack }: DocumentViewerPagePro
         {document.status === 'completed' && (
           <>
             {isPdf && (
-              <div className="h-[calc(100vh-260px)]">
-                <PDFViewer
-                  url={api.documents.getFileUrl(documentId, true)}
-                  currentPage={currentPage}
-                  onPageChange={setCurrentPage}
-                  onSelectionNote={handleSelectionNote}
-                  highlightText={highlightText}
-                  onHighlightCleared={() => setHighlightText(null)}
-                />
+              <div className="flex flex-col h-[calc(100vh-260px)]">
+                {/* OCR toggle for PDFs with extracted text */}
+                {document.extracted_markdown && document.metadata?.ocr_engine === 'chandra' && (
+                  <div className="flex items-center gap-2 px-4 py-2 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
+                    <button
+                      onClick={() => setShowExtractedText(!showExtractedText)}
+                      className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                        showExtractedText
+                          ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+                          : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-300 dark:hover:bg-gray-600'
+                      }`}
+                    >
+                      <FileText className="h-4 w-4" />
+                      {showExtractedText ? 'Hide OCR Text' : 'Show OCR Text'}
+                    </button>
+                    <span className="text-xs text-gray-500 dark:text-gray-400">
+                      Processed with {String(document.metadata.ocr_engine)}
+                    </span>
+                  </div>
+                )}
+                <div className={showExtractedText ? 'flex flex-1 min-h-0' : 'flex-1'}>
+                  {showExtractedText ? (
+                    <>
+                      {/* PDF viewer (half width) */}
+                      <div className="w-1/2 h-full border-r border-gray-200 dark:border-gray-700">
+                        <PDFViewer
+                          url={api.documents.getFileUrl(documentId, true)}
+                          currentPage={currentPage}
+                          onPageChange={setCurrentPage}
+                          onSelectionNote={handleSelectionNote}
+                          highlightText={highlightText}
+                          onHighlightCleared={() => setHighlightText(null)}
+                        />
+                      </div>
+                      {/* Extracted text (half width) */}
+                      <div className="w-1/2 h-full overflow-auto p-4 prose dark:prose-invert prose-sm max-w-none">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          {document.extracted_markdown || ''}
+                        </ReactMarkdown>
+                      </div>
+                    </>
+                  ) : (
+                    <PDFViewer
+                      url={api.documents.getFileUrl(documentId, true)}
+                      currentPage={currentPage}
+                      onPageChange={setCurrentPage}
+                      onSelectionNote={handleSelectionNote}
+                      highlightText={highlightText}
+                      onHighlightCleared={() => setHighlightText(null)}
+                    />
+                  )}
+                </div>
               </div>
             )}
 
             {isImage && (
-              <div className="p-4 flex items-center justify-center">
-                <img
-                  src={api.documents.getFileUrl(documentId, true)}
-                  alt={document.title}
-                  className="max-w-full max-h-[calc(100vh-200px)] object-contain"
-                />
+              <div className="flex flex-col">
+                <div className="p-4 flex items-center justify-center">
+                  <img
+                    src={api.documents.getFileUrl(documentId, true)}
+                    alt={document.title}
+                    className="max-w-full max-h-[calc(100vh-350px)] object-contain"
+                  />
+                </div>
+                {/* Extracted Text Panel for OCR results */}
+                {document.extracted_markdown && (
+                  <div className="border-t border-gray-200 dark:border-gray-700">
+                    <button
+                      onClick={() => setShowExtractedText(!showExtractedText)}
+                      className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-gray-900 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                    >
+                      <div className="flex items-center gap-2">
+                        <FileText className="h-4 w-4 text-gray-500" />
+                        <span className="font-medium text-gray-700 dark:text-gray-300">
+                          Extracted Text (OCR)
+                        </span>
+                        {typeof document.metadata?.ocr_engine === 'string' && (
+                          <span className="text-xs px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">
+                            {document.metadata.ocr_engine}
+                          </span>
+                        )}
+                      </div>
+                      {showExtractedText ? (
+                        <ChevronUp className="h-4 w-4 text-gray-500" />
+                      ) : (
+                        <ChevronDown className="h-4 w-4 text-gray-500" />
+                      )}
+                    </button>
+                    {showExtractedText && (
+                      <div className="p-4 max-h-[300px] overflow-auto prose dark:prose-invert prose-sm max-w-none">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          {document.extracted_markdown}
+                        </ReactMarkdown>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {!document.extracted_markdown && typeof document.metadata?.error === 'string' && (
+                  <div className="border-t border-gray-200 dark:border-gray-700 p-4">
+                    <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+                      <AlertCircle className="h-4 w-4" />
+                      <span className="text-sm">
+                        OCR: {document.metadata.error}
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 

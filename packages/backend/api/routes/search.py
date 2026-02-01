@@ -458,10 +458,15 @@ async def global_search(
             )
         )
 
-    # Search documents by title (keyword search)
+    # Search documents by title or extracted text (keyword search)
     document_query = (
         select(Document)
-        .where(Document.title.ilike(f"%{q}%"))
+        .where(
+            or_(
+                Document.title.ilike(f"%{q}%"),
+                Document.extracted_text.ilike(f"%{q}%"),
+            )
+        )
         .where(Document.status == "completed")
         .order_by(Document.created_at.desc())
         .limit(slot_size)
@@ -470,12 +475,20 @@ async def global_search(
     documents = document_result.scalars().all()
 
     for doc in documents:
+        # Extract snippet around the match for display
+        snippet = None
+        if doc.extracted_text and q.lower() in doc.extracted_text.lower():
+            text = doc.extracted_text
+            idx = text.lower().find(q.lower())
+            start = max(0, idx - 50)
+            end = min(len(text), idx + len(q) + 100)
+            snippet = ("..." if start > 0 else "") + text[start:end] + ("..." if end < len(text) else "")
         results.append(
             GlobalSearchResult(
                 type="document",
                 id=doc.id,
                 title=doc.title,
-                text=None,
+                text=snippet,
                 document_id=doc.id,
                 document_title=doc.title,
                 created_at=doc.created_at,

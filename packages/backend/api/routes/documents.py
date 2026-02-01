@@ -53,6 +53,9 @@ class DocumentResponse(BaseModel):
     metadata: dict
     created_at: str
     updated_at: str
+    # Extracted content (only included when requested or for single doc)
+    extracted_text: str | None = None
+    extracted_markdown: str | None = None
 
 
 class DocumentListResponse(BaseModel):
@@ -76,8 +79,13 @@ class MessageResponse(BaseModel):
     id: str | None = None
 
 
-def _doc_to_response(doc: Document) -> DocumentResponse:
-    """Convert Document model to response."""
+def _doc_to_response(doc: Document, include_content: bool = False) -> DocumentResponse:
+    """Convert Document model to response.
+
+    Args:
+        doc: The document model
+        include_content: If True, include extracted_text and extracted_markdown
+    """
     return DocumentResponse(
         id=doc.id,
         title=doc.title,
@@ -92,6 +100,8 @@ def _doc_to_response(doc: Document) -> DocumentResponse:
         metadata=doc.metadata_,
         created_at=doc.created_at.isoformat(),
         updated_at=doc.updated_at.isoformat(),
+        extracted_text=doc.extracted_text if include_content else None,
+        extracted_markdown=doc.extracted_markdown if include_content else None,
     )
 
 
@@ -235,12 +245,13 @@ async def list_documents(
 async def get_document(
     db: Annotated[AsyncSession, Depends(get_db)],
     document_id: str,
+    include_content: Annotated[bool, Query(description="Include extracted text content")] = True,
 ) -> DocumentResponse:
     """Get a single document by ID."""
     doc = await db.get(Document, document_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
-    return _doc_to_response(doc)
+    return _doc_to_response(doc, include_content=include_content)
 
 
 @router.patch("/{document_id}", response_model=DocumentResponse)

@@ -6,6 +6,50 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+# Track if we've applied the CUDA workaround
+_cuda_workaround_applied = False
+
+
+def _apply_cuda_workaround():
+    """
+    Monkey-patch torch.Tensor.to() to intercept hardcoded 'cuda' calls.
+
+    Chandra's hf.py has `inputs = inputs.to("cuda")` hardcoded on line 31,
+    which fails on Mac (no CUDA). This patch redirects 'cuda' to the
+    appropriate device (MPS on Mac, CPU otherwise).
+    """
+    global _cuda_workaround_applied
+    if _cuda_workaround_applied:
+        return
+
+    import torch
+
+    # Determine the actual device to use
+    if torch.backends.mps.is_available():
+        target_device = "mps"
+    elif torch.cuda.is_available():
+        target_device = "cuda"
+        return  # No patch needed if CUDA is available
+    else:
+        target_device = "cpu"
+
+    # Store original method
+    original_to = torch.Tensor.to
+
+    def patched_to(self, *args, **kwargs):
+        # Intercept .to("cuda") or .to(device="cuda") calls
+        if args and isinstance(args[0], str) and args[0] == "cuda":
+            args = (target_device,) + args[1:]
+            logger.debug(f"Redirecting .to('cuda') to .to('{target_device}')")
+        if kwargs.get("device") == "cuda":
+            kwargs["device"] = target_device
+            logger.debug(f"Redirecting .to(device='cuda') to .to(device='{target_device}')")
+        return original_to(self, *args, **kwargs)
+
+    torch.Tensor.to = patched_to
+    _cuda_workaround_applied = True
+    logger.info(f"Applied CUDA workaround: redirecting 'cuda' to '{target_device}'")
+
 
 def _check_chandra_installed() -> bool:
     """Check if Chandra OCR package is installed."""
@@ -41,6 +85,9 @@ def _get_chandra_model_path() -> str | None:
 def _configure_chandra_model_path():
     """Configure Chandra to use the Verbatim storage model path and correct device."""
     import torch
+
+    # Apply CUDA workaround first (for chandra's hardcoded .to("cuda"))
+    _apply_cuda_workaround()
 
     model_path = _get_chandra_model_path()
 
