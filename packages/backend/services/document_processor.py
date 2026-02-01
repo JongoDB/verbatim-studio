@@ -133,8 +133,8 @@ class DocumentProcessor:
                 # Initialize the inference manager (uses HuggingFace by default)
                 manager = InferenceManager(method="hf")
 
-                # Create batch input items from pages
-                batch = [BatchInputItem(image=page) for page in pages]
+                # Create batch input items from pages with OCR layout prompt
+                batch = [BatchInputItem(image=page, prompt_type="ocr_layout") for page in pages]
 
                 # Process all pages in batch
                 results = manager.generate(batch)
@@ -245,8 +245,8 @@ class DocumentProcessor:
             # Initialize the inference manager (uses HuggingFace by default)
             manager = InferenceManager(method="hf")
 
-            # Create batch input items from pages
-            batch = [BatchInputItem(image=page) for page in pages]
+            # Create batch input items from pages with OCR layout prompt
+            batch = [BatchInputItem(image=page, prompt_type="ocr_layout") for page in pages]
 
             # Process the image in batch
             results = manager.generate(batch)
