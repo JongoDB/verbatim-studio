@@ -726,6 +726,7 @@ async def handle_document_processing(
 
             temp_file = None
             file_path = None
+            enable_ocr = False  # Initialize early for exception handler
 
             # Check if stored in cloud storage
             if doc.storage_location_id:
