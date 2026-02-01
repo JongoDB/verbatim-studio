@@ -316,7 +316,12 @@ class StorageService:
             else:
                 new_parent = storage_root
 
-            return await self._pm.move_file(Path(current_path), new_parent)
+            # Resolve the source path - try direct path first, then media_dir fallback
+            source_path = Path(current_path)
+            if not source_path.exists() and not source_path.is_absolute():
+                source_path = self.get_full_path(str(current_path))
+
+            return await self._pm.move_file(source_path, new_parent)
 
     async def rename_item(self, current_path: Path | str, new_title: str) -> Path | str:
         """Rename a file when its title changes.
@@ -358,8 +363,10 @@ class StorageService:
 
             return new_path
         else:
-            # Local storage
+            # Local storage - resolve path first
             path = Path(current_path)
+            if not path.exists() and not path.is_absolute():
+                path = self.get_full_path(str(current_path))
             extension = path.suffix
             new_name = f"{self._pm.sanitize_name(new_title)}{extension}"
             return await self._pm.rename_file(path, new_name)
@@ -386,8 +393,10 @@ class StorageService:
                 logger.error(f"Failed to delete cloud file {relative_path}: {e}")
                 return False
         else:
-            # Local storage
+            # Local storage - resolve path first
             path = Path(file_path)
+            if not path.exists() and not path.is_absolute():
+                path = self.get_full_path(str(file_path))
             try:
                 await aiofiles.os.remove(path)
                 # Try to remove parent directory if empty (cleanup project folder)
