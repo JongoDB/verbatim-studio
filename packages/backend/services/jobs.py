@@ -747,9 +747,9 @@ async def handle_document_processing(
                     temp_file.close()
                     file_path = Path(temp_file.name)
                 elif storage_loc and storage_loc.type == "local":
-                    # Local storage - construct full path
-                    base_path = storage_loc.config.get("path", "")
-                    file_path = Path(base_path) / doc.file_path
+                    # Local storage - doc.file_path already contains full relative path
+                    # (e.g., "verbatim/Police Report.PDF" when storage path is "verbatim")
+                    file_path = Path(doc.file_path)
 
             # Fallback: check if already absolute or use default storage
             if file_path is None:
