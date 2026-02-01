@@ -81,6 +81,17 @@ export function OnboardingTour({ isActive, onComplete, onSkip }: OnboardingTourP
     }
   }, [currentStep, targetElement, onComplete]);
 
+  const handleBack = useCallback(() => {
+    // Remove highlight from current target
+    if (targetElement) {
+      targetElement.removeAttribute('data-tour-active');
+    }
+
+    if (currentStep > 0) {
+      setCurrentStep((prev) => prev - 1);
+    }
+  }, [currentStep, targetElement]);
+
   const handleSkip = useCallback(() => {
     // Remove highlight from current target
     if (targetElement) {
@@ -135,6 +146,7 @@ export function OnboardingTour({ isActive, onComplete, onSkip }: OnboardingTourP
         currentStep={currentStep}
         totalSteps={TOUR_STEPS.length}
         onNext={handleNext}
+        onBack={handleBack}
         onSkip={handleSkip}
         targetRect={targetRect}
       />

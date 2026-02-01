@@ -18,7 +18,7 @@ export const TOUR_STEPS: TourStep[] = [
     id: 'live',
     target: '[data-tour="live"]',
     title: 'Live Transcription',
-    description: 'Real-time transcription as you speak—perfect for meetings',
+    description: 'Real-time transcription as you speak—perfect for meetings or taking quick notes',
     position: 'right',
   },
   {
@@ -32,35 +32,28 @@ export const TOUR_STEPS: TourStep[] = [
     id: 'projects',
     target: '[data-tour="projects"]',
     title: 'Projects',
-    description: 'Organize your transcripts and documents into folders',
-    position: 'right',
-  },
-  {
-    id: 'chats',
-    target: '[data-tour="chats"]',
-    title: 'Chats',
-    description: 'Have AI conversations about your transcripts',
+    description: 'Organize your transcripts and documents into folders that are visible on your computer at the location you specify',
     position: 'right',
   },
   {
     id: 'search',
     target: '[data-tour="search"]',
     title: 'Search',
-    description: 'Find anything across all your content instantly',
+    description: 'Find anything across your entire workspace instantly',
     position: 'right',
   },
   {
     id: 'browser',
     target: '[data-tour="browser"]',
     title: 'Files',
-    description: 'Browse and manage all your files in one place',
+    description: 'Browse and manage all your files in one place—choose local storage or cloud storage for real-time sync',
     position: 'right',
   },
   {
     id: 'settings',
     target: '[data-tour="settings"]',
     title: 'Settings',
-    description: 'Configure transcription, AI models, appearance, and more',
+    description: 'Configure transcription, AI models, storage locations, appearance, and more',
     position: 'right',
   },
   {
@@ -69,6 +62,13 @@ export const TOUR_STEPS: TourStep[] = [
     title: 'Assistant',
     description: 'Quick AI help—ask questions about anything, including how to use this app',
     position: 'top',
+  },
+  {
+    id: 'chats',
+    target: '[data-tour="chats"]',
+    title: 'Chat History',
+    description: 'View and continue your saved conversations with the AI assistant',
+    position: 'right',
   },
 ];
 

@@ -6,6 +6,7 @@ interface TourTooltipProps {
   currentStep: number;
   totalSteps: number;
   onNext: () => void;
+  onBack: () => void;
   onSkip: () => void;
   targetRect: DOMRect | null;
 }
@@ -15,12 +16,14 @@ export function TourTooltip({
   currentStep,
   totalSteps,
   onNext,
+  onBack,
   onSkip,
   targetRect,
 }: TourTooltipProps) {
   const tooltipRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ top: 0, left: 0 });
 
+  const isFirstStep = currentStep === 0;
   const isLastStep = currentStep === totalSteps - 1;
 
   useEffect(() => {
@@ -106,12 +109,22 @@ export function TourTooltip({
           >
             Skip
           </button>
-          <button
-            onClick={onNext}
-            className="px-4 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
-          >
-            {isLastStep ? 'Finish' : 'Next'}
-          </button>
+          <div className="flex items-center gap-2">
+            {!isFirstStep && (
+              <button
+                onClick={onBack}
+                className="px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Back
+              </button>
+            )}
+            <button
+              onClick={onNext}
+              className="px-4 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
+            >
+              {isLastStep ? 'Finish' : 'Next'}
+            </button>
+          </div>
         </div>
       </div>
     </div>
