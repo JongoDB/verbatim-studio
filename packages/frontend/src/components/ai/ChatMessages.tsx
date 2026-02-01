@@ -46,7 +46,7 @@ export function ChatMessages({ messages, isStreaming, streamingContent }: ChatMe
           aria-label={msg.role === 'user' ? 'You' : 'Max'}
         >
           <div
-            className={`max-w-[80%] rounded-lg px-4 py-2 ${
+            className={`max-w-[80%] rounded-lg px-4 py-2 break-words ${
               msg.role === 'user'
                 ? 'bg-blue-600 text-white'
                 : 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100'
@@ -58,7 +58,7 @@ export function ChatMessages({ messages, isStreaming, streamingContent }: ChatMe
       ))}
       {isStreaming && streamingContent && (
         <div className="flex justify-start" aria-label="Max is typing">
-          <div className="max-w-[80%] rounded-lg px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100" aria-live="polite">
+          <div className="max-w-[80%] rounded-lg px-4 py-2 break-words bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100" aria-live="polite">
             <p className="text-sm whitespace-pre-wrap">{streamingContent}</p>
             <span className="inline-block w-2 h-4 ml-1 bg-gray-400 animate-pulse" />
           </div>
