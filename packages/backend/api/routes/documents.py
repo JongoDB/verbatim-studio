@@ -468,10 +468,12 @@ async def download_document_file(
                 content_disposition_type="inline",
             )
 
-    # File path is now stored as full path
+    # File path handling:
+    # - For local storage locations, file_path is relative to CWD (e.g., "verbatim/file.pdf")
+    # - For legacy paths, may need to use media_dir
     file_path = Path(doc.file_path)
-    if not file_path.is_absolute():
-        # Backwards compatibility for old relative paths
+    if not file_path.exists() and not file_path.is_absolute():
+        # Fallback for old paths stored relative to media_dir
         file_path = storage_service.get_full_path(doc.file_path)
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="File not found on disk")
