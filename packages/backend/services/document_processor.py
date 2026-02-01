@@ -70,19 +70,49 @@ def cleanup_inference_manager():
     with _inference_manager_lock:
         if _inference_manager is not None:
             logger.info("Unloading InferenceManager to free memory...")
+
+            # Delete the model explicitly if accessible
+            try:
+                if hasattr(_inference_manager, 'model'):
+                    del _inference_manager.model
+                if hasattr(_inference_manager, 'processor'):
+                    del _inference_manager.processor
+            except Exception as e:
+                logger.debug(f"Error clearing model attributes: {e}")
+
             del _inference_manager
             _inference_manager = None
-            # Force garbage collection
+
+            # Multiple gc.collect() calls - some objects need multiple passes
             gc.collect()
-            # Also clear torch cache if available
+            gc.collect()
+            gc.collect()
+
+            # Clear torch caches aggressively
             try:
                 import torch
                 if torch.backends.mps.is_available():
+                    # Synchronize and empty MPS cache
+                    torch.mps.synchronize()
                     torch.mps.empty_cache()
                 elif torch.cuda.is_available():
+                    torch.cuda.synchronize()
                     torch.cuda.empty_cache()
+            except Exception as e:
+                logger.debug(f"Error clearing torch cache: {e}")
+
+            # Clear HuggingFace transformers cache
+            try:
+                import transformers
+                if hasattr(transformers, 'utils') and hasattr(transformers.utils, 'hub'):
+                    # Clear any cached models in memory
+                    pass  # transformers doesn't have a direct memory clear API
             except Exception:
                 pass
+
+            # Final gc pass
+            gc.collect()
+
             logger.info("InferenceManager unloaded")
 
 
