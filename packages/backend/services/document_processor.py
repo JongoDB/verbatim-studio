@@ -294,17 +294,23 @@ class DocumentProcessor:
         }
 
     def _process_image(self, file_path: Path, enable_ocr: bool = False) -> dict:
-        """Process image using Chandra OCR.
+        """Process image using Chandra OCR if enabled.
 
-        Note: For images, OCR is always attempted if Chandra is available,
-        since there's no other way to extract text from images.
-        The enable_ocr parameter is accepted for API consistency but
-        images will use OCR automatically when the model is ready.
+        Args:
+            file_path: Path to the image file
+            enable_ocr: If True, run OCR to extract text from the image
         """
-        # For images, always try OCR if Chandra is available
-        # (unlike PDFs which have text-based fallbacks)
+        # If OCR not enabled, just return basic metadata
+        if not enable_ocr:
+            logger.debug(f"OCR not enabled for image: {file_path.name}")
+            return {
+                "text": "",
+                "markdown": "",
+                "page_count": 1,
+                "metadata": {"format": "image", "ocr_enabled": False},
+            }
 
-        # Check if Chandra is available
+        # OCR enabled - check if Chandra is available
         if not self._is_chandra_available():
             if CHANDRA_INSTALLED:
                 logger.warning(f"Chandra model not downloaded for image OCR: {file_path.name}")

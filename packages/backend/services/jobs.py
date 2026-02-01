@@ -746,8 +746,11 @@ async def handle_document_processing(
             if not file_path.exists():
                 raise FileNotFoundError(f"File not found: {file_path}")
 
+            # Check if OCR is enabled for this document
+            enable_ocr = doc.metadata_.get("enable_ocr", False)
+
             # Extract text
-            extraction_result = document_processor.process(file_path, doc.mime_type)
+            extraction_result = document_processor.process(file_path, doc.mime_type, enable_ocr=enable_ocr)
 
             # Clean up temp file if used
             if temp_file:

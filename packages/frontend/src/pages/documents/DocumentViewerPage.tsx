@@ -32,11 +32,33 @@ export function DocumentViewerPage({ documentId, onBack }: DocumentViewerPagePro
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [officeLoading, setOfficeLoading] = useState(false);
+  const [ocrRunning, setOcrRunning] = useState(false);
   const [sheets, setSheets] = useState<SheetData[]>([]);
   const [activeSheet, setActiveSheet] = useState(0);
   const [slides, setSlides] = useState<SlideData[]>([]);
   const [activeSlide, setActiveSlide] = useState(0);
   const docxContainerRef = useRef<HTMLDivElement>(null);
+
+  const handleRunOcr = async () => {
+    if (!document || ocrRunning) return;
+    setOcrRunning(true);
+    try {
+      await api.documents.runOcr(documentId);
+      // Refresh document to show new status
+      const updatedDoc = await api.documents.get(documentId);
+      setDocument(updatedDoc);
+    } catch (err) {
+      console.error('Failed to start OCR:', err);
+    } finally {
+      setOcrRunning(false);
+    }
+  };
+
+  // Check if OCR is available for this document
+  const canRunOcr = document &&
+    document.status === 'completed' &&
+    (document.mime_type.startsWith('image/') || document.mime_type === 'application/pdf') &&
+    document.metadata?.ocr_engine !== 'chandra';
 
   useEffect(() => {
     async function load() {
@@ -284,16 +306,42 @@ export function DocumentViewerPage({ documentId, onBack }: DocumentViewerPagePro
             {document.filename} • {document.status}
           </p>
         </div>
-        <a
-          href={api.documents.getFileUrl(documentId)}
-          download={document.filename}
-          className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700"
-        >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-          </svg>
-          Download
-        </a>
+        <div className="flex items-center gap-2">
+          {canRunOcr && (
+            <button
+              onClick={handleRunOcr}
+              disabled={ocrRunning}
+              className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 rounded-lg transition-colors"
+            >
+              {ocrRunning ? (
+                <>
+                  <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  Running OCR...
+                </>
+              ) : (
+                <>
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  Run OCR
+                </>
+              )}
+            </button>
+          )}
+          <a
+            href={api.documents.getFileUrl(documentId)}
+            download={document.filename}
+            className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            Download
+          </a>
+        </div>
       </div>
 
       {/* Content */}
