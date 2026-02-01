@@ -65,7 +65,9 @@ def process_document_job(db: Session, document_id: str) -> None:
 
 def _generate_embeddings(db: Session, doc: Document) -> None:
     """Generate and store embeddings for document chunks."""
-    from services.embedding import embedding_service
+    import asyncio
+
+    from services.embedding import embedding_service, embedding_to_bytes
 
     if not embedding_service.is_available():
         logger.warning("Embedding service not available, skipping embeddings")
@@ -81,22 +83,29 @@ def _generate_embeddings(db: Session, doc: Document) -> None:
     # Chunk the text
     chunks = _chunk_text(doc.extracted_text, max_tokens=500)
 
-    # Generate embeddings for each chunk
-    for i, chunk in enumerate(chunks):
-        try:
-            embedding_vector = embedding_service.embed(chunk["text"])
+    if not chunks:
+        logger.info(f"No chunks generated for document {doc.id}")
+        return
 
-            doc_embedding = DocumentEmbedding(
-                document_id=doc.id,
-                chunk_index=i,
-                chunk_text=chunk["text"],
-                chunk_metadata=chunk.get("metadata", {}),
-                embedding=embedding_vector,
-                model_used=embedding_service.model_name,
-            )
-            db.add(doc_embedding)
-        except Exception as e:
-            logger.warning(f"Failed to embed chunk {i}: {e}")
+    # Batch embed all chunks at once
+    chunk_texts = [chunk["text"] for chunk in chunks]
+    try:
+        embeddings = asyncio.run(embedding_service.embed_texts(chunk_texts))
+    except Exception as e:
+        logger.error(f"Failed to generate embeddings: {e}")
+        return
+
+    # Store each embedding
+    for i, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
+        doc_embedding = DocumentEmbedding(
+            document_id=doc.id,
+            chunk_index=i,
+            chunk_text=chunk["text"],
+            chunk_metadata=chunk.get("metadata", {}),
+            embedding=embedding_to_bytes(embedding),
+            model_used=embedding_service.model_name,
+        )
+        db.add(doc_embedding)
 
     db.commit()
     logger.info(f"Generated {len(chunks)} embeddings for document {doc.id}")
