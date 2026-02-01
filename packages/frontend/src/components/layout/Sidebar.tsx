@@ -215,6 +215,7 @@ export function Sidebar({ currentTab, onNavigate, theme, onCycleTheme, version, 
             return (
               <button
                 key={item.key}
+                data-tour={item.key}
                 onClick={() => handleNavigate(item.key)}
                 className={[
                   'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
@@ -248,6 +249,7 @@ export function Sidebar({ currentTab, onNavigate, theme, onCycleTheme, version, 
         <div className="px-3 py-4 border-t border-border space-y-1 shrink-0">
           {/* Settings */}
           <button
+            data-tour="settings"
             onClick={() => handleNavigate('settings')}
             className={[
               'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
