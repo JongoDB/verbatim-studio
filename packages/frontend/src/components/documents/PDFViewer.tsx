@@ -15,15 +15,27 @@ interface PDFViewerProps {
   onSelectionNote?: (selection: { text: string; page: number }) => void;
   currentPage?: number;
   onPageChange?: (page: number) => void;
+  highlightText?: string | null;
+  onHighlightCleared?: () => void;
 }
 
-export function PDFViewer({ url, onSelectionNote, currentPage = 1, onPageChange }: PDFViewerProps) {
+// Highlight overlay position type
+interface HighlightOverlay {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+export function PDFViewer({ url, onSelectionNote, currentPage = 1, onPageChange, highlightText, onHighlightCleared }: PDFViewerProps) {
   const [numPages, setNumPages] = useState<number>(0);
   const [pageNumber, setPageNumber] = useState(currentPage);
   const [scale, setScale] = useState(1.0);
   const [selection, setSelection] = useState<{ text: string; page: number } | null>(null);
   const [selectionPosition, setSelectionPosition] = useState<{ x: number; y: number } | null>(null);
+  const [highlightOverlay, setHighlightOverlay] = useState<HighlightOverlay | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const lastHighlightRef = useRef<string | null>(null);
 
   // Sync with external currentPage prop
   useEffect(() => {
@@ -31,6 +43,67 @@ export function PDFViewer({ url, onSelectionNote, currentPage = 1, onPageChange 
       setPageNumber(currentPage);
     }
   }, [currentPage]);
+
+  // Handle highlight text - search and create overlay for highlight in PDF
+  useEffect(() => {
+    // Skip if no highlight text or already processing this highlight
+    if (!highlightText || highlightText === lastHighlightRef.current) {
+      return;
+    }
+
+    lastHighlightRef.current = highlightText;
+
+    // Small delay to ensure text layer is rendered
+    const timer = setTimeout(() => {
+      const textLayer = containerRef.current?.querySelector('.react-pdf__Page__textContent');
+      if (textLayer) {
+        // Search for the text (use first 50 chars for matching)
+        const searchText = highlightText.substring(0, 50).toLowerCase();
+        const spans = textLayer.querySelectorAll('span');
+        let found = false;
+
+        for (const span of spans) {
+          const spanText = span.textContent?.toLowerCase() || '';
+          const match1 = spanText.includes(searchText);
+          const match2 = searchText.includes(spanText.substring(0, 20));
+          if (match1 || match2) {
+            // Get the span's position relative to the container
+            const spanRect = span.getBoundingClientRect();
+            const containerRect = containerRef.current?.getBoundingClientRect();
+
+            if (containerRect) {
+              // Create overlay at span's position
+              setHighlightOverlay({
+                left: spanRect.left - containerRect.left + containerRef.current!.scrollLeft,
+                top: spanRect.top - containerRect.top + containerRef.current!.scrollTop,
+                width: spanRect.width,
+                height: spanRect.height,
+              });
+
+              // Scroll the span into view
+              span.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+            found = true;
+            break;
+          }
+        }
+
+        // Clear highlight after 3 seconds
+        if (found) {
+          setTimeout(() => {
+            setHighlightOverlay(null);
+            lastHighlightRef.current = null;
+            onHighlightCleared?.();
+          }, 3000);
+        } else {
+          // Reset ref if not found so we can try again
+          lastHighlightRef.current = null;
+        }
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [highlightText, onHighlightCleared]);
 
   const onDocumentLoadSuccess = useCallback(({ numPages }: { numPages: number }) => {
     setNumPages(numPages);
@@ -104,6 +177,19 @@ export function PDFViewer({ url, onSelectionNote, currentPage = 1, onPageChange 
 
   return (
     <div className="flex flex-col h-full">
+      {/* Highlight overlay styles */}
+      <style>{`
+        .highlight-overlay {
+          background-color: rgba(251, 191, 36, 0.5);
+          border-radius: 2px;
+          pointer-events: none;
+          animation: highlight-pulse 1s ease-in-out 3;
+        }
+        @keyframes highlight-pulse {
+          0%, 100% { background-color: rgba(251, 191, 36, 0.5); }
+          50% { background-color: rgba(251, 191, 36, 0.8); }
+        }
+      `}</style>
       {/* Toolbar */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900">
         <div className="flex items-center gap-2">
@@ -194,6 +280,19 @@ export function PDFViewer({ url, onSelectionNote, currentPage = 1, onPageChange 
             <MessageSquarePlus className="h-4 w-4" />
             Add Note
           </button>
+        )}
+
+        {/* Highlight overlay for jump-to-anchor */}
+        {highlightOverlay && (
+          <div
+            className="highlight-overlay absolute z-10"
+            style={{
+              left: highlightOverlay.left,
+              top: highlightOverlay.top,
+              width: highlightOverlay.width,
+              height: highlightOverlay.height,
+            }}
+          />
         )}
       </div>
     </div>

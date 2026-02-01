@@ -46,6 +46,7 @@ export function DocumentViewerPage({ documentId, onBack }: DocumentViewerPagePro
     type: 'selection';
     data: { text: string; page: number };
   } | null>(null);
+  const [highlightText, setHighlightText] = useState<string | null>(null);
   const docxContainerRef = useRef<HTMLDivElement>(null);
 
   // Handle text selection from PDF viewer
@@ -269,11 +270,15 @@ export function DocumentViewerPage({ documentId, onBack }: DocumentViewerPagePro
         break;
       case 'paragraph':
         // Scroll to paragraph (would need paragraph refs)
-        console.log('Navigate to paragraph:', anchorData.paragraph);
         break;
       case 'selection':
-        // Highlight selection (future enhancement)
-        console.log('Navigate to selection:', anchorData.text);
+        // Navigate to page and highlight the selected text
+        if (anchorData.page) {
+          setCurrentPage(anchorData.page as number);
+        }
+        if (anchorData.text) {
+          setHighlightText(anchorData.text as string);
+        }
         break;
     }
   };
@@ -407,6 +412,8 @@ export function DocumentViewerPage({ documentId, onBack }: DocumentViewerPagePro
                   currentPage={currentPage}
                   onPageChange={setCurrentPage}
                   onSelectionNote={handleSelectionNote}
+                  highlightText={highlightText}
+                  onHighlightCleared={() => setHighlightText(null)}
                 />
               </div>
             )}
