@@ -38,6 +38,7 @@ export function DocumentViewerPage({ documentId, onBack }: DocumentViewerPagePro
   const [activeSheet, setActiveSheet] = useState(0);
   const [slides, setSlides] = useState<SlideData[]>([]);
   const [activeSlide, setActiveSlide] = useState(0);
+  const [ocrContent, setOcrContent] = useState<string | null>(null);
   const docxContainerRef = useRef<HTMLDivElement>(null);
 
   const handleRunOcr = async () => {
@@ -75,6 +76,26 @@ export function DocumentViewerPage({ documentId, onBack }: DocumentViewerPagePro
     document.status === 'completed' &&
     (document.mime_type.startsWith('image/') || document.mime_type === 'application/pdf') &&
     document.metadata?.ocr_engine !== 'qwen2-vl-ocr';
+
+  // Check if document has OCR results
+  const hasOcrResults = document?.metadata?.ocr_engine === 'qwen2-vl-ocr';
+
+  // Fetch OCR content when document has OCR results
+  useEffect(() => {
+    async function fetchOcrContent() {
+      if (!document || !hasOcrResults) {
+        setOcrContent(null);
+        return;
+      }
+      try {
+        const contentRes = await api.documents.getContent(documentId);
+        setOcrContent(contentRes.content);
+      } catch {
+        setOcrContent(null);
+      }
+    }
+    fetchOcrContent();
+  }, [document, hasOcrResults, documentId]);
 
   // Poll for status updates when document is processing
   useEffect(() => {
@@ -425,20 +446,54 @@ export function DocumentViewerPage({ documentId, onBack }: DocumentViewerPagePro
         {document.status === 'completed' && (
           <>
             {isPdf && (
-              <iframe
-                src={api.documents.getFileUrl(documentId, true)}
-                className="w-full h-[calc(100vh-260px)]"
-                title={document.title}
-              />
+              <div className="flex flex-col">
+                <iframe
+                  src={api.documents.getFileUrl(documentId, true)}
+                  className={`w-full ${ocrContent ? 'h-[50vh]' : 'h-[calc(100vh-260px)]'}`}
+                  title={document.title}
+                />
+                {/* OCR Results */}
+                {ocrContent && (
+                  <div className="border-t border-gray-200 dark:border-gray-700 p-4">
+                    <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2">
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      Extracted Text (OCR)
+                    </h3>
+                    <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-4 max-h-[30vh] overflow-auto">
+                      <pre className="text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap font-mono">
+                        {ocrContent}
+                      </pre>
+                    </div>
+                  </div>
+                )}
+              </div>
             )}
 
             {isImage && (
-              <div className="p-4 flex items-center justify-center">
+              <div className="p-4 flex flex-col items-center">
                 <img
                   src={api.documents.getFileUrl(documentId, true)}
                   alt={document.title}
-                  className="max-w-full max-h-[calc(100vh-200px)] object-contain"
+                  className="max-w-full max-h-[60vh] object-contain"
                 />
+                {/* OCR Results */}
+                {ocrContent && (
+                  <div className="w-full mt-6 border-t border-gray-200 dark:border-gray-700 pt-6">
+                    <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2">
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      Extracted Text (OCR)
+                    </h3>
+                    <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-4 max-h-[40vh] overflow-auto">
+                      <pre className="text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap font-mono">
+                        {ocrContent}
+                      </pre>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
