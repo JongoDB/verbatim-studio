@@ -39,7 +39,7 @@ export function ChatInput({ onSend, onAttachClick, disabled, attachedCount }: Ch
         <button
           type="button"
           onClick={onAttachClick}
-          className="relative shrink-0 p-2 rounded-lg text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+          className="relative shrink-0 min-w-touch min-h-touch flex items-center justify-center rounded-lg text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
           title="Attach transcripts"
           aria-label="Attach transcripts"
         >
@@ -66,7 +66,7 @@ export function ChatInput({ onSend, onAttachClick, disabled, attachedCount }: Ch
         <button
           type="submit"
           disabled={disabled || !input.trim()}
-          className="shrink-0 p-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          className="shrink-0 min-w-touch min-h-touch flex items-center justify-center rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           aria-label="Send message"
         >
           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" aria-hidden="true">
