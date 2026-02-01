@@ -1,13 +1,59 @@
 """Document processing service for text extraction."""
 
+import gc
 import logging
 import os
+import threading
 from pathlib import Path
+from typing import Callable
 
 logger = logging.getLogger(__name__)
 
+
+class ProcessingCancelledError(Exception):
+    """Raised when document processing is cancelled."""
+    pass
+
 # Track if we've applied the CUDA workaround
 _cuda_workaround_applied = False
+
+# Singleton for InferenceManager to avoid reloading the model
+_inference_manager = None
+_inference_manager_lock = threading.Lock()
+
+
+def get_inference_manager():
+    """Get or create the singleton InferenceManager."""
+    global _inference_manager
+    with _inference_manager_lock:
+        if _inference_manager is None:
+            from chandra.model import InferenceManager
+            logger.info("Creating InferenceManager singleton (loading model)...")
+            _inference_manager = InferenceManager(method="hf")
+            logger.info("InferenceManager ready")
+        return _inference_manager
+
+
+def cleanup_inference_manager():
+    """Unload the InferenceManager to free memory."""
+    global _inference_manager
+    with _inference_manager_lock:
+        if _inference_manager is not None:
+            logger.info("Unloading InferenceManager to free memory...")
+            del _inference_manager
+            _inference_manager = None
+            # Force garbage collection
+            gc.collect()
+            # Also clear torch cache if available
+            try:
+                import torch
+                if torch.backends.mps.is_available():
+                    torch.mps.empty_cache()
+                elif torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+            except Exception:
+                pass
+            logger.info("InferenceManager unloaded")
 
 
 def _apply_cuda_workaround():
@@ -146,7 +192,13 @@ class DocumentProcessor:
             return False
         return _check_chandra_model_ready()
 
-    def process(self, file_path: Path, mime_type: str, enable_ocr: bool = False) -> dict:
+    def process(
+        self,
+        file_path: Path,
+        mime_type: str,
+        enable_ocr: bool = False,
+        check_cancelled: Callable[[], bool] | None = None,
+    ) -> dict:
         """
         Process a document and extract text content.
 
@@ -154,14 +206,18 @@ class DocumentProcessor:
             file_path: Path to the document file
             mime_type: MIME type of the document
             enable_ocr: If True, use OCR for text extraction (for scanned docs/images)
+            check_cancelled: Optional callback that returns True if processing should stop
 
         Returns:
             dict with keys: text, markdown, page_count, metadata
+
+        Raises:
+            ProcessingCancelledError: If processing was cancelled
         """
         if mime_type == "application/pdf":
-            return self._process_pdf(file_path, enable_ocr=enable_ocr)
+            return self._process_pdf(file_path, enable_ocr=enable_ocr, check_cancelled=check_cancelled)
         elif mime_type.startswith("image/"):
-            return self._process_image(file_path, enable_ocr=enable_ocr)
+            return self._process_image(file_path, enable_ocr=enable_ocr, check_cancelled=check_cancelled)
         elif mime_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
             return self._process_docx(file_path, enable_ocr=enable_ocr)
         elif mime_type == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
@@ -191,15 +247,23 @@ class DocumentProcessor:
             "TORCH_DEVICE": device,
         }
 
-    def _process_pdf(self, file_path: Path, enable_ocr: bool = False) -> dict:
+    def _process_pdf(
+        self,
+        file_path: Path,
+        enable_ocr: bool = False,
+        check_cancelled: Callable[[], bool] | None = None,
+    ) -> dict:
         """Process PDF using Chandra OCR (if enabled) with PyMuPDF fallback."""
         if enable_ocr and self._is_chandra_available():
             try:
+                # Check for cancellation before starting
+                if check_cancelled and check_cancelled():
+                    raise ProcessingCancelledError("Processing cancelled before starting")
+
                 # Configure Chandra to use Verbatim storage path
                 _configure_chandra_model_path()
 
                 from chandra.input import load_file
-                from chandra.model import InferenceManager
                 from chandra.model.schema import BatchInputItem
 
                 logger.info(f"Processing {file_path.name} with Chandra OCR")
@@ -208,15 +272,24 @@ class DocumentProcessor:
                 config = self._get_chandra_config()
                 pages = load_file(str(file_path), config)
 
-                # Initialize the inference manager (uses HuggingFace by default)
-                manager = InferenceManager(method="hf")
+                # Check for cancellation after loading
+                if check_cancelled and check_cancelled():
+                    raise ProcessingCancelledError("Processing cancelled after loading file")
 
-                # Create batch input items from pages with OCR layout prompt
-                batch = [BatchInputItem(image=page, prompt_type="ocr_layout") for page in pages]
+                # Get the singleton inference manager (reuses loaded model)
+                manager = get_inference_manager()
 
-                # Process all pages in batch
-                results = manager.generate(batch)
-                markdown_parts = [result.markdown for result in results]
+                # Process pages one at a time to allow cancellation checkpoints
+                markdown_parts = []
+                for i, page in enumerate(pages):
+                    # Check for cancellation between pages
+                    if check_cancelled and check_cancelled():
+                        raise ProcessingCancelledError(f"Processing cancelled at page {i+1}/{len(pages)}")
+
+                    logger.info(f"OCR processing page {i+1}/{len(pages)} of {file_path.name}")
+                    batch = [BatchInputItem(image=page, prompt_type="ocr_layout")]
+                    results = manager.generate(batch)
+                    markdown_parts.append(results[0].markdown)
 
                 combined_markdown = "\n\n".join(markdown_parts)
                 # Strip markdown formatting for plain text
@@ -228,6 +301,8 @@ class DocumentProcessor:
                     "page_count": len(pages),
                     "metadata": {"ocr_engine": "chandra"},
                 }
+            except ProcessingCancelledError:
+                raise  # Re-raise cancellation
             except Exception as e:
                 logger.warning(f"Chandra OCR failed, falling back to PyMuPDF: {e}")
                 return self._process_pdf_fallback(file_path)
@@ -293,12 +368,18 @@ class DocumentProcessor:
             "metadata": {"error": "No PDF processor available"},
         }
 
-    def _process_image(self, file_path: Path, enable_ocr: bool = False) -> dict:
+    def _process_image(
+        self,
+        file_path: Path,
+        enable_ocr: bool = False,
+        check_cancelled: Callable[[], bool] | None = None,
+    ) -> dict:
         """Process image using Chandra OCR if enabled.
 
         Args:
             file_path: Path to the image file
             enable_ocr: If True, run OCR to extract text from the image
+            check_cancelled: Optional callback that returns True if processing should stop
         """
         # If OCR not enabled, just return basic metadata
         if not enable_ocr:
@@ -326,11 +407,14 @@ class DocumentProcessor:
             }
 
         try:
+            # Check for cancellation before starting
+            if check_cancelled and check_cancelled():
+                raise ProcessingCancelledError("Processing cancelled before starting")
+
             # Configure Chandra to use Verbatim storage path
             _configure_chandra_model_path()
 
             from chandra.input import load_file
-            from chandra.model import InferenceManager
             from chandra.model.schema import BatchInputItem
 
             logger.info(f"Processing {file_path.name} with Chandra OCR")
@@ -339,13 +423,17 @@ class DocumentProcessor:
             config = self._get_chandra_config()
             pages = load_file(str(file_path), config)
 
-            # Initialize the inference manager (uses HuggingFace by default)
-            manager = InferenceManager(method="hf")
+            # Check for cancellation after loading
+            if check_cancelled and check_cancelled():
+                raise ProcessingCancelledError("Processing cancelled after loading file")
+
+            # Get the singleton inference manager (reuses loaded model)
+            manager = get_inference_manager()
 
             # Create batch input items from pages with OCR layout prompt
             batch = [BatchInputItem(image=page, prompt_type="ocr_layout") for page in pages]
 
-            # Process the image in batch
+            # Process the image
             results = manager.generate(batch)
             markdown_parts = [result.markdown for result in results]
 
@@ -359,6 +447,8 @@ class DocumentProcessor:
                 "page_count": 1,
                 "metadata": {"ocr_engine": "chandra"},
             }
+        except ProcessingCancelledError:
+            raise  # Re-raise cancellation
         except Exception as e:
             logger.error(f"Image OCR failed: {e}")
             return {"text": "", "markdown": "", "page_count": 1, "metadata": {"error": str(e)}}

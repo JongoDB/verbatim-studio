@@ -541,6 +541,58 @@ async def run_ocr(
     return MessageResponse(message="OCR processing queued", id=document_id)
 
 
+@router.post("/{document_id}/cancel", response_model=MessageResponse)
+async def cancel_document_processing(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    document_id: str,
+) -> MessageResponse:
+    """Cancel document processing.
+
+    Cancels any running or queued processing job for this document.
+    """
+    from persistence.models import Job
+    from services.jobs import job_queue
+
+    doc = await db.get(Document, document_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    if doc.status not in ("pending", "processing"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Document is not being processed (status: {doc.status})"
+        )
+
+    # Find the active job for this document
+    result = await db.execute(
+        select(Job)
+        .where(Job.job_type == "process_document")
+        .where(Job.payload["document_id"].astext == document_id)
+        .where(Job.status.in_(["queued", "running"]))
+        .order_by(Job.created_at.desc())
+        .limit(1)
+    )
+    job = result.scalar_one_or_none()
+
+    if job:
+        # Cancel the job
+        cancelled = await job_queue.cancel_job(job.id)
+        if cancelled:
+            # Update document status
+            doc.status = "cancelled"
+            doc.error_message = "Processing was cancelled by user"
+            await db.commit()
+            return MessageResponse(message="Processing cancelled", id=document_id)
+        else:
+            raise HTTPException(status_code=500, detail="Failed to cancel job")
+    else:
+        # No job found, just update document status
+        doc.status = "cancelled"
+        doc.error_message = "Processing was cancelled by user"
+        await db.commit()
+        return MessageResponse(message="Processing cancelled (no active job found)", id=document_id)
+
+
 @router.get("/{document_id}/content")
 async def get_document_content(
     db: Annotated[AsyncSession, Depends(get_db)],

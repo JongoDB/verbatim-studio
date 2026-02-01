@@ -1731,6 +1731,12 @@ class ApiClient {
       });
     },
 
+    cancelProcessing: async (id: string): Promise<void> => {
+      await this.request<{ message: string }>(`/api/documents/${id}/cancel`, {
+        method: 'POST',
+      });
+    },
+
     update: async (id: string, data: { title?: string; project_id?: string | null }): Promise<Document> => {
       return this.request<Document>(`/api/documents/${id}`, {
         method: 'PATCH',

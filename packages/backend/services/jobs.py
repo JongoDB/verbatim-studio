@@ -136,7 +136,9 @@ class JobQueue:
                     return
 
                 job_type = job.job_type
-                payload = job.payload
+                payload = job.payload or {}
+                # Add job_id to payload for cancellation checking
+                payload["job_id"] = job_id
 
             # Get handler
             handler = self._handlers.get(job_type)
@@ -687,10 +689,20 @@ async def handle_document_processing(
     """Process a document: extract text and generate embeddings."""
     document_id = payload["document_id"]
 
+    # Get job_id from payload for cancellation checking
+    job_id = payload.get("job_id")
+
     async with async_session() as session:
         from persistence.models import Document, DocumentEmbedding
-        from services.document_processor import document_processor
+        from services.document_processor import document_processor, ProcessingCancelledError, cleanup_inference_manager
         from services.storage import storage_service
+
+        # Create cancellation check function
+        def check_cancelled() -> bool:
+            """Check if this job has been cancelled."""
+            if job_id and job_id in job_queue._cancelled_jobs:
+                return True
+            return False
 
         # Get document
         result = await session.execute(
@@ -749,8 +761,13 @@ async def handle_document_processing(
             # Check if OCR is enabled for this document
             enable_ocr = doc.metadata_.get("enable_ocr", False)
 
-            # Extract text
-            extraction_result = document_processor.process(file_path, doc.mime_type, enable_ocr=enable_ocr)
+            # Extract text (pass cancellation check for OCR operations)
+            extraction_result = document_processor.process(
+                file_path,
+                doc.mime_type,
+                enable_ocr=enable_ocr,
+                check_cancelled=check_cancelled if job_id else None,
+            )
 
             # Clean up temp file if used
             if temp_file:
@@ -777,12 +794,32 @@ async def handle_document_processing(
 
             await update_progress(100)
 
+            # Clean up OCR model if it was used (free memory)
+            if enable_ocr:
+                cleanup_inference_manager()
+
             return {"document_id": document_id, "status": "completed"}
+
+        except ProcessingCancelledError as e:
+            # Clean up temp file
+            if temp_file:
+                Path(temp_file.name).unlink(missing_ok=True)
+            # Clean up OCR model
+            cleanup_inference_manager()
+            # Set status to cancelled
+            doc.status = "cancelled"
+            doc.error_message = "Processing was cancelled"
+            await session.commit()
+            logger.info(f"Document {document_id} processing cancelled")
+            return {"document_id": document_id, "status": "cancelled"}
 
         except Exception as e:
             # Clean up temp file on error
             if temp_file:
                 Path(temp_file.name).unlink(missing_ok=True)
+            # Clean up OCR model on error
+            if enable_ocr:
+                cleanup_inference_manager()
             doc.status = "failed"
             doc.error_message = str(e)
             await session.commit()

@@ -33,6 +33,7 @@ export function DocumentViewerPage({ documentId, onBack }: DocumentViewerPagePro
   const [error, setError] = useState<string | null>(null);
   const [officeLoading, setOfficeLoading] = useState(false);
   const [ocrRunning, setOcrRunning] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
   const [sheets, setSheets] = useState<SheetData[]>([]);
   const [activeSheet, setActiveSheet] = useState(0);
   const [slides, setSlides] = useState<SlideData[]>([]);
@@ -51,6 +52,21 @@ export function DocumentViewerPage({ documentId, onBack }: DocumentViewerPagePro
       console.error('Failed to start OCR:', err);
     } finally {
       setOcrRunning(false);
+    }
+  };
+
+  const handleCancelProcessing = async () => {
+    if (!document || cancelling) return;
+    setCancelling(true);
+    try {
+      await api.documents.cancelProcessing(documentId);
+      // Refresh document to show new status
+      const updatedDoc = await api.documents.get(documentId);
+      setDocument(updatedDoc);
+    } catch (err) {
+      console.error('Failed to cancel processing:', err);
+    } finally {
+      setCancelling(false);
     }
   };
 
@@ -372,12 +388,31 @@ export function DocumentViewerPage({ documentId, onBack }: DocumentViewerPagePro
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
             </svg>
             <p className="mt-4 text-gray-500 dark:text-gray-400">Processing document...</p>
+            <button
+              onClick={handleCancelProcessing}
+              disabled={cancelling}
+              className="mt-4 px-4 py-2 text-sm font-medium text-red-600 hover:text-red-700 border border-red-300 hover:border-red-400 rounded-lg transition-colors disabled:opacity-50"
+            >
+              {cancelling ? 'Cancelling...' : 'Cancel Processing'}
+            </button>
           </div>
         )}
 
         {document.status === 'failed' && (
           <div className="p-8 text-center">
             <p className="text-red-500">Processing failed: {document.error_message}</p>
+            <button
+              onClick={() => api.documents.reprocess(documentId)}
+              className="mt-4 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90"
+            >
+              Retry Processing
+            </button>
+          </div>
+        )}
+
+        {document.status === 'cancelled' && (
+          <div className="p-8 text-center">
+            <p className="text-amber-500">Processing was cancelled</p>
             <button
               onClick={() => api.documents.reprocess(documentId)}
               className="mt-4 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90"
