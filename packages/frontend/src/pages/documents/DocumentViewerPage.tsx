@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { renderAsync } from 'docx-preview';
@@ -6,6 +6,7 @@ import ExcelJS from 'exceljs';
 import { MessageSquare, AlertCircle, RefreshCw } from 'lucide-react';
 import { api, type Document } from '@/lib/api';
 import { NotesPanel } from '@/components/documents/NotesPanel';
+import { PDFViewer } from '@/components/documents/PDFViewer';
 
 interface DocumentViewerPageProps {
   documentId: string;
@@ -41,7 +42,20 @@ export function DocumentViewerPage({ documentId, onBack }: DocumentViewerPagePro
   const [notesOpen, setNotesOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [isRetrying, setIsRetrying] = useState(false);
+  const [pendingSelectionAnchor, setPendingSelectionAnchor] = useState<{
+    type: 'selection';
+    data: { text: string; page: number };
+  } | null>(null);
   const docxContainerRef = useRef<HTMLDivElement>(null);
+
+  // Handle text selection from PDF viewer
+  const handleSelectionNote = useCallback((selection: { text: string; page: number }) => {
+    setPendingSelectionAnchor({
+      type: 'selection',
+      data: selection,
+    });
+    setNotesOpen(true);
+  }, []);
 
   useEffect(() => {
     async function load() {
@@ -387,11 +401,14 @@ export function DocumentViewerPage({ documentId, onBack }: DocumentViewerPagePro
         {document.status === 'completed' && (
           <>
             {isPdf && (
-              <iframe
-                src={api.documents.getFileUrl(documentId, true)}
-                className="w-full h-[calc(100vh-260px)]"
-                title={document.title}
-              />
+              <div className="h-[calc(100vh-260px)]">
+                <PDFViewer
+                  url={api.documents.getFileUrl(documentId, true)}
+                  currentPage={currentPage}
+                  onPageChange={setCurrentPage}
+                  onSelectionNote={handleSelectionNote}
+                />
+              </div>
             )}
 
             {isImage && (
@@ -603,6 +620,8 @@ export function DocumentViewerPage({ documentId, onBack }: DocumentViewerPagePro
               currentPage={currentPage}
               onNavigateToAnchor={handleNavigateToAnchor}
               onClose={() => setNotesOpen(false)}
+              pendingAnchor={pendingSelectionAnchor}
+              onPendingAnchorUsed={() => setPendingSelectionAnchor(null)}
             />
           </div>
         )}

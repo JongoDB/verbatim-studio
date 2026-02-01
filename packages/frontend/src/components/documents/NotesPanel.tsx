@@ -11,6 +11,8 @@ interface NotesPanelProps {
   selectedText?: { text: string; start: number; end: number } | null
   onNavigateToAnchor: (anchorType: string, anchorData: Record<string, unknown>) => void
   onClose?: () => void
+  pendingAnchor?: { type: 'selection'; data: { text: string; page: number } } | null
+  onPendingAnchorUsed?: () => void
 }
 
 export function NotesPanel({
@@ -20,6 +22,8 @@ export function NotesPanel({
   selectedText,
   onNavigateToAnchor,
   onClose,
+  pendingAnchor,
+  onPendingAnchorUsed,
 }: NotesPanelProps) {
   const [notes, setNotes] = useState<Note[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -28,6 +32,10 @@ export function NotesPanel({
 
   // Determine anchor for new notes
   const newNoteAnchor = (() => {
+    // Use pending anchor from text selection if available
+    if (pendingAnchor) {
+      return pendingAnchor
+    }
     if (selectedText) {
       return {
         type: 'selection' as const,
@@ -39,6 +47,13 @@ export function NotesPanel({
     }
     return { type: 'page' as const, data: { page: currentPage } }
   })()
+
+  // Auto-start note creation when pending anchor is provided
+  useEffect(() => {
+    if (pendingAnchor && !isCreating) {
+      setIsCreating(true)
+    }
+  }, [pendingAnchor])
 
   const fetchNotes = async () => {
     try {
@@ -68,6 +83,8 @@ export function NotesPanel({
       })
       setNotes((prev) => [newNote, ...prev])
       setIsCreating(false)
+      // Clear the pending anchor after creating the note
+      onPendingAnchorUsed?.()
     } catch (e) {
       console.error('Failed to create note:', e)
     }
@@ -131,7 +148,10 @@ export function NotesPanel({
               anchorType={newNoteAnchor.type}
               anchorData={newNoteAnchor.data}
               onSave={handleCreate}
-              onCancel={() => setIsCreating(false)}
+              onCancel={() => {
+                setIsCreating(false)
+                onPendingAnchorUsed?.()
+              }}
             />
           )}
 
