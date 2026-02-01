@@ -1,9 +1,22 @@
-import { ipcMain, app, BrowserWindow } from 'electron';
+import { ipcMain, app, BrowserWindow, dialog } from 'electron';
 
 export function registerIpcHandlers(): void {
   // App info
   ipcMain.handle('app:getVersion', () => {
     return app.getVersion();
+  });
+
+  // Directory picker - returns full path
+  ipcMain.handle('dialog:openDirectory', async (event) => {
+    const window = BrowserWindow.fromWebContents(event.sender);
+    const result = await dialog.showOpenDialog(window!, {
+      properties: ['openDirectory', 'createDirectory'],
+      title: 'Select Storage Folder',
+    });
+    if (result.canceled || result.filePaths.length === 0) {
+      return null;
+    }
+    return result.filePaths[0];
   });
 
   // Window controls

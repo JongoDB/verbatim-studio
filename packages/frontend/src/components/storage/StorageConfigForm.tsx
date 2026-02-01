@@ -20,8 +20,11 @@ const inputClasses = "w-full rounded-lg border border-border bg-background px-3 
 const labelClasses = "block text-sm font-medium text-foreground mb-1.5";
 const hintClasses = "text-xs text-muted-foreground mt-1";
 
-// Check if the File System Access API is available
-const supportsDirectoryPicker = typeof window !== 'undefined' && 'showDirectoryPicker' in window;
+// Check if Electron API is available (provides full path)
+const hasElectronAPI = typeof window !== 'undefined' && window.electronAPI?.openDirectoryDialog;
+// Fallback to browser File System Access API (only provides folder name)
+const supportsBrowserDirectoryPicker = typeof window !== 'undefined' && 'showDirectoryPicker' in window;
+const supportsDirectoryPicker = hasElectronAPI || supportsBrowserDirectoryPicker;
 
 export function StorageConfigForm({
   storageType,
@@ -39,11 +42,20 @@ export function StorageConfigForm({
 
   const handleBrowseFolder = async () => {
     try {
+      // Prefer Electron's native dialog (returns full path)
+      if (window.electronAPI?.openDirectoryDialog) {
+        const fullPath = await window.electronAPI.openDirectoryDialog();
+        if (fullPath) {
+          updateField('path', fullPath);
+        }
+        return;
+      }
+
+      // Fallback to browser API (only returns folder name)
       const dirHandle = await window.showDirectoryPicker({
         mode: 'readwrite',
       });
-      // Note: For security reasons, browsers only provide the folder name, not the full path.
-      // The user may need to adjust the path if it differs from their expected location.
+      // Note: Browser API only provides folder name, not full path
       updateField('path', dirHandle.name);
     } catch {
       // User cancelled the picker - do nothing
@@ -76,7 +88,12 @@ export function StorageConfigForm({
             )}
           </div>
           <p className={hintClasses}>
-            Full path to a folder. It will be created if it doesn't exist.
+            Full absolute path to a folder (e.g., /Users/you/Documents/verbatim).
+            {!hasElectronAPI && supportsBrowserDirectoryPicker && (
+              <span className="block mt-1 text-amber-600 dark:text-amber-400">
+                Note: Browser only provides folder name. Please enter the full path manually.
+              </span>
+            )}
           </p>
         </div>
       </div>

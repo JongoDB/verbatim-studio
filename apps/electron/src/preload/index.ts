@@ -11,17 +11,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
   minimize: (): void => ipcRenderer.send('window:minimize'),
   maximize: (): void => ipcRenderer.send('window:maximize'),
   close: (): void => ipcRenderer.send('window:close'),
+
+  // Dialogs
+  openDirectoryDialog: (): Promise<string | null> => ipcRenderer.invoke('dialog:openDirectory'),
 });
 
 // Type declaration for renderer
 declare global {
   interface Window {
-    electronAPI: {
+    electronAPI?: {
       platform: NodeJS.Platform;
       getAppVersion: () => Promise<string>;
       minimize: () => void;
       maximize: () => void;
       close: () => void;
+      openDirectoryDialog: () => Promise<string | null>;
     };
   }
 }
