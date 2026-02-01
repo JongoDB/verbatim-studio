@@ -35,7 +35,7 @@ export function ChatHeader({
           {onViewHistory && (
             <button
               onClick={onViewHistory}
-              className="p-1.5 rounded text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+              className="min-w-touch min-h-touch flex items-center justify-center rounded text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
               aria-label="View saved chats"
               title="Saved Chats"
             >
@@ -49,7 +49,7 @@ export function ChatHeader({
             <button
               onClick={onSave}
               disabled={!hasMessages}
-              className="p-1.5 rounded text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              className="min-w-touch min-h-touch flex items-center justify-center rounded text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
               aria-label="Save conversation"
               title="Save"
             >
@@ -63,7 +63,7 @@ export function ChatHeader({
             <button
               onClick={onClear}
               disabled={!hasMessages && attached.length === 0}
-              className="p-1.5 rounded text-gray-400 hover:text-red-500 dark:hover:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              className="min-w-touch min-h-touch flex items-center justify-center rounded text-gray-400 hover:text-red-500 dark:hover:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
               aria-label="Clear conversation"
               title="Clear"
             >
@@ -75,7 +75,7 @@ export function ChatHeader({
           {/* Close button */}
           <button
             onClick={onClose}
-            className="p-1.5 rounded text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            className="min-w-touch min-h-touch flex items-center justify-center rounded text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
             aria-label="Close chat"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" aria-hidden="true">
