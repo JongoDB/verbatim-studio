@@ -37,16 +37,18 @@ The app tries different ports if one is busy.
 
 ## Microsoft OneDrive
 
-1. [Create App Registration](https://portal.azure.com/#blade/Microsoft_AAD_RegisteredApps/ApplicationsListBlade) → New registration → Name it, select **"Personal Microsoft accounts only"** or "Personal + Work accounts"
-2. [Add Owner](https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationMenuBlade/~/Owners) → Add yourself as owner
-3. [Authentication](https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationMenuBlade/~/Authentication) → Add platform → Web → Add all 4 redirect URIs → Enable **ID tokens** under "Implicit grant"
-4. [Certificates & secrets](https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationMenuBlade/~/Credentials) → New client secret → Copy **Value** immediately (not the ID)
-5. [API permissions](https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationMenuBlade/~/CallAnAPI) → Add permission → Microsoft Graph → Delegated → \`Files.ReadWrite\` and \`User.Read\`
-6. Overview → Copy **Application (client) ID**
+[Open Azure App Registrations](https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade)
+
+1. **New registration** → Name it → Select **"Accounts in any organizational directory and personal Microsoft accounts"**
+2. **Owners** → Add yourself as owner
+3. **Authentication** → Add platform → Web → Add all 4 redirect URIs → Enable **ID tokens** under "Implicit grant"
+4. **Certificates & secrets** → New client secret → Copy **Value** immediately (not the Secret ID)
+5. **API permissions** → Add permission → Microsoft Graph → Delegated → \`Files.ReadWrite\` and \`User.Read\`
+6. **Overview** → Copy **Application (client) ID** ← This is the Client ID for Verbatim Studio
 
 **Troubleshooting**
 
-- \`unauthorized_client\` / \`not enabled for consumers\` → App must support personal accounts. Recreate with "Personal Microsoft accounts only"
+- \`unauthorized_client\` / \`not enabled for consumers\` → App must support personal accounts. Recreate and select "personal Microsoft accounts"
 - \`AADSTS50011\` → Redirect URI mismatch, add all 4 URIs exactly as shown above
 - \`AADSTS7000215\` → Invalid client secret, create a new one and copy the **Value** (not ID)
 - \`AADSTS65001\` → Missing permissions, add \`Files.ReadWrite\` scope
