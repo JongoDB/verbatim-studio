@@ -135,7 +135,7 @@ class DocumentProcessor:
                 # Process all pages
                 markdown_parts = []
                 for page in pages:
-                    result = manager.run_inference(page)
+                    result = manager.generate(page)
                     markdown_parts.append(result.markdown)
 
                 combined_markdown = "\n\n".join(markdown_parts)
@@ -245,7 +245,7 @@ class DocumentProcessor:
             # Process the image (should be single page)
             markdown_parts = []
             for page in pages:
-                result = manager.run_inference(page)
+                result = manager.generate(page)
                 markdown_parts.append(result.markdown)
 
             combined_markdown = "\n\n".join(markdown_parts)
