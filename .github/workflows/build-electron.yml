@@ -23,7 +23,7 @@ jobs:
           - os: macos-14
             arch: arm64
             platform: darwin
-          - os: macos-13
+          - os: macos-15
             arch: x64
             platform: darwin
           - os: ubuntu-latest
@@ -84,10 +84,12 @@ jobs:
         run: pnpm --filter @verbatim/electron build
 
       - name: Package Electron app
-        run: pnpm --filter @verbatim/electron dist
+        run: pnpm --filter @verbatim/electron exec electron-builder --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # macOS code signing
+          # Disable code signing auto-discovery when no certificate
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+          # macOS code signing (when secrets are set)
           CSC_LINK: ${{ secrets.MAC_CERTS }}
           CSC_KEY_PASSWORD: ${{ secrets.MAC_CERTS_PASSWORD }}
           # macOS notarization

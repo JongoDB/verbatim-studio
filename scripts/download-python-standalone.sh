@@ -51,12 +51,8 @@ case "$(uname -s)" in
 esac
 
 # Construct download URL
-# Format: cpython-{version}+{date}-{target}-install_only.tar.gz (or .zip for Windows)
-if [ "$PLATFORM" = "windows" ]; then
-  FILENAME="cpython-${PYTHON_VERSION}+${RELEASE_DATE}-${TARGET}-install_only.zip"
-else
-  FILENAME="cpython-${PYTHON_VERSION}+${RELEASE_DATE}-${TARGET}-install_only.tar.gz"
-fi
+# Format: cpython-{version}+{date}-{target}-install_only.tar.gz
+FILENAME="cpython-${PYTHON_VERSION}+${RELEASE_DATE}-${TARGET}-install_only.tar.gz"
 URL="https://github.com/astral-sh/python-build-standalone/releases/download/${RELEASE_DATE}/${FILENAME}"
 
 echo "=== Python Standalone Download ==="
