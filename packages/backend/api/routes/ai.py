@@ -3,6 +3,8 @@
 import asyncio
 import json
 import logging
+import subprocess
+import sys
 from pathlib import Path
 from typing import Annotated
 
@@ -21,6 +23,51 @@ from persistence.models import Document, Recording, Transcript, Segment
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/ai", tags=["ai"])
+
+# ── LLM Dependencies ──────────────────────────────────────────────────
+
+LLM_PYTHON_DEPS = [
+    "llama-cpp-python>=0.2.0",
+]
+
+
+def _check_llm_deps_installed() -> bool:
+    """Check if llama-cpp-python is installed."""
+    try:
+        from llama_cpp import Llama
+        return True
+    except ImportError:
+        return False
+
+
+def _install_llm_deps_sync() -> tuple[bool, str]:
+    """Install LLM Python dependencies synchronously."""
+    logger.info("Installing LLM Python dependencies: %s", LLM_PYTHON_DEPS)
+
+    try:
+        python_exe = sys.executable
+        pip_cmd = [python_exe, "-m", "pip", "install", "--upgrade"] + LLM_PYTHON_DEPS
+
+        result = subprocess.run(
+            pip_cmd,
+            capture_output=True,
+            text=True,
+            timeout=600,  # 10 minute timeout
+        )
+
+        if result.returncode == 0:
+            logger.info("LLM Python dependencies installed successfully")
+            return True, "Dependencies installed"
+        else:
+            logger.error("pip install failed: %s", result.stderr)
+            return False, f"pip install failed: {result.stderr[:500]}"
+
+    except subprocess.TimeoutExpired:
+        logger.error("LLM dependency installation timed out")
+        return False, "Installation timed out"
+    except Exception as e:
+        logger.exception("Failed to install LLM dependencies")
+        return False, str(e)
 
 # ── Active model tracking ──────────────────────────────────────────────
 
@@ -222,6 +269,7 @@ class AIStatusResponse(BaseModel):
     model_loaded: bool
     model_path: str | None
     models: list[dict]
+    deps_installed: bool = True  # Whether llama-cpp-python is installed
 
 
 class AIModelInfo(BaseModel):
@@ -291,6 +339,16 @@ async def download_model(model_id: str) -> StreamingResponse:
 
     async def _stream_progress():
         import httpx
+
+        # First, ensure LLM dependencies are installed
+        if not _check_llm_deps_installed():
+            yield f"data: {json.dumps({'status': 'progress', 'phase': 'deps_install', 'message': 'Installing llama-cpp-python (this may take a few minutes)...'})}\n\n"
+            loop = asyncio.get_event_loop()
+            success, msg = await loop.run_in_executor(None, _install_llm_deps_sync)
+            if not success:
+                yield f"data: {json.dumps({'status': 'error', 'error': f'Failed to install LLM dependencies: {msg}'})}\n\n"
+                return
+            yield f"data: {json.dumps({'status': 'progress', 'phase': 'deps_install', 'message': 'LLM dependencies installed successfully'})}\n\n"
 
         try:
             from huggingface_hub import hf_hub_url
@@ -385,6 +443,31 @@ async def delete_model(model_id: str):
     return {"status": "deleted", "model_id": model_id}
 
 
+@router.post("/install-deps")
+async def install_llm_dependencies():
+    """Install LLM Python dependencies (llama-cpp-python).
+
+    This is automatically called during model download, but can also be
+    called manually if dependencies were uninstalled.
+    """
+    if _check_llm_deps_installed():
+        return {"status": "already_installed", "message": "LLM dependencies are already installed"}
+
+    async def _stream_install():
+        yield f"data: {json.dumps({'status': 'starting', 'message': 'Installing llama-cpp-python...'})}\n\n"
+
+        # Run installation in thread pool to not block
+        loop = asyncio.get_event_loop()
+        success, msg = await loop.run_in_executor(None, _install_llm_deps_sync)
+
+        if success:
+            yield f"data: {json.dumps({'status': 'complete', 'message': 'LLM dependencies installed successfully. Restart may be required.'})}\n\n"
+        else:
+            yield f"data: {json.dumps({'status': 'error', 'error': msg})}\n\n"
+
+    return StreamingResponse(_stream_install(), media_type="text/event-stream")
+
+
 async def get_transcript_text(db: AsyncSession, transcript_id: str) -> str:
     """Get full transcript text from segments."""
     result = await db.execute(
@@ -425,6 +508,7 @@ async def get_ai_status() -> AIStatusResponse:
         model_loaded=bool(info.get("model_loaded", False)),
         model_path=str(info.get("model_path")) if info.get("model_path") else None,
         models=models,
+        deps_installed=_check_llm_deps_installed(),
     )
 
 
