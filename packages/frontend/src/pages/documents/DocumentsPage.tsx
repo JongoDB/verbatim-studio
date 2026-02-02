@@ -34,6 +34,19 @@ export function DocumentsPage({ onViewDocument }: DocumentsPageProps) {
     api.projects.list().then((r) => setProjects(r.items)).catch(console.error);
   }, [loadDocuments]);
 
+  // Refresh when storage location changes
+  useEffect(() => {
+    const handleStorageLocationChange = () => {
+      loadDocuments();
+    };
+    window.addEventListener('storage-location-changed', handleStorageLocationChange);
+    window.addEventListener('storage-synced', handleStorageLocationChange);
+    return () => {
+      window.removeEventListener('storage-location-changed', handleStorageLocationChange);
+      window.removeEventListener('storage-synced', handleStorageLocationChange);
+    };
+  }, [loadDocuments]);
+
   const handleDelete = async (docId: string) => {
     if (!confirm('Are you sure you want to delete this document?')) return;
     try {

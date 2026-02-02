@@ -78,11 +78,28 @@ export function FolderTree({ selectedFolderId, onSelectFolder }: FolderTreeProps
   const [tree, setTree] = useState<FolderTreeNode | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+  const loadTree = () => {
     api.browse.tree()
       .then((res) => setTree(res.root))
       .catch(console.error)
       .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    loadTree();
+  }, []);
+
+  // Refresh when storage location changes
+  useEffect(() => {
+    const handleStorageLocationChange = () => {
+      loadTree();
+    };
+    window.addEventListener('storage-location-changed', handleStorageLocationChange);
+    window.addEventListener('storage-synced', handleStorageLocationChange);
+    return () => {
+      window.removeEventListener('storage-location-changed', handleStorageLocationChange);
+      window.removeEventListener('storage-synced', handleStorageLocationChange);
+    };
   }, []);
 
   if (loading) {

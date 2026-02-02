@@ -241,6 +241,19 @@ export function Dashboard({ onNavigateToRecordings, onNavigateToProjects, onView
     loadDashboardData();
   }, []);
 
+  // Refresh when storage location changes
+  useEffect(() => {
+    const handleStorageLocationChange = () => {
+      refreshData();
+    };
+    window.addEventListener('storage-location-changed', handleStorageLocationChange);
+    window.addEventListener('storage-synced', handleStorageLocationChange);
+    return () => {
+      window.removeEventListener('storage-location-changed', handleStorageLocationChange);
+      window.removeEventListener('storage-synced', handleStorageLocationChange);
+    };
+  }, [refreshData]);
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">

@@ -334,6 +334,19 @@ export function FileBrowserPage({ initialFolderId, onViewRecording, onViewDocume
     loadFolder();
   }, [loadFolder]);
 
+  // Refresh when storage location changes
+  useEffect(() => {
+    const handleStorageLocationChange = () => {
+      loadFolder();
+    };
+    window.addEventListener('storage-location-changed', handleStorageLocationChange);
+    window.addEventListener('storage-synced', handleStorageLocationChange);
+    return () => {
+      window.removeEventListener('storage-location-changed', handleStorageLocationChange);
+      window.removeEventListener('storage-synced', handleStorageLocationChange);
+    };
+  }, [loadFolder]);
+
   const handleNavigate = (folderId: string | null) => {
     setCurrentFolderId(folderId);
   };

@@ -303,6 +303,12 @@ async def list_recordings(
     # Build base query with template eager load
     query = select(Recording).options(selectinload(Recording.template))
 
+    # Filter by active storage location path
+    active_location = await get_active_storage_location()
+    if active_location and active_location.config.get("path"):
+        active_path = active_location.config.get("path")
+        query = query.where(Recording.file_path.startswith(active_path))
+
     # Apply filters
     if project_id is not None:
         # Filter by project using FK

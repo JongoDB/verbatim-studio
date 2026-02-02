@@ -11,7 +11,7 @@ from sqlalchemy.orm import selectinload
 
 from persistence import get_db
 from persistence.models import Document, Note, Project, Recording, Segment, Transcript, generate_uuid
-from services.storage import storage_service
+from services.storage import storage_service, get_active_storage_location
 
 logger = logging.getLogger(__name__)
 
@@ -135,6 +135,11 @@ async def browse(
     breadcrumb: list[BrowseItem] = []
     current: BrowseItem | None = None
 
+    # Get active storage location for filtering
+    active_location = await get_active_storage_location()
+    active_location_id = active_location.id if active_location else None
+    active_location_path = active_location.config.get("path") if active_location else None
+
     # Build breadcrumb
     if parent_id:
         project = await db.get(Project, parent_id)
@@ -158,17 +163,21 @@ async def browse(
         projects = folder_result.scalars().all()
 
         for project in projects:
-            # Count items in project
-            rec_count = await db.scalar(
-                select(func.count(Recording.id)).where(Recording.project_id == project.id)
-            )
-            doc_count = await db.scalar(
-                select(func.count(Document.id)).where(Document.project_id == project.id)
-            )
+            # Count items in project (filtered by storage location path)
+            rec_count_query = select(func.count(Recording.id)).where(Recording.project_id == project.id)
+            doc_count_query = select(func.count(Document.id)).where(Document.project_id == project.id)
+            if active_location_path:
+                rec_count_query = rec_count_query.where(Recording.file_path.startswith(active_location_path))
+                doc_count_query = doc_count_query.where(Document.file_path.startswith(active_location_path))
+            rec_count = await db.scalar(rec_count_query)
+            doc_count = await db.scalar(doc_count_query)
             items.append(_project_to_item(project, (rec_count or 0) + (doc_count or 0)))
 
-    # Get recordings in current folder
+    # Get recordings in current folder (filtered by storage location path)
     rec_query = select(Recording).where(Recording.project_id == parent_id)
+    if active_location_path:
+        # Filter by file_path starting with storage location path
+        rec_query = rec_query.where(Recording.file_path.startswith(active_location_path))
     if search:
         rec_query = rec_query.where(Recording.title.ilike(f"%{search}%"))
     rec_result = await db.execute(rec_query)
@@ -176,8 +185,11 @@ async def browse(
     for rec in recordings:
         items.append(_recording_to_item(rec))
 
-    # Get documents in current folder
+    # Get documents in current folder (filtered by storage location path)
     doc_query = select(Document).where(Document.project_id == parent_id)
+    if active_location_path:
+        # Filter by file_path starting with storage location path
+        doc_query = doc_query.where(Document.file_path.startswith(active_location_path))
     if search:
         doc_query = doc_query.where(Document.title.ilike(f"%{search}%"))
     doc_result = await db.execute(doc_query)
@@ -208,19 +220,24 @@ async def get_folder_tree(
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> FolderTreeResponse:
     """Get folder hierarchy for sidebar navigation."""
+    # Get active storage location for filtering
+    active_location = await get_active_storage_location()
+    active_location_path = active_location.config.get("path") if active_location else None
+
     # Get all projects
     result = await db.execute(select(Project).order_by(Project.name))
     projects = result.scalars().all()
 
     children = []
     for project in projects:
-        # Count items
-        rec_count = await db.scalar(
-            select(func.count(Recording.id)).where(Recording.project_id == project.id)
-        )
-        doc_count = await db.scalar(
-            select(func.count(Document.id)).where(Document.project_id == project.id)
-        )
+        # Count items (filtered by storage location path)
+        rec_count_query = select(func.count(Recording.id)).where(Recording.project_id == project.id)
+        doc_count_query = select(func.count(Document.id)).where(Document.project_id == project.id)
+        if active_location_path:
+            rec_count_query = rec_count_query.where(Recording.file_path.startswith(active_location_path))
+            doc_count_query = doc_count_query.where(Document.file_path.startswith(active_location_path))
+        rec_count = await db.scalar(rec_count_query)
+        doc_count = await db.scalar(doc_count_query)
         children.append(FolderTreeNode(
             id=project.id,
             name=project.name,
@@ -228,13 +245,14 @@ async def get_folder_tree(
             children=[],  # No nested folders yet
         ))
 
-    # Count root items
-    root_rec = await db.scalar(
-        select(func.count(Recording.id)).where(Recording.project_id.is_(None))
-    )
-    root_doc = await db.scalar(
-        select(func.count(Document.id)).where(Document.project_id.is_(None))
-    )
+    # Count root items (filtered by storage location path)
+    root_rec_query = select(func.count(Recording.id)).where(Recording.project_id.is_(None))
+    root_doc_query = select(func.count(Document.id)).where(Document.project_id.is_(None))
+    if active_location_path:
+        root_rec_query = root_rec_query.where(Recording.file_path.startswith(active_location_path))
+        root_doc_query = root_doc_query.where(Document.file_path.startswith(active_location_path))
+    root_rec = await db.scalar(root_rec_query)
+    root_doc = await db.scalar(root_doc_query)
 
     root = FolderTreeNode(
         id="",

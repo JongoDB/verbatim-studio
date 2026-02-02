@@ -234,6 +234,12 @@ async def list_documents(
     """List all documents with optional filters."""
     query = select(Document).order_by(Document.created_at.desc())
 
+    # Filter by active storage location path
+    active_location = await get_active_storage_location()
+    if active_location and active_location.config.get("path"):
+        active_path = active_location.config.get("path")
+        query = query.where(Document.file_path.startswith(active_path))
+
     if project_id:
         query = query.where(Document.project_id == project_id)
     if status_filter:

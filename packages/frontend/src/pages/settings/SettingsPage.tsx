@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { api, type ArchiveInfo, type TranscriptionSettings, type AIModel, type AIModelDownloadEvent, type OCRModel, type OCRModelDownloadEvent, type SystemInfo, type MLStatus, type StorageLocation, type MigrationStatus, type StorageType, type StorageSubtype, type StorageLocationConfig, type OAuthStatusResponse } from '@/lib/api';
+import { api, type ArchiveInfo, type TranscriptionSettings, type AIModel, type AIModelDownloadEvent, type OCRModel, type OCRModelDownloadEvent, type SystemInfo, type MLStatus, type StorageLocation, type MigrationStatus, type SyncResult, type StorageType, type StorageSubtype, type StorageLocationConfig, type OAuthStatusResponse } from '@/lib/api';
 import { StorageTypeSelector } from '@/components/storage/StorageTypeSelector';
 import { StorageSubtypeSelector } from '@/components/storage/StorageSubtypeSelector';
 import { StorageConfigForm } from '@/components/storage/StorageConfigForm';
@@ -140,6 +140,10 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
   const [migrationDest, setMigrationDest] = useState('');
   const [migrationStatus, setMigrationStatus] = useState<MigrationStatus | null>(null);
   const [pendingLocationUpdate, setPendingLocationUpdate] = useState<StorageLocation | null>(null);
+
+  // Sync state
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
 
   const defaultLanguage = settings.defaultLanguage || '';
   const defaultPlaybackSpeed = settings.defaultPlaybackSpeed || 1;
@@ -580,6 +584,8 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
     try {
       await api.storageLocations.update(id, { is_default: true });
       loadStorageLocations();
+      // Notify other components that storage location changed
+      window.dispatchEvent(new CustomEvent('storage-location-changed'));
     } catch (err) {
       setStorageError(err instanceof Error ? err.message : 'Failed to set default');
     }
@@ -2290,23 +2296,95 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
             <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Storage Locations</h2>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Configure where your files and media are stored on disk</p>
           </div>
-          {!showAddLocation && (
-            <button
-              onClick={() => setShowAddLocation(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-              </svg>
-              Add Location
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            {!showAddLocation && (
+              <>
+                <button
+                  onClick={async () => {
+                    setSyncing(true);
+                    setSyncResult(null);
+                    try {
+                      const result = await api.storageLocations.sync();
+                      setSyncResult(result);
+                      // Trigger a refresh of the workspace data
+                      window.dispatchEvent(new CustomEvent('storage-synced'));
+                    } catch (err) {
+                      setStorageError(err instanceof Error ? err.message : 'Sync failed');
+                    } finally {
+                      setSyncing(false);
+                    }
+                  }}
+                  disabled={syncing}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
+                >
+                  <svg className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  {syncing ? 'Syncing...' : 'Sync Workspace'}
+                </button>
+                <button
+                  onClick={() => setShowAddLocation(true)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                  </svg>
+                  Add Location
+                </button>
+              </>
+            )}
+          </div>
         </div>
         <div className="px-5 py-4 space-y-4">
           {storageError && (
             <div className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-sm text-red-600 dark:text-red-400">
               {storageError}
               <button onClick={() => setStorageError(null)} className="ml-2 underline">Dismiss</button>
+            </div>
+          )}
+
+          {/* Sync result display */}
+          {syncResult && (
+            <div className="p-4 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
+              <div className="flex items-start justify-between">
+                <div>
+                  <h4 className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-2">
+                    Sync Complete: {syncResult.storage_location_name}
+                  </h4>
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs">
+                    <div className="text-gray-600 dark:text-gray-400">
+                      <span className="font-medium">Recordings in DB:</span> {syncResult.recordings_in_db}
+                    </div>
+                    <div className="text-gray-600 dark:text-gray-400">
+                      <span className="font-medium">Documents in DB:</span> {syncResult.documents_in_db}
+                    </div>
+                    <div className="text-gray-600 dark:text-gray-400">
+                      <span className="font-medium">Files on disk:</span> {syncResult.recordings_on_disk + syncResult.documents_on_disk}
+                    </div>
+                    <div className="text-gray-600 dark:text-gray-400">
+                      <span className="font-medium">Path:</span> {syncResult.storage_path}
+                    </div>
+                    {(syncResult.recordings_missing_file > 0 || syncResult.documents_missing_file > 0) && (
+                      <div className="text-amber-600 dark:text-amber-400 col-span-2">
+                        <span className="font-medium">Missing files:</span> {syncResult.recordings_missing_file + syncResult.documents_missing_file} (records exist but files not found)
+                      </div>
+                    )}
+                    {(syncResult.recordings_imported > 0 || syncResult.documents_imported > 0) && (
+                      <div className="text-green-600 dark:text-green-400 col-span-2">
+                        <span className="font-medium">Imported:</span> {syncResult.recordings_imported + syncResult.documents_imported} files added to database
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <button
+                  onClick={() => setSyncResult(null)}
+                  className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
             </div>
           )}
 

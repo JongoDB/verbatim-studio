@@ -25,12 +25,13 @@ jobs:
             platform: darwin
           # Note: macOS x64 builds skipped - all GitHub macOS runners are ARM64 now
           # Intel Mac users can use ARM64 builds via Rosetta 2
-          - os: ubuntu-latest
-            arch: x64
-            platform: linux
-          - os: windows-latest
-            arch: x64
-            platform: win32
+          # TODO: Re-enable these when ready for multi-platform releases
+          # - os: ubuntu-latest
+          #   arch: x64
+          #   platform: linux
+          # - os: windows-latest
+          #   arch: x64
+          #   platform: win32
 
     runs-on: ${{ matrix.os }}
 
@@ -113,8 +114,6 @@ jobs:
           name: verbatim-studio-${{ matrix.platform }}-${{ matrix.arch }}
           path: |
             dist/*.dmg
-            dist/*.exe
-            dist/*.AppImage
           if-no-files-found: error
 
   release:

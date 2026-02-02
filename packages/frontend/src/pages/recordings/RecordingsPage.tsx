@@ -148,6 +148,19 @@ export function RecordingsPage({ onViewTranscript }: RecordingsPageProps) {
     return () => clearInterval(interval);
   }, [loadRecordings]);
 
+  // Refresh when storage location changes
+  useEffect(() => {
+    const handleStorageLocationChange = () => {
+      loadRecordings();
+    };
+    window.addEventListener('storage-location-changed', handleStorageLocationChange);
+    window.addEventListener('storage-synced', handleStorageLocationChange);
+    return () => {
+      window.removeEventListener('storage-location-changed', handleStorageLocationChange);
+      window.removeEventListener('storage-synced', handleStorageLocationChange);
+    };
+  }, [loadRecordings]);
+
   // Load tags and projects for display
   useEffect(() => {
     api.tags.list().then((res) => setAllTags(res.items)).catch(() => {});

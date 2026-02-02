@@ -5,13 +5,15 @@ import logging
 import shutil
 import time
 from pathlib import Path
+from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from persistence.database import async_session
+from persistence.database import async_session, get_db
 from persistence.models import Document, Recording, StorageLocation
 from services.encryption import encrypt_config, SENSITIVE_FIELDS
 from storage import StorageError, StorageAuthError, StorageUnavailableError
@@ -594,4 +596,209 @@ async def get_migration_status() -> MigrationStatus:
         migrated_bytes=progress.get("migrated_bytes", 0),
         current_file=progress.get("current_file"),
         error=progress.get("error"),
+    )
+
+
+class SyncResult(BaseModel):
+    """Result of a storage sync operation."""
+
+    recordings_in_db: int
+    recordings_on_disk: int
+    recordings_missing_file: int
+    recordings_imported: int
+    documents_in_db: int
+    documents_on_disk: int
+    documents_missing_file: int
+    documents_imported: int
+    storage_location_id: str
+    storage_location_name: str
+    storage_path: str
+
+
+# MIME type mappings
+AUDIO_VIDEO_MIME_TYPES = {
+    '.wav': 'audio/wav',
+    '.mp3': 'audio/mpeg',
+    '.m4a': 'audio/mp4',
+    '.flac': 'audio/flac',
+    '.ogg': 'audio/ogg',
+    '.mp4': 'video/mp4',
+    '.webm': 'video/webm',
+    '.mov': 'video/quicktime',
+    '.mkv': 'video/x-matroska',
+    '.avi': 'video/x-msvideo',
+}
+
+DOCUMENT_MIME_TYPES = {
+    '.pdf': 'application/pdf',
+    '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    '.txt': 'text/plain',
+    '.md': 'text/markdown',
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.gif': 'image/gif',
+    '.tiff': 'image/tiff',
+}
+
+
+@router.post("/sync", response_model=SyncResult)
+async def sync_storage(
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> SyncResult:
+    """Sync workspace with active storage location.
+
+    Scans the active storage location and imports any files not in the database.
+    Returns a summary of what was found and imported.
+    """
+    # Get active storage location
+    result = await db.execute(
+        select(StorageLocation).where(
+            StorageLocation.is_default == True,
+            StorageLocation.is_active == True,
+        )
+    )
+    location = result.scalar_one_or_none()
+
+    if not location:
+        raise HTTPException(status_code=404, detail="No active storage location found")
+
+    # Get storage path
+    storage_path = None
+    if location.type == "local":
+        storage_path = location.config.get("path")
+    elif location.type == "cloud":
+        # For cloud storage, we can't easily scan - just verify DB records
+        storage_path = location.config.get("folder_path", "Cloud Storage")
+
+    if not storage_path:
+        raise HTTPException(status_code=400, detail="Storage location has no path configured")
+
+    storage_dir = Path(storage_path) if location.type == "local" else None
+
+    # Get ALL recordings and documents from database (we'll filter/update as needed)
+    all_rec_result = await db.execute(select(Recording))
+    all_recordings = list(all_rec_result.scalars().all())
+
+    all_doc_result = await db.execute(select(Document))
+    all_documents = list(all_doc_result.scalars().all())
+
+    # Build lookup of file paths to existing records
+    recording_by_path = {rec.file_path: rec for rec in all_recordings if rec.file_path}
+    document_by_path = {doc.file_path: doc for doc in all_documents if doc.file_path}
+
+    # Track counts
+    recordings_on_disk = 0
+    documents_on_disk = 0
+    recordings_imported = 0
+    documents_imported = 0
+    recordings_claimed = 0  # Existing records updated to this location
+    documents_claimed = 0
+    recordings_missing = 0
+    documents_missing = 0
+
+    if storage_dir and storage_dir.exists():
+        storage_path_str = str(storage_dir)
+
+        # Scan storage directory
+        for file_path in storage_dir.rglob("*"):
+            if file_path.is_file():
+                ext = file_path.suffix.lower()
+                file_str = str(file_path)
+
+                if ext in AUDIO_VIDEO_MIME_TYPES:
+                    recordings_on_disk += 1
+
+                    if file_str in recording_by_path:
+                        # Record exists - ensure it's assigned to this location
+                        existing = recording_by_path[file_str]
+                        if existing.storage_location_id != location.id:
+                            existing.storage_location_id = location.id
+                            recordings_claimed += 1
+                            logger.info(f"Claimed recording: {file_path.name}")
+                    else:
+                        # New file - import it
+                        try:
+                            stat = file_path.stat()
+                            new_recording = Recording(
+                                title=file_path.stem,
+                                file_path=file_str,
+                                file_name=file_path.name,
+                                file_size=stat.st_size,
+                                mime_type=AUDIO_VIDEO_MIME_TYPES.get(ext, 'application/octet-stream'),
+                                storage_location_id=location.id,
+                                status="pending",
+                            )
+                            db.add(new_recording)
+                            recordings_imported += 1
+                            recording_by_path[file_str] = new_recording
+                            logger.info(f"Imported recording: {file_path.name}")
+                        except Exception as e:
+                            logger.error(f"Failed to import recording {file_path}: {e}")
+
+                elif ext in DOCUMENT_MIME_TYPES:
+                    documents_on_disk += 1
+
+                    if file_str in document_by_path:
+                        # Record exists - ensure it's assigned to this location
+                        existing = document_by_path[file_str]
+                        if existing.storage_location_id != location.id:
+                            existing.storage_location_id = location.id
+                            documents_claimed += 1
+                            logger.info(f"Claimed document: {file_path.name}")
+                    else:
+                        # New file - import it
+                        try:
+                            stat = file_path.stat()
+                            new_document = Document(
+                                title=file_path.stem,
+                                filename=file_path.name,
+                                file_path=file_str,
+                                mime_type=DOCUMENT_MIME_TYPES.get(ext, 'application/octet-stream'),
+                                file_size_bytes=stat.st_size,
+                                storage_location_id=location.id,
+                                status="pending",
+                            )
+                            db.add(new_document)
+                            documents_imported += 1
+                            document_by_path[file_str] = new_document
+                            logger.info(f"Imported document: {file_path.name}")
+                        except Exception as e:
+                            logger.error(f"Failed to import document {file_path}: {e}")
+
+    # Count records assigned to this location and check for missing files
+    recordings_in_location = [r for r in all_recordings if r.storage_location_id == location.id]
+    documents_in_location = [d for d in all_documents if d.storage_location_id == location.id]
+
+    for rec in recordings_in_location:
+        if rec.file_path and not Path(rec.file_path).exists():
+            recordings_missing += 1
+
+    for doc in documents_in_location:
+        if doc.file_path and not Path(doc.file_path).exists():
+            documents_missing += 1
+
+    # Commit all changes (imports and claims)
+    if recordings_imported > 0 or documents_imported > 0 or recordings_claimed > 0 or documents_claimed > 0:
+        await db.commit()
+        logger.info(f"Sync complete: imported {recordings_imported} recordings, {documents_imported} documents; claimed {recordings_claimed} recordings, {documents_claimed} documents")
+
+    # Recalculate counts after changes
+    final_recordings = len(recordings_in_location) + recordings_imported + recordings_claimed
+    final_documents = len(documents_in_location) + documents_imported + documents_claimed
+
+    return SyncResult(
+        recordings_in_db=final_recordings,
+        recordings_on_disk=recordings_on_disk,
+        recordings_missing_file=recordings_missing,
+        recordings_imported=recordings_imported + recordings_claimed,
+        documents_in_db=final_documents,
+        documents_on_disk=documents_on_disk,
+        documents_missing_file=documents_missing,
+        documents_imported=documents_imported + documents_claimed,
+        storage_location_id=location.id,
+        storage_location_name=location.name,
+        storage_path=storage_path,
     )
