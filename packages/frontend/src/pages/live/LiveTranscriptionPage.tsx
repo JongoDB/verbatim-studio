@@ -464,9 +464,9 @@ export function LiveTranscriptionPage({ onNavigateToRecordings: _onNavigateToRec
         <div className="lg:col-span-2">
           <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 h-full flex flex-col">
             {/* Header */}
-            <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+            <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Live Transcript</h2>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <button
                   onClick={() => setShowSaveDialog(true)}
                   disabled={segments.length === 0 || !sessionId}

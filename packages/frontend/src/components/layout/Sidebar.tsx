@@ -13,6 +13,7 @@ interface SidebarProps {
   health: { status: string } | null;
   collapsed: boolean;
   onCollapsedChange: (collapsed: boolean) => void;
+  isTourActive?: boolean;
 }
 
 // Main nav items (top section)
@@ -100,17 +101,24 @@ const SETTINGS_ICON = (
   </svg>
 );
 
-export function Sidebar({ currentTab, onNavigate, theme, onCycleTheme, version, health, collapsed, onCollapsedChange }: SidebarProps) {
+export function Sidebar({ currentTab, onNavigate, theme, onCycleTheme, version, health, collapsed, onCollapsedChange, isTourActive }: SidebarProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  // Close mobile drawer on Escape
+  // Force mobile sidebar open when tour is active (so tooltips can reference sidebar items)
+  useEffect(() => {
+    if (isTourActive) {
+      setMobileOpen(true);
+    }
+  }, [isTourActive]);
+
+  // Close mobile drawer on Escape (but not during tour)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setMobileOpen(false);
+      if (e.key === 'Escape' && !isTourActive) setMobileOpen(false);
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [isTourActive]);
 
   const handleNavigate = useCallback((tab: NavKey) => {
     onNavigate(tab);

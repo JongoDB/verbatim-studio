@@ -1467,9 +1467,9 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
                       : 'border-gray-200 dark:border-gray-600'
                   }`}
                 >
-                  <div className="flex items-start justify-between gap-3">
+                  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{model.label}</span>
                         {model.is_default && (
                           <span className="px-1.5 py-0.5 text-xs rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">
@@ -1504,7 +1504,7 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
                       </p>
                     </div>
 
-                    <div className="flex items-center gap-2 shrink-0">
+                    <div className="flex items-center gap-2 flex-wrap sm:shrink-0">
                       {!isInstalled && !isDownloading && (
                         <button
                           onClick={() => handleDownloadOcrModel(model.id)}
@@ -1612,9 +1612,9 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
                       : 'border-gray-200 dark:border-gray-600'
                   }`}
                 >
-                  <div className="flex items-start justify-between gap-3">
+                  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{model.label}</span>
                         {model.is_default && (
                           <span className="px-1.5 py-0.5 text-xs rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">
@@ -1634,7 +1634,7 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
                       <p className="mt-0.5 text-xs text-gray-400 dark:text-gray-500">{formatBytes(model.size_bytes)}</p>
                     </div>
 
-                    <div className="flex items-center gap-2 shrink-0">
+                    <div className="flex items-center gap-2 flex-wrap sm:shrink-0">
                       {!model.downloaded && aiDownloading !== model.id && (
                         <button
                           onClick={() => handleDownloadModel(model.id)}
@@ -2115,7 +2115,7 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
           <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Keyboard Shortcuts</h2>
         </div>
         <div className="px-5 py-4">
-          <div className="grid grid-cols-2 gap-3 text-sm">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
             {[
               { key: 'Space / K', action: 'Play / Pause' },
               { key: 'J', action: 'Skip back 10s' },
@@ -2589,13 +2589,31 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
                 <svg className="w-4 h-4 text-green-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                 </svg>
-                <span><strong>Project Organization</strong> — Group recordings into projects with types and tags</span>
+                <span><strong>Project Organization</strong> — Organize into projects with real folders visible on your device</span>
               </li>
               <li className="flex items-start gap-2">
                 <svg className="w-4 h-4 text-green-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                 </svg>
                 <span><strong>Export Options</strong> — TXT, SRT, VTT, JSON, and full backup archives</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <svg className="w-4 h-4 text-green-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+                <span><strong>Document Management</strong> — Upload PDFs, images, and notes with OCR</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <svg className="w-4 h-4 text-green-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+                <span><strong>Video Support</strong> — Upload and transcribe video files (MP4, WebM, MOV, MKV)</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <svg className="w-4 h-4 text-green-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+                <span><strong>Cloud Storage</strong> — Sync with Google Drive, OneDrive, and Dropbox via OAuth</span>
               </li>
             </ul>
           </div>
@@ -2608,25 +2626,37 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
                 <svg className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                <span><strong>Document Management</strong> — Upload PDFs, images, and notes with OCR</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <svg className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
                 <span><strong>Desktop App</strong> — Native Electron application for macOS, Windows, and Linux</span>
               </li>
               <li className="flex items-start gap-2">
                 <svg className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                <span><strong>Video Support</strong> — Transcribe video files with visual timeline sync</span>
+                <span><strong>Meeting Bots</strong> — Auto-join Teams, Meet, and Zoom calls to transcribe meetings</span>
               </li>
               <li className="flex items-start gap-2">
                 <svg className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                <span><strong>Team Collaboration</strong> — Share projects securely with end-to-end encryption</span>
+                <span><strong>External AI Services</strong> — Connect to Ollama, OpenAI, or self-hosted LLM/WhisperX</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <svg className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span><strong>S3 Object Storage</strong> — Store media in AWS S3, MinIO, or compatible services</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <svg className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span><strong>Network Storage</strong> — Mount SMB/NFS shares for centralized media access</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <svg className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span><strong>Team Collaboration</strong> — Share projects securely with multi-user access control</span>
               </li>
             </ul>
           </div>

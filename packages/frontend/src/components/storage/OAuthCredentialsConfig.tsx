@@ -212,19 +212,19 @@ export function OAuthCredentialsConfig({ onUpdate }: OAuthCredentialsConfigProps
                   : 'border-border'
               }`}
             >
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div className="flex items-center gap-3">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${
                     id === 'gdrive' ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400' :
                     id === 'onedrive' ? 'bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400' :
                     'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400'
                   }`}>
                     {icon}
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <p className="font-medium text-foreground">{name}</p>
                     {creds?.configured ? (
-                      <p className="text-xs text-green-600 dark:text-green-400">
+                      <p className="text-xs text-green-600 dark:text-green-400 truncate">
                         Configured (Client ID: {creds.client_id.slice(0, 12)}...)
                       </p>
                     ) : (
@@ -233,13 +233,13 @@ export function OAuthCredentialsConfig({ onUpdate }: OAuthCredentialsConfigProps
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   {creds?.setup_url && (
                     <a
                       href={creds.setup_url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-xs text-primary hover:underline"
+                      className="text-xs text-primary hover:underline whitespace-nowrap"
                     >
                       Get credentials
                     </a>
@@ -248,21 +248,21 @@ export function OAuthCredentialsConfig({ onUpdate }: OAuthCredentialsConfigProps
                     href={manageUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-xs text-muted-foreground hover:text-foreground hover:underline"
+                    className="text-xs text-muted-foreground hover:text-foreground hover:underline whitespace-nowrap"
                   >
                     {manageLabel}
                   </a>
                   {creds?.configured && (
                     <button
                       onClick={() => handleDelete(id)}
-                      className="text-xs text-red-600 dark:text-red-400 hover:underline"
+                      className="text-xs text-red-600 dark:text-red-400 hover:underline whitespace-nowrap"
                     >
                       Remove
                     </button>
                   )}
                   <button
                     onClick={() => handleEdit(id)}
-                    className="px-3 py-1 text-sm font-medium rounded-lg border border-border hover:bg-muted"
+                    className="px-3 py-1 text-sm font-medium rounded-lg border border-border hover:bg-muted whitespace-nowrap"
                   >
                     {creds?.configured ? 'Update' : 'Configure'}
                   </button>

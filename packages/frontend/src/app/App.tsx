@@ -469,6 +469,7 @@ export function App() {
         health={health}
         collapsed={sidebarCollapsed}
         onCollapsedChange={setSidebarCollapsed}
+        isTourActive={isTourActive}
       />
 
       {/* Content Area - offset by sidebar width on desktop */}
