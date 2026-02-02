@@ -3,9 +3,8 @@
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/logo.png" alt="Verbatim Studio Logo" width="80">
+  <img src="docs/screenshots/logo.png" alt="Verbatim Studio Logo" width="120">
 </p>
-
 <h1 align="center">Verbatim Studio</h1>
 
 <p align="center">
