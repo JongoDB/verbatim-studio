@@ -62,16 +62,25 @@ def _ensure_active_model_loaded() -> None:
     runtime settings used by the AI service factory.
     """
     if settings.AI_MODEL_PATH:
+        logger.debug("AI model path already set: %s", settings.AI_MODEL_PATH)
         return  # Already configured (e.g., via env var)
 
     active_id = _read_active_model()
     if not active_id:
+        logger.debug("No active model ID found in active_model.json")
         return
 
     file_path = _model_file_path(active_id)
-    if file_path and file_path.exists():
-        settings.AI_MODEL_PATH = str(file_path)
-        logger.info("Loaded active AI model from disk: %s", file_path.name)
+    if not file_path:
+        logger.warning("Model ID '%s' not found in MODEL_CATALOG", active_id)
+        return
+
+    if not file_path.exists():
+        logger.warning("Model file does not exist: %s", file_path)
+        return
+
+    settings.AI_MODEL_PATH = str(file_path)
+    logger.info("Loaded active AI model from disk: %s", file_path.name)
 
 
 class ChatRequest(BaseModel):
@@ -417,6 +426,69 @@ async def get_ai_status() -> AIStatusResponse:
         model_path=str(info.get("model_path")) if info.get("model_path") else None,
         models=models,
     )
+
+
+@router.get("/debug")
+async def get_ai_debug_info():
+    """Get detailed debug information about AI service state.
+
+    This endpoint helps diagnose why AI features might be unavailable.
+    """
+    # Get persisted state
+    active_model_file = _active_model_path()
+    active_model_exists = active_model_file.exists()
+    active_model_id = _read_active_model()
+
+    # Get expected file path for active model
+    expected_file_path = None
+    expected_file_exists = False
+    if active_model_id:
+        expected_file_path = _model_file_path(active_model_id)
+        if expected_file_path:
+            expected_file_exists = expected_file_path.exists()
+
+    # Get runtime settings BEFORE loading
+    settings_before = settings.AI_MODEL_PATH
+
+    # Load active model
+    _ensure_active_model_loaded()
+
+    # Get runtime settings AFTER loading
+    settings_after = settings.AI_MODEL_PATH
+
+    # Create service and check availability
+    factory = get_factory()
+    ai_service = factory.create_ai_service()
+    available = await ai_service.is_available()
+    service_info = await ai_service.get_service_info()
+
+    # Check llama_cpp installation
+    llama_cpp_installed = False
+    try:
+        from llama_cpp import Llama
+        llama_cpp_installed = True
+    except ImportError:
+        pass
+
+    return {
+        "persisted_state": {
+            "active_model_file": str(active_model_file),
+            "active_model_file_exists": active_model_exists,
+            "active_model_id": active_model_id,
+            "expected_model_path": str(expected_file_path) if expected_file_path else None,
+            "expected_model_exists": expected_file_exists,
+        },
+        "runtime_state": {
+            "settings_ai_model_path_before_load": settings_before,
+            "settings_ai_model_path_after_load": settings_after,
+        },
+        "service_state": {
+            "llama_cpp_installed": llama_cpp_installed,
+            "available": available,
+            "service_info": service_info,
+        },
+        "model_catalog": list(MODEL_CATALOG.keys()),
+    }
 
 
 @router.post("/chat", response_model=ChatResponse)

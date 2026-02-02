@@ -365,13 +365,18 @@ NAMED ENTITIES:
         try:
             from llama_cpp import Llama
         except ImportError:
+            logger.debug("llama_cpp library not installed")
             return False
 
         # Check if a model is configured and exists
         if not self._model_path:
+            logger.debug("No model path configured for LlamaCpp service")
             return False
 
-        return Path(self._model_path).exists()
+        exists = Path(self._model_path).exists()
+        if not exists:
+            logger.warning("Model path configured but file does not exist: %s", self._model_path)
+        return exists
 
     async def get_service_info(self) -> dict[str, str | int | float | bool]:
         """Get information about the AI service."""

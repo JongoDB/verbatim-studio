@@ -328,6 +328,8 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
     try {
       await api.ai.activateModel(modelId);
       refreshAiModels();
+      // Notify other components that AI status has changed
+      window.dispatchEvent(new Event('ai-status-changed'));
     } catch (err) {
       setAiError(err instanceof Error ? err.message : 'Activation failed');
     }

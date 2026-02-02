@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { api } from '@/lib/api';
 
 interface ChatFABProps {
@@ -9,11 +9,35 @@ interface ChatFABProps {
 export function ChatFAB({ onClick, isOpen }: ChatFABProps) {
   const [aiAvailable, setAiAvailable] = useState<boolean | null>(null);
 
-  useEffect(() => {
+  const checkAiStatus = useCallback(() => {
     api.ai.status()
       .then((s) => setAiAvailable(s.available))
       .catch(() => setAiAvailable(false));
   }, []);
+
+  // Check on mount
+  useEffect(() => {
+    checkAiStatus();
+  }, [checkAiStatus]);
+
+  // Re-check when page becomes visible (e.g., returning from settings after downloading a model)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        checkAiStatus();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [checkAiStatus]);
+
+  // Listen for custom event when AI status changes (e.g., after model activation)
+  useEffect(() => {
+    const handleAiStatusChange = () => checkAiStatus();
+    window.addEventListener('ai-status-changed', handleAiStatusChange);
+    return () => window.removeEventListener('ai-status-changed', handleAiStatusChange);
+  }, [checkAiStatus]);
 
   if (isOpen) return null; // Hide FAB when panel is open
 

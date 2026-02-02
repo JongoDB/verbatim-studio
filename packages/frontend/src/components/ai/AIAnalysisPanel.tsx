@@ -14,11 +14,34 @@ export function AIAnalysisPanel({ transcriptId }: AIAnalysisPanelProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const checkAiStatus = useCallback(() => {
     api.ai.status()
       .then((s) => setAiAvailable(s.available))
       .catch(() => setAiAvailable(false));
   }, []);
+
+  // Check on mount
+  useEffect(() => {
+    checkAiStatus();
+  }, [checkAiStatus]);
+
+  // Re-check when page becomes visible
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        checkAiStatus();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [checkAiStatus]);
+
+  // Listen for custom event when AI status changes
+  useEffect(() => {
+    const handleAiStatusChange = () => checkAiStatus();
+    window.addEventListener('ai-status-changed', handleAiStatusChange);
+    return () => window.removeEventListener('ai-status-changed', handleAiStatusChange);
+  }, [checkAiStatus]);
 
   // Summary state
   const [summary, setSummary] = useState<SummarizationResponse | null>(null);
