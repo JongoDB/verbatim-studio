@@ -1,5 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
+console.log('[Preload] Loading preload script...');
+
 // Expose safe APIs to renderer
 contextBridge.exposeInMainWorld('electronAPI', {
   platform: process.platform,

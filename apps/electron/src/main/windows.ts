@@ -2,6 +2,9 @@ import { BrowserWindow, shell, app } from 'electron';
 import path from 'path';
 
 export function createMainWindow(): BrowserWindow {
+  const preloadPath = path.join(__dirname, '../preload/index.js');
+  console.log('[Window] Preload path:', preloadPath);
+
   const mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
@@ -11,8 +14,8 @@ export function createMainWindow(): BrowserWindow {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      preload: path.join(__dirname, '../preload/index.js'),
-      sandbox: true,
+      preload: preloadPath,
+      sandbox: false, // Disable sandbox to allow preload to work
     },
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     trafficLightPosition: { x: 16, y: 16 },
@@ -30,6 +33,14 @@ export function createMainWindow(): BrowserWindow {
     console.log('[Window] Loading frontend from:', frontendPath);
     mainWindow.loadFile(frontendPath);
   }
+
+  // Enable dev tools with keyboard shortcut (Cmd+Option+I / Ctrl+Shift+I)
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    if ((input.meta && input.alt && input.key === 'i') ||
+        (input.control && input.shift && input.key === 'I')) {
+      mainWindow.webContents.toggleDevTools();
+    }
+  });
 
   // Show when ready
   mainWindow.on('ready-to-show', () => {
