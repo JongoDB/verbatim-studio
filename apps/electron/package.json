@@ -1,6 +1,6 @@
 {
   "name": "@verbatim/electron",
-  "version": "0.1.0",
+  "version": "0.25.0",
   "description": "Verbatim Studio - Transcription and Research Tool",
   "author": "Verbatim Studio",
   "private": true,
@@ -29,7 +29,8 @@
     "appId": "com.verbatimstudio.app",
     "productName": "Verbatim Studio",
     "directories": {
-      "output": "../../dist"
+      "output": "../../dist",
+      "buildResources": "assets"
     },
     "files": [
       "dist/**/*"
@@ -57,6 +58,7 @@
     ],
     "mac": {
       "category": "public.app-category.productivity",
+      "icon": "assets/icon.icns",
       "target": [
         {
           "target": "dmg",
@@ -69,6 +71,7 @@
       "entitlementsInherit": "entitlements.mac.plist"
     },
     "win": {
+      "icon": "assets/icon.png",
       "target": [
         {
           "target": "nsis",
@@ -77,6 +80,7 @@
       ]
     },
     "linux": {
+      "icon": "assets/icon.png",
       "target": [
         {
           "target": "AppImage",
