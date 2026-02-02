@@ -39,7 +39,12 @@ if [ ! -f "$PYTHON_BIN" ]; then
 fi
 
 # Site-packages directory (inside the Python installation)
-SITE_PACKAGES="$PYTHON_DIR/lib/python3.12/site-packages"
+# Windows uses Lib/site-packages, Unix uses lib/python3.12/site-packages
+if [ "$PLATFORM" = "windows" ]; then
+  SITE_PACKAGES="$PYTHON_DIR/Lib/site-packages"
+else
+  SITE_PACKAGES="$PYTHON_DIR/lib/python3.12/site-packages"
+fi
 REQUIREMENTS="$SCRIPT_DIR/requirements-core.txt"
 
 echo "=== Installing Bundled Dependencies ==="

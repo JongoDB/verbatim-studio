@@ -51,8 +51,12 @@ case "$(uname -s)" in
 esac
 
 # Construct download URL
-# Format: cpython-{version}+{date}-{target}-install_only.tar.gz
-FILENAME="cpython-${PYTHON_VERSION}+${RELEASE_DATE}-${TARGET}-install_only.tar.gz"
+# Format: cpython-{version}+{date}-{target}-install_only.tar.gz (or .zip for Windows)
+if [ "$PLATFORM" = "windows" ]; then
+  FILENAME="cpython-${PYTHON_VERSION}+${RELEASE_DATE}-${TARGET}-install_only.zip"
+else
+  FILENAME="cpython-${PYTHON_VERSION}+${RELEASE_DATE}-${TARGET}-install_only.tar.gz"
+fi
 URL="https://github.com/astral-sh/python-build-standalone/releases/download/${RELEASE_DATE}/${FILENAME}"
 
 echo "=== Python Standalone Download ==="
@@ -84,7 +88,11 @@ fi
 
 echo "Extracting to $OUTPUT_DIR..."
 mkdir -p "$OUTPUT_DIR"
-tar -xzf "$FILENAME" -C "$OUTPUT_DIR"
+if [[ "$FILENAME" == *.zip ]]; then
+  unzip -q "$FILENAME" -d "$OUTPUT_DIR"
+else
+  tar -xzf "$FILENAME" -C "$OUTPUT_DIR"
+fi
 
 # The archive extracts to python/, flatten it
 if [ -d "$OUTPUT_DIR/python" ]; then
