@@ -122,7 +122,7 @@ export function Sidebar({ currentTab, onNavigate, theme, onCycleTheme, version, 
       {/* Mobile hamburger button */}
       <button
         onClick={() => setMobileOpen(true)}
-        className="fixed top-4 left-4 z-50 md:hidden p-2 rounded-lg bg-card border border-border shadow-sm"
+        className="fixed top-4 left-4 z-50 md:hidden min-w-touch min-h-touch flex items-center justify-center rounded-lg bg-card border border-border shadow-sm"
         aria-label="Open navigation"
       >
         <svg className="w-5 h-5 text-foreground" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -182,7 +182,7 @@ export function Sidebar({ currentTab, onNavigate, theme, onCycleTheme, version, 
           {/* Desktop collapse toggle (hidden when collapsed — V logo expands instead) */}
           <button
             onClick={() => onCollapsedChange(true)}
-            className={`hidden ${collapsed ? '' : 'md:flex'} ml-auto p-1.5 rounded-md hover:bg-muted transition-colors`}
+            className={`hidden ${collapsed ? '' : 'md:flex'} ml-auto min-w-touch min-h-touch items-center justify-center rounded-md hover:bg-muted transition-colors`}
             aria-label="Collapse sidebar"
           >
             <svg
@@ -199,7 +199,7 @@ export function Sidebar({ currentTab, onNavigate, theme, onCycleTheme, version, 
           {/* Mobile close button */}
           <button
             onClick={() => setMobileOpen(false)}
-            className="md:hidden ml-auto p-1.5 rounded-md hover:bg-muted transition-colors"
+            className="md:hidden ml-auto min-w-touch min-h-touch flex items-center justify-center rounded-md hover:bg-muted transition-colors"
             aria-label="Close navigation"
           >
             <svg className="w-4 h-4 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
