@@ -15,7 +15,9 @@
     "dist": "electron-builder",
     "prepare-resources": "../../scripts/prepare-electron-resources.sh"
   },
-  "dependencies": {},
+  "dependencies": {
+    "electron-updater": "^6.3.0"
+  },
   "devDependencies": {
     "@types/node": "^22.10.5",
     "concurrently": "^9.1.2",
