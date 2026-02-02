@@ -5,8 +5,8 @@ set -e
 # Usage: ./download-python-standalone.sh [arch]
 # arch: x64, arm64 (defaults to current architecture)
 
-PYTHON_VERSION="3.12.12"
-RELEASE_DATE="20260127"
+PYTHON_VERSION="3.12.8"
+RELEASE_DATE="20250106"
 BUILD_DIR="build/python-standalone"
 
 # Determine architecture
@@ -17,6 +17,9 @@ if [ -z "$ARCH" ]; then
     arm64|aarch64) ARCH="arm64" ;;
     *) echo "Unsupported architecture: $(uname -m)"; exit 1 ;;
   esac
+elif [ "$ARCH" != "x64" ] && [ "$ARCH" != "arm64" ]; then
+  echo "Invalid architecture: $ARCH (must be x64 or arm64)"
+  exit 1
 fi
 
 # Determine platform and target triple
@@ -69,7 +72,7 @@ if [ -f "$FILENAME" ]; then
   echo "Already downloaded: $FILENAME"
 else
   echo "Downloading $FILENAME..."
-  curl -L -o "$FILENAME" "$URL"
+  curl -L -f -o "$FILENAME" "$URL"
 fi
 
 # Extract
@@ -92,7 +95,14 @@ fi
 echo ""
 echo "=== Done ==="
 echo "Python installed to: $BUILD_DIR/$OUTPUT_DIR"
-echo "Binary: $BUILD_DIR/$OUTPUT_DIR/bin/python3"
 
-# Verify
-"$OUTPUT_DIR/bin/python3" --version
+# Verify - Windows uses python.exe in root, Unix uses bin/python3
+if [ "$PLATFORM" = "windows" ]; then
+  PYTHON_BIN="$OUTPUT_DIR/python.exe"
+  echo "Binary: $BUILD_DIR/$PYTHON_BIN"
+  "$PYTHON_BIN" --version
+else
+  PYTHON_BIN="$OUTPUT_DIR/bin/python3"
+  echo "Binary: $BUILD_DIR/$PYTHON_BIN"
+  "$PYTHON_BIN" --version
+fi
