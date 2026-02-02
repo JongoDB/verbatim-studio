@@ -1,5 +1,18 @@
 """FastAPI application entry point."""
 
+# Fix PyTorch 2.6+ weights_only=True default breaking older model checkpoints
+# This must be done before any model loading occurs
+try:
+    import torch.serialization
+    import omegaconf
+    # Allow omegaconf classes used by pyannote/whisperx model checkpoints
+    torch.serialization.add_safe_globals([
+        omegaconf.listconfig.ListConfig,
+        omegaconf.dictconfig.DictConfig,
+    ])
+except ImportError:
+    pass  # torch or omegaconf not installed yet
+
 import subprocess
 from contextlib import asynccontextmanager
 from pathlib import Path

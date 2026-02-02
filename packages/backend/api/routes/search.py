@@ -569,7 +569,7 @@ async def global_search(
             )
         )
 
-    # Search document chunks by text (OCR results)
+    # Search document chunks by text (OCR results) - if embeddings exist
     document_query = (
         select(
             DocumentEmbedding,
@@ -585,10 +585,12 @@ async def global_search(
     document_result = await db.execute(document_query)
     document_chunks = document_result.all()
 
+    seen_doc_ids = set()
     for row in document_chunks:
         doc_emb = row[0]
         doc_title = row[1]
         doc_created = row[2]
+        seen_doc_ids.add(doc_emb.document_id)
 
         results.append(
             GlobalSearchResult(
@@ -601,6 +603,48 @@ async def global_search(
                 chunk_index=doc_emb.chunk_index,
                 chunk_metadata=doc_emb.chunk_metadata,
                 created_at=doc_created,
+                match_type="keyword",
+            )
+        )
+
+    # Also search document extracted_text directly (for documents without embeddings)
+    direct_doc_query = (
+        select(Document)
+        .where(Document.status == "completed")
+        .where(
+            or_(
+                Document.extracted_text.ilike(f"%{q}%"),
+                Document.title.ilike(f"%{q}%"),
+            )
+        )
+        .order_by(Document.created_at.desc())
+        .limit(keyword_limit)
+    )
+    direct_doc_result = await db.execute(direct_doc_query)
+    direct_docs = direct_doc_result.scalars().all()
+
+    for doc in direct_docs:
+        if doc.id in seen_doc_ids:
+            continue  # Already found via chunk search
+        seen_doc_ids.add(doc.id)
+
+        # Extract a snippet around the match
+        text_snippet = None
+        if doc.extracted_text and q.lower() in doc.extracted_text.lower():
+            idx = doc.extracted_text.lower().find(q.lower())
+            start = max(0, idx - 50)
+            end = min(len(doc.extracted_text), idx + len(q) + 100)
+            text_snippet = ("..." if start > 0 else "") + doc.extracted_text[start:end] + ("..." if end < len(doc.extracted_text) else "")
+
+        results.append(
+            GlobalSearchResult(
+                type="document",
+                id=doc.id,
+                title=doc.title,
+                text=text_snippet or doc.title,
+                document_id=doc.id,
+                document_title=doc.title,
+                created_at=doc.created_at,
                 match_type="keyword",
             )
         )
@@ -677,4 +721,76 @@ async def global_search(
         query=q,
         results=results,
         total=len(results),
+    )
+
+
+class RebuildIndexResponse(BaseModel):
+    """Response from rebuild index operation."""
+
+    status: str
+    transcripts_queued: int
+    documents_queued: int
+    message: str
+
+
+@router.post("/rebuild-index", response_model=RebuildIndexResponse)
+async def rebuild_search_index(
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> RebuildIndexResponse:
+    """Rebuild the semantic search index by regenerating all embeddings.
+
+    This queues embedding jobs for all transcripts and reprocess jobs for
+    all completed documents. Use this after enabling semantic search or
+    if embeddings are missing.
+
+    Returns:
+        Status with counts of queued jobs.
+    """
+    from services.embedding import embedding_service
+    from services.jobs import job_queue
+
+    if not embedding_service.is_available():
+        return RebuildIndexResponse(
+            status="error",
+            transcripts_queued=0,
+            documents_queued=0,
+            message="Embedding service not available. Install sentence-transformers.",
+        )
+
+    # Get all transcripts
+    transcript_query = select(Transcript.id)
+    transcript_result = await db.execute(transcript_query)
+    transcript_ids = [row[0] for row in transcript_result.all()]
+
+    # Get all completed documents
+    document_query = select(Document.id).where(Document.status == "completed")
+    document_result = await db.execute(document_query)
+    document_ids = [row[0] for row in document_result.all()]
+
+    # Queue embedding jobs for transcripts
+    transcripts_queued = 0
+    for transcript_id in transcript_ids:
+        try:
+            await job_queue.enqueue("embed", {"transcript_id": transcript_id})
+            transcripts_queued += 1
+        except Exception as e:
+            logger.warning("Failed to queue embed job for transcript %s: %s", transcript_id, e)
+
+    # Queue reprocess jobs for documents (which regenerates embeddings)
+    documents_queued = 0
+    for document_id in document_ids:
+        try:
+            await job_queue.enqueue("process_document", {
+                "document_id": document_id,
+                "enable_ocr": False,  # Don't re-run OCR, just regenerate embeddings
+            })
+            documents_queued += 1
+        except Exception as e:
+            logger.warning("Failed to queue reprocess job for document %s: %s", document_id, e)
+
+    return RebuildIndexResponse(
+        status="queued",
+        transcripts_queued=transcripts_queued,
+        documents_queued=documents_queued,
+        message=f"Queued {transcripts_queued} transcript and {documents_queued} document embedding jobs.",
     )

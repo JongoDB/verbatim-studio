@@ -32,7 +32,7 @@ OCR_PYTHON_DEPS = [
     "qwen-vl-utils>=0.0.8",
     "accelerate>=0.26.0",
     "torch>=2.0.0",  # Required by transformers for model inference
-    "torchvision>=0.15.0",  # Required by qwen-vl-utils for image processing
+    "torchvision>=0.23.0,<0.24.0",  # Must match torch 2.8.x for whisperx compatibility
 ]
 
 
