@@ -1,6 +1,8 @@
 {
   "name": "@verbatim/electron",
   "version": "0.1.0",
+  "description": "Verbatim Studio - Transcription and Research Tool",
+  "author": "Verbatim Studio",
   "private": true,
   "main": "dist/main/index.js",
   "scripts": {
