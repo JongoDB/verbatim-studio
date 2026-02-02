@@ -31,10 +31,20 @@ export async function initializeApiUrl(): Promise<string> {
   }
 
   apiUrlPromise = (async () => {
+    // Debug: log what we see
+    console.log('[API] Checking electronAPI:', {
+      electronAPI: typeof window.electronAPI,
+      hasGetApiUrl: !!(window.electronAPI as any)?.getApiUrl,
+      protocol: window.location.protocol,
+      keys: window.electronAPI ? Object.keys(window.electronAPI) : 'N/A'
+    });
+
     // Check if running in Electron via preload
     if (window.electronAPI?.getApiUrl) {
       try {
+        console.log('[API] Calling electronAPI.getApiUrl()...');
         const url = await window.electronAPI.getApiUrl();
+        console.log('[API] electronAPI.getApiUrl() returned:', url);
         if (url) {
           console.log('[API] Using Electron backend URL (preload):', url);
           cachedApiBaseUrl = url;
