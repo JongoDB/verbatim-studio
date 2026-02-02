@@ -2,10 +2,10 @@
   <img src="docs/screenshots/dashboard-dark.png" alt="Verbatim Studio Dashboard" width="100%">
 </p>
 
-<p align="center">
-  <img src="docs/screenshots/logo.png" alt="Verbatim Studio Logo" width="120">
-</p>
-<h1 align="center">Verbatim Studio</h1>
+<h1 align="center">
+  <img src="docs/screenshots/logo.png" alt="Verbatim Studio Logo" width="120"><br>
+  Verbatim Studio
+</h1>
 
 <p align="center">
   <strong>Privacy-first transcription for sensitive workflows</strong>
