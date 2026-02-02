@@ -2,9 +2,10 @@ import { spawn, ChildProcess } from 'child_process';
 import path from 'path';
 import { app } from 'electron';
 import { EventEmitter } from 'events';
+import { findAvailablePort } from './utils';
 
 interface BackendConfig {
-  port: number;
+  preferredPort?: number;
   pythonPath?: string;
   backendPath?: string;
 }
@@ -14,10 +15,20 @@ class BackendManager extends EventEmitter {
   private config: BackendConfig;
   private healthCheckInterval: NodeJS.Timeout | null = null;
   private isStopping = false;
+  private _port: number | null = null;
 
-  constructor(config: BackendConfig) {
+  constructor(config: BackendConfig = {}) {
     super();
     this.config = config;
+  }
+
+  get port(): number | null {
+    return this._port;
+  }
+
+  getApiUrl(): string | null {
+    if (this._port === null) return null;
+    return `http://127.0.0.1:${this._port}`;
   }
 
   async start(): Promise<void> {
@@ -26,6 +37,10 @@ class BackendManager extends EventEmitter {
       return;
     }
 
+    // Find available port
+    this._port = await findAvailablePort(this.config.preferredPort ?? 8000);
+    console.log(`[Backend] Using port ${this._port}`);
+
     const pythonPath = this.config.pythonPath || this.getPythonPath();
     const backendPath = this.config.backendPath || this.getBackendPath();
 
@@ -33,14 +48,14 @@ class BackendManager extends EventEmitter {
 
     const env: NodeJS.ProcessEnv = {
       ...process.env,
-      VERBATIM_MODE: 'basic',
-      VERBATIM_API_PORT: String(this.config.port),
+      VERBATIM_ELECTRON: '1',
+      VERBATIM_PORT: String(this._port),
       VERBATIM_DATA_DIR: app.getPath('userData'),
     };
 
     this.process = spawn(
       pythonPath,
-      ['-m', 'uvicorn', 'api.main:app', '--host', '127.0.0.1', '--port', String(this.config.port)],
+      ['-m', 'uvicorn', 'api.main:app', '--host', '127.0.0.1', '--port', String(this._port)],
       {
         cwd: backendPath,
         env,
@@ -61,6 +76,7 @@ class BackendManager extends EventEmitter {
     this.process.on('exit', (code: number | null) => {
       console.log(`[Backend] Exited with code ${code}`);
       this.process = null;
+      this._port = null;
       this.emit('exit', code);
     });
 
@@ -75,6 +91,7 @@ class BackendManager extends EventEmitter {
     } catch (error) {
       this.process?.kill('SIGKILL');
       this.process = null;
+      this._port = null;
       throw error;
     }
   }
@@ -95,12 +112,14 @@ class BackendManager extends EventEmitter {
           this.process.kill('SIGKILL');
         }
         this.isStopping = false;
+        this._port = null;
         resolve();
       }, 5000);
 
       this.process!.on('exit', () => {
         clearTimeout(timeout);
         this.isStopping = false;
+        this._port = null;
         resolve();
       });
 
@@ -117,7 +136,7 @@ class BackendManager extends EventEmitter {
     if (app.isPackaged) {
       // Bundled Python
       const resourcesPath = process.resourcesPath;
-      return path.join(resourcesPath, 'python', 'bin', 'python3.11');
+      return path.join(resourcesPath, 'python', 'bin', 'python3.12');
     } else {
       // Development: Use venv Python
       return path.join(__dirname, '../../../../packages/backend/.venv/bin/python');
@@ -126,7 +145,7 @@ class BackendManager extends EventEmitter {
 
   private getBackendPath(): string {
     if (app.isPackaged) {
-      return path.join(process.resourcesPath, 'python', 'backend');
+      return path.join(process.resourcesPath, 'backend');
     } else {
       return path.join(__dirname, '../../../../packages/backend');
     }
@@ -134,7 +153,7 @@ class BackendManager extends EventEmitter {
 
   private async waitForHealth(timeout = 30000): Promise<void> {
     const startTime = Date.now();
-    const url = `http://127.0.0.1:${this.config.port}/health`;
+    const url = `http://127.0.0.1:${this._port}/health`;
 
     console.log(`[Backend] Waiting for health at ${url}`);
 
@@ -157,7 +176,7 @@ class BackendManager extends EventEmitter {
   private startHealthCheck(): void {
     this.healthCheckInterval = setInterval(async () => {
       try {
-        const response = await fetch(`http://127.0.0.1:${this.config.port}/health`);
+        const response = await fetch(`http://127.0.0.1:${this._port}/health`);
         if (!response.ok) {
           this.emit('unhealthy');
         }
@@ -168,4 +187,4 @@ class BackendManager extends EventEmitter {
   }
 }
 
-export const backendManager = new BackendManager({ port: 8000 });
+export const backendManager = new BackendManager();
