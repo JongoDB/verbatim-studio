@@ -5,6 +5,8 @@ import concurrent.futures
 import json
 import logging
 import shutil
+import subprocess
+import sys
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
@@ -23,6 +25,14 @@ from core.ocr_catalog import (
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/ocr", tags=["ocr"])
+
+# Required Python packages for OCR
+OCR_PYTHON_DEPS = [
+    "transformers>=4.45.0",
+    "qwen-vl-utils>=0.0.8",
+    "accelerate>=0.26.0",
+    "torch>=2.0.0",  # Required by transformers for model inference
+]
 
 
 class OCRModelInfo(BaseModel):
@@ -51,11 +61,58 @@ class OCRStatusResponse(BaseModel):
     available: bool
     model_id: str | None
     model_path: str | None
+    deps_installed: bool
 
 
 # Track in-progress downloads - stores the Future object
 _download_futures: dict[str, concurrent.futures.Future] = {}
 _download_executor = concurrent.futures.ThreadPoolExecutor(max_workers=2)
+# Track download phase (deps_install, downloading)
+_download_phase: dict[str, str] = {}
+
+
+def _check_ocr_deps_installed() -> bool:
+    """Check if required OCR Python dependencies are installed."""
+    try:
+        import transformers
+        from qwen_vl_utils import process_vision_info
+        import accelerate
+        return True
+    except ImportError:
+        return False
+
+
+def _install_ocr_deps_sync() -> tuple[bool, str]:
+    """Install OCR Python dependencies synchronously.
+
+    Returns: (success, message)
+    """
+    logger.info("Installing OCR Python dependencies: %s", OCR_PYTHON_DEPS)
+
+    try:
+        python_exe = sys.executable
+        pip_cmd = [python_exe, "-m", "pip", "install", "--upgrade"] + OCR_PYTHON_DEPS
+
+        result = subprocess.run(
+            pip_cmd,
+            capture_output=True,
+            text=True,
+            timeout=600,  # 10 minute timeout for large packages
+        )
+
+        if result.returncode == 0:
+            logger.info("OCR Python dependencies installed successfully")
+            return True, "Dependencies installed"
+        else:
+            logger.error("pip install failed: %s", result.stderr)
+            return False, f"pip install failed: {result.stderr[:500]}"
+
+    except subprocess.TimeoutExpired:
+        logger.error("OCR dependency installation timed out")
+        return False, "Installation timed out"
+    except Exception as e:
+        logger.exception("Failed to install OCR dependencies")
+        return False, str(e)
 
 
 @router.get("/models", response_model=OCRModelListResponse)
@@ -91,19 +148,22 @@ async def get_ocr_status() -> OCRStatusResponse:
     """Get OCR service status."""
     # Check if qwen2-vl-ocr model is available
     model_downloaded = is_model_downloaded("qwen2-vl-ocr")
+    deps_installed = _check_ocr_deps_installed()
 
-    if model_downloaded:
+    if model_downloaded and deps_installed:
         path = get_model_path("qwen2-vl-ocr")
         return OCRStatusResponse(
             available=True,
             model_id="qwen2-vl-ocr",
             model_path=str(path) if path else None,
+            deps_installed=True,
         )
 
     return OCRStatusResponse(
         available=False,
-        model_id=None,
-        model_path=None,
+        model_id="qwen2-vl-ocr" if model_downloaded else None,
+        model_path=str(get_model_path("qwen2-vl-ocr")) if model_downloaded else None,
+        deps_installed=deps_installed,
     )
 
 
@@ -111,8 +171,19 @@ def _do_download_sync(model_id: str, repo: str, dest_path: Path, marker_file: Pa
     """Synchronous download function that runs in a thread.
 
     Handles its own cleanup regardless of SSE connection state.
+    Also installs required Python dependencies if not present.
     """
     try:
+        # First, ensure OCR Python dependencies are installed
+        if not _check_ocr_deps_installed():
+            _download_phase[model_id] = "deps_install"
+            logger.info("OCR Python dependencies not found, installing...")
+            success, msg = _install_ocr_deps_sync()
+            if not success:
+                raise RuntimeError(f"Failed to install OCR dependencies: {msg}")
+            logger.info("OCR Python dependencies installed successfully")
+
+        _download_phase[model_id] = "downloading"
         from huggingface_hub import snapshot_download
 
         logger.info("Starting OCR model download: %s -> %s", repo, dest_path)
@@ -166,8 +237,9 @@ def _do_download_sync(model_id: str, repo: str, dest_path: Path, marker_file: Pa
     finally:
         # Always clean up marker when done (success or failure)
         marker_file.unlink(missing_ok=True)
-        # Remove from tracking dict
+        # Remove from tracking dicts
         _download_futures.pop(model_id, None)
+        _download_phase.pop(model_id, None)
 
 
 @router.post("/models/{model_id}/download")
@@ -215,13 +287,24 @@ async def download_ocr_model(model_id: str) -> StreamingResponse:
         yield f"data: {json.dumps({'status': 'starting', 'model_id': model_id})}\n\n"
 
         last_size = 0
+        last_phase = None
         while model_id in _download_futures and not _download_futures[model_id].done():
             await asyncio.sleep(2)  # Check every 2 seconds
+
+            # Check current phase
+            current_phase = _download_phase.get(model_id, "starting")
+            if current_phase != last_phase:
+                last_phase = current_phase
+                if current_phase == "deps_install":
+                    yield f"data: {json.dumps({'status': 'progress', 'model_id': model_id, 'phase': 'deps_install', 'message': 'Installing OCR dependencies (transformers, qwen-vl-utils)...'})}\n\n"
+                elif current_phase == "downloading":
+                    yield f"data: {json.dumps({'status': 'progress', 'model_id': model_id, 'phase': 'downloading', 'message': 'Downloading OCR model...'})}\n\n"
+
             current_size = get_model_size_on_disk(model_id) or 0
             if current_size != last_size:
                 last_size = current_size
                 percent = min(99, int((current_size / total_bytes) * 100)) if total_bytes > 0 else 0
-                yield f"data: {json.dumps({'status': 'progress', 'model_id': model_id, 'downloaded_bytes': current_size, 'total_bytes': total_bytes, 'percent': percent})}\n\n"
+                yield f"data: {json.dumps({'status': 'progress', 'model_id': model_id, 'phase': 'downloading', 'downloaded_bytes': current_size, 'total_bytes': total_bytes, 'percent': percent})}\n\n"
 
         # Check if download succeeded or failed
         if model_id in _download_futures:
@@ -242,6 +325,31 @@ async def download_ocr_model(model_id: str) -> StreamingResponse:
                 yield f"data: {json.dumps({'status': 'error', 'error': 'Download failed'})}\n\n"
 
     return StreamingResponse(_stream_progress(), media_type="text/event-stream")
+
+
+@router.post("/install-deps")
+async def install_ocr_dependencies():
+    """Install OCR Python dependencies separately.
+
+    Useful if the model was downloaded but dependencies weren't installed,
+    or if dependencies were uninstalled.
+    """
+    if _check_ocr_deps_installed():
+        return {"status": "already_installed", "message": "OCR dependencies are already installed"}
+
+    async def _stream_install():
+        yield f"data: {json.dumps({'status': 'starting', 'message': 'Installing OCR dependencies...'})}\n\n"
+
+        # Run installation in thread pool to not block
+        loop = asyncio.get_event_loop()
+        success, msg = await loop.run_in_executor(None, _install_ocr_deps_sync)
+
+        if success:
+            yield f"data: {json.dumps({'status': 'complete', 'message': 'OCR dependencies installed successfully'})}\n\n"
+        else:
+            yield f"data: {json.dumps({'status': 'error', 'error': msg})}\n\n"
+
+    return StreamingResponse(_stream_install(), media_type="text/event-stream")
 
 
 @router.delete("/models/{model_id}")
