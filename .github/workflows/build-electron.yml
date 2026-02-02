@@ -23,9 +23,8 @@ jobs:
           - os: macos-14
             arch: arm64
             platform: darwin
-          - os: macos-15
-            arch: x64
-            platform: darwin
+          # Note: macOS x64 builds skipped - all GitHub macOS runners are ARM64 now
+          # Intel Mac users can use ARM64 builds via Rosetta 2
           - os: ubuntu-latest
             arch: x64
             platform: linux
@@ -77,22 +76,30 @@ jobs:
         shell: bash
         run: ./scripts/prepare-electron-resources.sh
 
+      - name: Update version from git tag
+        shell: bash
+        run: ./scripts/update-version.sh
+
       - name: Build frontend
-        run: pnpm --filter @verbatim/frontend build
+        run: pnpm --filter @verbatim/frontend build:ci
 
       - name: Build Electron
         run: pnpm --filter @verbatim/electron build
 
       - name: Package Electron app
-        run: pnpm --filter @verbatim/electron exec electron-builder --publish never
+        run: |
+          if [ "${{ matrix.platform }}" = "darwin" ]; then
+            # Skip signing on macOS (add CSC_LINK secret to enable)
+            pnpm --filter @verbatim/electron exec electron-builder --publish never --config.mac.identity=null
+          else
+            pnpm --filter @verbatim/electron exec electron-builder --publish never
+          fi
+        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Disable code signing auto-discovery when no certificate
-          CSC_IDENTITY_AUTO_DISCOVERY: false
           # macOS code signing (when secrets are set)
           CSC_LINK: ${{ secrets.MAC_CERTS }}
           CSC_KEY_PASSWORD: ${{ secrets.MAC_CERTS_PASSWORD }}
-          # macOS notarization
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
