@@ -118,14 +118,51 @@ class StreamToken(BaseModel):
     error: str | None = None
 
 
-MAX_SYSTEM_PROMPT = """You are Max, the Verbatim Assistant. You help users understand and analyze their transcript recordings.
+MAX_SYSTEM_PROMPT = """You are Max, the Verbatim Studio assistant. You have two roles:
+1. Help users navigate and use Verbatim Studio (the app)
+2. Analyze transcripts and documents when attached
+
+Verbatim Studio is a privacy-first local transcription application. All processing happens on the user's device.
+
+When in doubt about what the user is asking (e.g., "how do I export?" or "where are my files?"), assume they're asking about Verbatim Studio, not general knowledge.
 
 Guidelines:
 - Be concise and factual
-- Reference specific quotes from transcripts when relevant
-- When comparing transcripts, clearly label which transcript you're referencing (e.g., "In Transcript A...")
-- If asked about something not in the attached transcripts, say so
-- When no transcripts are attached, help with general questions about recordings, transcription, or the app
+- For app help: reference specific UI locations (e.g., "Navigate to Settings > Transcription")
+- For transcript analysis: quote specific passages when relevant
+- When comparing transcripts, label which one (e.g., "In Transcript A...")
+- If asked about something not in attached content, say so
+"""
+
+# Help context injected when help-related keywords are detected
+MAX_HELP_CONTEXT = """
+Verbatim Studio Navigation:
+- Dashboard: Overview stats, recent items, quick actions
+- Recordings: Upload audio/video, start transcription, manage files
+- Projects: Organize recordings into groups
+- Documents: Upload PDFs with OCR text extraction
+- Chats: View saved AI conversations
+- Live: Real-time microphone transcription (BETA)
+- Search: Find content across recordings and documents
+- Files: Browse folder structure
+- Settings: Configure transcription, AI models, storage
+
+Common Tasks:
+- Transcribe: Recordings > Upload file > Click Transcribe
+- Edit transcript: Click segment text to edit, click speaker to reassign
+- Export: In transcript view, click Export > choose format (TXT, SRT, VTT, DOCX, PDF)
+- AI chat: Click chat bubble (bottom-right), attach content, ask questions
+- Projects: Projects > New Project, then assign recordings
+
+Keyboard Shortcuts (in transcript view):
+- Space/K: Play/Pause
+- J/L: Skip back/forward 10s
+- Arrow keys: Skip 5s or jump segments
+
+Troubleshooting:
+- Model not loading: Settings > AI/LLM > Download a model
+- Transcription failed: Try smaller model, check file format
+- No speakers: Enable diarization in Settings > Transcription
 """
 
 
@@ -510,13 +547,51 @@ async def chat_multi_stream(
         context_parts.append(f"=== Uploaded File {label} ===\n{request.file_context}\n")
         label_index += 1
 
+    # Detect if user is asking for help with the app
+    def is_help_intent(message: str) -> bool:
+        """Detect if the user message is asking for help with Verbatim Studio."""
+        msg_lower = message.lower()
+
+        # Help-related phrases
+        help_phrases = [
+            "how do i", "how can i", "how to", "where is", "where do i", "where can i",
+            "what is", "what does", "what are", "can i", "can you help",
+            "help me", "help with", "show me", "tell me how", "guide", "tutorial",
+            "i can't find", "i don't know how", "having trouble", "not working",
+        ]
+
+        # App-specific terms (strong signal)
+        app_terms = [
+            "sidebar", "settings", "recordings", "transcribe", "transcript", "export",
+            "project", "upload", "download", "model", "whisper", "diarization",
+            "speaker", "segment", "shortcut", "keyboard", "theme", "backup",
+            "live", "microphone", "ocr", "document", "search", "max", "chat",
+        ]
+
+        # Check for help phrases
+        has_help_phrase = any(phrase in msg_lower for phrase in help_phrases)
+
+        # Check for app terms
+        has_app_term = any(term in msg_lower for term in app_terms)
+
+        # If no content is attached and user asks a question, likely asking about app
+        no_attachments = not context_parts
+        is_question = "?" in message or has_help_phrase
+
+        return has_help_phrase or (has_app_term and is_question) or (no_attachments and is_question)
+
     # Build system message
     system_content = MAX_SYSTEM_PROMPT
+
+    # Inject help context if help intent detected
+    if is_help_intent(request.message):
+        system_content += MAX_HELP_CONTEXT
+
     if context_parts:
         system_content += f"\n\nYou have access to {len(context_parts)} attached item(s) (transcripts, documents, or files):\n\n"
         system_content += "\n".join(context_parts)
     else:
-        system_content += "\n\nNo transcripts or documents are currently attached. Help with general questions."
+        system_content += "\n\nNo transcripts or documents are currently attached. Help with general questions about Verbatim Studio."
 
     # Build messages list
     messages = [ChatMessage(role="system", content=system_content)]
