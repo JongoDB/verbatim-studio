@@ -1,5 +1,6 @@
 import { spawn, ChildProcess } from 'child_process';
 import path from 'path';
+import fs from 'fs';
 import { app } from 'electron';
 import { EventEmitter } from 'events';
 import { findAvailablePort } from './utils';
@@ -45,6 +46,12 @@ class BackendManager extends EventEmitter {
     const backendPath = this.config.backendPath || this.getBackendPath();
 
     console.log(`[Backend] Starting: ${pythonPath} at ${backendPath}`);
+    console.log(`[Backend] app.isPackaged: ${app.isPackaged}`);
+    console.log(`[Backend] process.resourcesPath: ${process.resourcesPath}`);
+
+    // Check if Python exists
+    console.log(`[Backend] Python exists: ${fs.existsSync(pythonPath)}`);
+    console.log(`[Backend] Backend dir exists: ${fs.existsSync(backendPath)}`);
 
     const env: NodeJS.ProcessEnv = {
       ...process.env,
@@ -88,7 +95,9 @@ class BackendManager extends EventEmitter {
     try {
       await this.waitForHealth();
       this.startHealthCheck();
+      console.log('[Backend] Started successfully');
     } catch (error) {
+      console.error('[Backend] Health check failed:', error);
       this.process?.kill('SIGKILL');
       this.process = null;
       this._port = null;
