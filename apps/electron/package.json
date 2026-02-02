@@ -10,7 +10,8 @@
     "build": "tsc -p tsconfig.json && tsc -p tsconfig.preload.json",
     "start": "electron .",
     "pack": "electron-builder --dir",
-    "dist": "electron-builder"
+    "dist": "electron-builder",
+    "prepare-resources": "../../scripts/prepare-electron-resources.sh"
   },
   "dependencies": {},
   "devDependencies": {
@@ -26,23 +27,59 @@
     "directories": {
       "output": "../../dist"
     },
+    "files": [
+      "dist/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "../../build/resources/python",
+        "to": "python",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "../../build/resources/backend",
+        "to": "backend",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "../../packages/frontend/dist",
+        "to": "frontend",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "../../scripts/requirements-ml.txt",
+        "to": "requirements-ml.txt"
+      }
+    ],
     "mac": {
       "category": "public.app-category.productivity",
       "target": [
         {
           "target": "dmg",
-          "arch": ["arm64"]
+          "arch": ["arm64", "x64"]
         }
       ],
       "hardenedRuntime": true,
-      "gatekeeperAssess": false
+      "gatekeeperAssess": false,
+      "entitlements": "entitlements.mac.plist",
+      "entitlementsInherit": "entitlements.mac.plist"
     },
-    "extraResources": [
-      {
-        "from": "../../build/resources",
-        "to": ".",
-        "filter": ["**/*"]
-      }
-    ]
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ]
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": ["x64"]
+        }
+      ],
+      "category": "Office"
+    }
   }
 }
