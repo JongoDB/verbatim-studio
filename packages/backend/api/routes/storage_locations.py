@@ -528,20 +528,33 @@ async def _run_migration(source: Path, destination: Path, files: list[Path]) -> 
 
 
 async def _update_database_paths(source: Path, destination: Path) -> None:
-    """Update file paths in database after migration.
+    """Update file paths and storage_location_id in database after migration.
 
     Replaces source path prefix with destination path prefix in all
-    Document and Recording file_path fields.
+    Document and Recording file_path fields, and updates storage_location_id
+    to point to the new active storage location.
     """
     source_str = str(source)
     dest_str = str(destination)
 
     async with async_session() as session:
+        # Get the new active storage location (the one we're migrating TO)
+        new_location_result = await session.execute(
+            select(StorageLocation).where(
+                StorageLocation.is_default == True,
+                StorageLocation.is_active == True,
+            )
+        )
+        new_location = new_location_result.scalar_one_or_none()
+        new_location_id = new_location.id if new_location else None
+
         # Update Documents
         doc_result = await session.execute(select(Document))
         for doc in doc_result.scalars():
             if doc.file_path and doc.file_path.startswith(source_str):
                 doc.file_path = doc.file_path.replace(source_str, dest_str, 1)
+                if new_location_id:
+                    doc.storage_location_id = new_location_id
                 logger.debug(f"Updated document {doc.id} path to {doc.file_path}")
 
         # Update Recordings
@@ -549,10 +562,12 @@ async def _update_database_paths(source: Path, destination: Path) -> None:
         for rec in rec_result.scalars():
             if rec.file_path and rec.file_path.startswith(source_str):
                 rec.file_path = rec.file_path.replace(source_str, dest_str, 1)
+                if new_location_id:
+                    rec.storage_location_id = new_location_id
                 logger.debug(f"Updated recording {rec.id} path to {rec.file_path}")
 
         await session.commit()
-        logger.info(f"Updated database paths from {source_str} to {dest_str}")
+        logger.info(f"Updated database paths from {source_str} to {dest_str}, storage_location_id to {new_location_id}")
 
 
 @router.get("/migrate/status", response_model=MigrationStatus)

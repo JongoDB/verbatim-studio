@@ -42,3 +42,6 @@ google-auth>=2.0.0
 
 # Export
 reportlab>=4.0.0
+
+# LLM inference (bundled so AI chat works out of the box)
+llama-cpp-python>=0.2.0

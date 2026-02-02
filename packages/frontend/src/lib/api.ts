@@ -1774,6 +1774,12 @@ class ApiClient {
         `/api/ocr/models/${modelId}`,
         { method: 'DELETE' }
       ),
+
+    cancelDownload: (modelId: string) =>
+      this.request<{ status: string; model_id: string; was_downloading: boolean }>(
+        `/api/ocr/models/${modelId}/cancel`,
+        { method: 'POST' }
+      ),
   };
 
   // Projects

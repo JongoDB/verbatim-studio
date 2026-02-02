@@ -352,6 +352,51 @@ async def install_ocr_dependencies():
     return StreamingResponse(_stream_install(), media_type="text/event-stream")
 
 
+@router.post("/models/{model_id}/cancel")
+async def cancel_ocr_download(model_id: str):
+    """Cancel an in-progress or stale OCR model download.
+
+    This removes the .downloading marker and cleans up partial files.
+    Useful when a download was interrupted (app closed, network error).
+    """
+    entry = OCR_MODEL_CATALOG.get(model_id)
+    if not entry:
+        raise HTTPException(status_code=404, detail="Model not in catalog")
+
+    path = get_model_path(model_id)
+    if not path:
+        raise HTTPException(status_code=404, detail="Model path not found")
+
+    marker = path / ".downloading"
+    was_downloading = marker.exists()
+
+    # Cancel any active download future
+    if model_id in _download_futures:
+        future = _download_futures.pop(model_id)
+        if not future.done():
+            future.cancel()
+        if model_id in _download_phase:
+            del _download_phase[model_id]
+
+    # Remove the marker file
+    if marker.exists():
+        marker.unlink()
+
+    # Clean up the partial download directory if it exists and is incomplete
+    if path.exists() and not is_model_downloaded(model_id):
+        try:
+            shutil.rmtree(path)
+            logger.info("Cleaned up partial OCR model download at %s", path)
+        except Exception as e:
+            logger.warning("Failed to clean up partial download: %s", e)
+
+    return {
+        "status": "cancelled",
+        "model_id": model_id,
+        "was_downloading": was_downloading,
+    }
+
+
 @router.delete("/models/{model_id}")
 async def delete_ocr_model(model_id: str):
     """Delete a downloaded OCR model."""

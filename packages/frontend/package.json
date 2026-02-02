@@ -1,6 +1,6 @@
 {
   "name": "@verbatim/frontend",
-  "version": "0.25.29",
+  "version": "0.25.30",
   "private": true,
   "type": "module",
   "scripts": {

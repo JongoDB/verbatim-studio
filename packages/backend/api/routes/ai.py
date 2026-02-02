@@ -31,12 +31,27 @@ LLM_PYTHON_DEPS = [
 ]
 
 
-def _check_llm_deps_installed() -> bool:
-    """Check if llama-cpp-python is installed."""
+def _check_llm_deps_installed(force_refresh: bool = False) -> bool:
+    """Check if llama-cpp-python is installed.
+
+    Args:
+        force_refresh: If True, invalidate import caches first (useful after pip install)
+    """
+    import importlib
+    import sys
+
+    if force_refresh:
+        # Clear llama_cpp from sys.modules if it exists (so it can be reimported fresh)
+        for mod_name in list(sys.modules.keys()):
+            if mod_name.startswith('llama_cpp'):
+                del sys.modules[mod_name]
+        # Invalidate import caches to detect newly installed packages
+        importlib.invalidate_caches()
+
     try:
         from llama_cpp import Llama
         return True
-    except ImportError:
+    except (ImportError, ModuleNotFoundError):
         return False
 
 
@@ -348,6 +363,10 @@ async def download_model(model_id: str) -> StreamingResponse:
             if not success:
                 yield f"data: {json.dumps({'status': 'error', 'error': f'Failed to install LLM dependencies: {msg}'})}\n\n"
                 return
+            # Force refresh the import cache to detect newly installed package
+            if not _check_llm_deps_installed(force_refresh=True):
+                yield f"data: {json.dumps({'status': 'error', 'error': 'LLM dependencies installed but not importable. Please restart the app.'})}\n\n"
+                return
             yield f"data: {json.dumps({'status': 'progress', 'phase': 'deps_install', 'message': 'LLM dependencies installed successfully'})}\n\n"
 
         try:
@@ -384,7 +403,18 @@ async def download_model(model_id: str) -> StreamingResponse:
                                 last_pct = pct
                                 yield f"data: {json.dumps({'status': 'progress', 'model_id': model_id, 'downloaded_bytes': downloaded, 'total_bytes': total_bytes})}\n\n"
 
-            # Rename .part → final filename
+            # Verify download completed and rename .part → final filename
+            if not tmp_dest.exists():
+                yield f"data: {json.dumps({'status': 'error', 'error': 'Download incomplete - file not found'})}\n\n"
+                return
+
+            # Verify file size (allow 1% tolerance for headers/metadata)
+            actual_size = tmp_dest.stat().st_size
+            if total_bytes > 0 and actual_size < total_bytes * 0.99:
+                tmp_dest.unlink()
+                yield f"data: {json.dumps({'status': 'error', 'error': f'Download incomplete - got {actual_size} bytes, expected {total_bytes}'})}\n\n"
+                return
+
             tmp_dest.rename(dest)
 
             yield f"data: {json.dumps({'status': 'complete', 'model_id': model_id, 'path': str(dest)})}\n\n"
@@ -450,7 +480,7 @@ async def install_llm_dependencies():
     This is automatically called during model download, but can also be
     called manually if dependencies were uninstalled.
     """
-    if _check_llm_deps_installed():
+    if _check_llm_deps_installed(force_refresh=True):
         return {"status": "already_installed", "message": "LLM dependencies are already installed"}
 
     async def _stream_install():
@@ -461,7 +491,11 @@ async def install_llm_dependencies():
         success, msg = await loop.run_in_executor(None, _install_llm_deps_sync)
 
         if success:
-            yield f"data: {json.dumps({'status': 'complete', 'message': 'LLM dependencies installed successfully. Restart may be required.'})}\n\n"
+            # Force refresh to make the module importable
+            if _check_llm_deps_installed(force_refresh=True):
+                yield f"data: {json.dumps({'status': 'complete', 'message': 'LLM dependencies installed and ready.'})}\n\n"
+            else:
+                yield f"data: {json.dumps({'status': 'complete', 'message': 'LLM dependencies installed. Please restart the app if AI features are not available.'})}\n\n"
         else:
             yield f"data: {json.dumps({'status': 'error', 'error': msg})}\n\n"
 
