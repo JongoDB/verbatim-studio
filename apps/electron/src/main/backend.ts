@@ -53,8 +53,22 @@ class BackendManager extends EventEmitter {
     console.log(`[Backend] Python exists: ${fs.existsSync(pythonPath)}`);
     console.log(`[Backend] Backend dir exists: ${fs.existsSync(backendPath)}`);
 
+    // Ensure common binary paths are in PATH (Homebrew, MacPorts, etc.)
+    // Electron apps don't inherit the user's shell PATH
+    const additionalPaths = [
+      '/opt/homebrew/bin',      // Homebrew on Apple Silicon
+      '/opt/homebrew/sbin',
+      '/usr/local/bin',         // Homebrew on Intel / common installs
+      '/usr/local/sbin',
+      '/opt/local/bin',         // MacPorts
+      '/opt/local/sbin',
+    ];
+    const currentPath = process.env.PATH || '/usr/bin:/bin';
+    const extendedPath = [...additionalPaths, currentPath].join(':');
+
     const env: NodeJS.ProcessEnv = {
       ...process.env,
+      PATH: extendedPath,
       VERBATIM_ELECTRON: '1',
       VERBATIM_PORT: String(this._port),
       VERBATIM_DATA_DIR: app.getPath('userData'),

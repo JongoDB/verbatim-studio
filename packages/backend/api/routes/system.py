@@ -413,9 +413,15 @@ async def install_ml_dependencies():
             is_apple = _is_apple_silicon()
 
             if is_apple:
-                # For Apple Silicon, install mlx-whisper (much smaller and faster)
-                packages = ["mlx-whisper>=0.4.0"]
-                yield f"data: {json.dumps({'status': 'progress', 'message': 'Installing MLX Whisper for Apple Silicon...'})}\n\n"
+                # For Apple Silicon:
+                # - mlx-whisper for fast GPU transcription
+                # - whisperx + pyannote for speaker diarization
+                packages = [
+                    "mlx-whisper>=0.4.0",
+                    "whisperx>=3.1.0",
+                    "pyannote.audio>=3.1.0",
+                ]
+                yield f"data: {json.dumps({'status': 'progress', 'message': 'Installing MLX Whisper + diarization for Apple Silicon...'})}\n\n"
             else:
                 # For other systems, install whisperx + torch
                 packages = [
