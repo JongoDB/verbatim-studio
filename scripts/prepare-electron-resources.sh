@@ -55,9 +55,19 @@ cp -R "$BACKEND_SRC/api" "$RESOURCES_DIR/backend/"
 cp -R "$BACKEND_SRC/core" "$RESOURCES_DIR/backend/" 2>/dev/null || true
 cp -R "$BACKEND_SRC/services" "$RESOURCES_DIR/backend/" 2>/dev/null || true
 cp -R "$BACKEND_SRC/persistence" "$RESOURCES_DIR/backend/" 2>/dev/null || true
+cp -R "$BACKEND_SRC/storage" "$RESOURCES_DIR/backend/" 2>/dev/null || true
+cp -R "$BACKEND_SRC/jobs" "$RESOURCES_DIR/backend/" 2>/dev/null || true
+cp -R "$BACKEND_SRC/adapters" "$RESOURCES_DIR/backend/" 2>/dev/null || true
+cp -R "$BACKEND_SRC/migrations" "$RESOURCES_DIR/backend/" 2>/dev/null || true
 
 # Copy pyproject.toml for package metadata
 cp "$BACKEND_SRC/pyproject.toml" "$RESOURCES_DIR/backend/"
+
+# Remove any database files that shouldn't be bundled
+rm -f "$RESOURCES_DIR/backend/"*.db* 2>/dev/null || true
+
+# Remove __pycache__ directories
+find "$RESOURCES_DIR/backend" -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 
 # Copy ML requirements for on-demand installation
 if [ -f "$SCRIPT_DIR/requirements-ml.txt" ]; then

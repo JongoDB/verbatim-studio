@@ -14,6 +14,8 @@ let mainWindow: BrowserWindow | null = null;
 
 async function bootstrap(): Promise<void> {
   try {
+    console.log('[Main] Bootstrap starting, app.isReady():', app.isReady());
+
     // Register IPC handlers
     registerIpcHandlers();
 
@@ -27,6 +29,13 @@ async function bootstrap(): Promise<void> {
     console.log('[Main] Backend started successfully, port:', backendManager.port);
     console.log('[Main] Backend API URL:', backendManager.getApiUrl());
 
+    // Double-check app is ready before creating window (should always be true here)
+    if (!app.isReady()) {
+      console.error('[Main] App not ready after backend start! Waiting...');
+      await app.whenReady();
+    }
+
+    console.log('[Main] Creating main window...');
     mainWindow = createMainWindow();
 
     // Initialize auto-updater
@@ -44,7 +53,8 @@ async function bootstrap(): Promise<void> {
 app.on('ready', bootstrap);
 
 app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0) {
+  // Only create window if app is ready and no windows exist
+  if (app.isReady() && BrowserWindow.getAllWindows().length === 0) {
     mainWindow = createMainWindow();
   }
 });

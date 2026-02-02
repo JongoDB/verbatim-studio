@@ -32,14 +32,20 @@ def get_master_key() -> bytes:
     """Get or create master encryption key.
 
     Tries OS keychain first, falls back to file-based storage.
+    In Electron apps, skips keychain to avoid permission prompts.
     """
-    # Try OS keychain first
-    try:
-        key = keyring.get_password(SERVICE_NAME, KEY_NAME)
-        if key:
-            return base64.b64decode(key)
-    except Exception as e:
-        logger.debug(f"Keyring unavailable: {e}")
+    # Skip keychain in Electron app to avoid macOS permission prompts
+    # (bundled Python isn't code-signed, so keychain access triggers dialogs)
+    is_electron = os.environ.get("VERBATIM_ELECTRON") == "1"
+
+    # Try OS keychain first (unless in Electron)
+    if not is_electron:
+        try:
+            key = keyring.get_password(SERVICE_NAME, KEY_NAME)
+            if key:
+                return base64.b64decode(key)
+        except Exception as e:
+            logger.debug(f"Keyring unavailable: {e}")
 
     # Try fallback file
     if FALLBACK_PATH.exists():
@@ -48,13 +54,14 @@ def get_master_key() -> bytes:
     # Generate new key
     new_key = Fernet.generate_key()
 
-    # Try to store in keychain
-    try:
-        keyring.set_password(SERVICE_NAME, KEY_NAME, base64.b64encode(new_key).decode())
-        logger.info("Master key stored in OS keychain")
-        return new_key
-    except Exception as e:
-        logger.warning(f"Could not store key in keychain: {e}")
+    # Try to store in keychain (unless in Electron)
+    if not is_electron:
+        try:
+            keyring.set_password(SERVICE_NAME, KEY_NAME, base64.b64encode(new_key).decode())
+            logger.info("Master key stored in OS keychain")
+            return new_key
+        except Exception as e:
+            logger.warning(f"Could not store key in keychain: {e}")
 
     # Fall back to file
     FALLBACK_PATH.parent.mkdir(parents=True, exist_ok=True)

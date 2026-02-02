@@ -53,12 +53,31 @@ class DiarizationService:
 
         self._whisperx = whisperx
 
+        # PyTorch 2.6+ changed weights_only=True default for torch.load()
+        # This breaks pyannote model loading which uses custom classes.
+        # Monkey-patch torch.load to force weights_only=False for pyannote models.
+        import torch
+        _original_torch_load = torch.load
+
+        def _patched_torch_load(*args, **kwargs):
+            # Force weights_only=False for pyannote compatibility
+            # Must override even if caller passes weights_only=True
+            kwargs["weights_only"] = False
+            return _original_torch_load(*args, **kwargs)
+
+        torch.load = _patched_torch_load
+        logger.debug("Patched torch.load for pyannote compatibility (weights_only=False)")
+
         logger.info("Loading WhisperX diarization pipeline (device=%s)", self.device)
 
-        self._pipeline = DiarizationPipeline(
-            use_auth_token=self.hf_token,
-            device=self.device,
-        )
+        try:
+            self._pipeline = DiarizationPipeline(
+                use_auth_token=self.hf_token,
+                device=self.device,
+            )
+        finally:
+            # Restore original torch.load after loading
+            torch.load = _original_torch_load
 
         logger.info("WhisperX diarization pipeline loaded successfully")
 

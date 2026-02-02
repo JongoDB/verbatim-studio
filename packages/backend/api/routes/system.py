@@ -1,16 +1,23 @@
 """System information endpoints."""
 
+import asyncio
+import json
+import logging
 import os
 import platform
 import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import AsyncIterator
 
 from fastapi import APIRouter
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from core.config import settings
+
+logger = logging.getLogger(__name__)
 from persistence.database import async_session
 from sqlalchemy import text
 
@@ -316,3 +323,150 @@ async def get_system_info() -> SystemInfo:
         content_counts=content_counts,
         max_upload_bytes=10 * 1024 * 1024 * 1024,  # 10 GB
     )
+
+
+# ============ ML Dependencies Management ============
+
+
+class MLStatus(BaseModel):
+    """ML dependencies status."""
+
+    whisperx_installed: bool
+    mlx_whisper_installed: bool
+    torch_installed: bool
+    pyannote_installed: bool
+    is_apple_silicon: bool
+    recommended_engine: str | None
+    install_in_progress: bool = False
+
+
+def _is_apple_silicon() -> bool:
+    """Check if running on Apple Silicon Mac."""
+    return sys.platform == "darwin" and platform.machine() == "arm64"
+
+
+def _check_package_installed(package: str) -> bool:
+    """Check if a Python package is installed."""
+    try:
+        __import__(package.replace("-", "_"))
+        return True
+    except ImportError:
+        return False
+
+
+# Track installation status
+_ml_install_in_progress = False
+
+
+@router.get("/ml-status", response_model=MLStatus)
+async def get_ml_status() -> MLStatus:
+    """Get ML dependencies installation status."""
+    whisperx = _check_package_installed("whisperx")
+    mlx_whisper = _check_package_installed("mlx_whisper")
+    torch = _check_package_installed("torch")
+    pyannote = _check_package_installed("pyannote.audio")
+    is_apple = _is_apple_silicon()
+
+    # Determine recommended engine
+    recommended = None
+    if is_apple and mlx_whisper:
+        recommended = "mlx-whisper"
+    elif whisperx:
+        recommended = "whisperx"
+
+    return MLStatus(
+        whisperx_installed=whisperx,
+        mlx_whisper_installed=mlx_whisper,
+        torch_installed=torch,
+        pyannote_installed=pyannote,
+        is_apple_silicon=is_apple,
+        recommended_engine=recommended,
+        install_in_progress=_ml_install_in_progress,
+    )
+
+
+@router.post("/install-ml")
+async def install_ml_dependencies():
+    """Install ML dependencies for local transcription.
+
+    Returns a streaming response with installation progress.
+    For Apple Silicon, installs mlx-whisper (lightweight).
+    For other systems, installs whisperx + torch.
+
+    Note: Uses asyncio.create_subprocess_exec with hardcoded package names
+    (no shell injection risk - packages are not user input).
+    """
+    global _ml_install_in_progress
+
+    if _ml_install_in_progress:
+        return StreamingResponse(
+            iter([f"data: {json.dumps({'status': 'error', 'message': 'Installation already in progress'})}\n\n"]),
+            media_type="text/event-stream",
+        )
+
+    async def install_stream() -> AsyncIterator[str]:
+        global _ml_install_in_progress
+        _ml_install_in_progress = True
+
+        try:
+            # Determine what to install based on platform
+            is_apple = _is_apple_silicon()
+
+            if is_apple:
+                # For Apple Silicon, install mlx-whisper (much smaller and faster)
+                packages = ["mlx-whisper>=0.4.0"]
+                yield f"data: {json.dumps({'status': 'progress', 'message': 'Installing MLX Whisper for Apple Silicon...'})}\n\n"
+            else:
+                # For other systems, install whisperx + torch
+                packages = [
+                    "torch>=2.0.0",
+                    "torchaudio>=2.0.0",
+                    "whisperx>=3.1.0",
+                    "pyannote.audio>=3.1.0",
+                ]
+                yield f"data: {json.dumps({'status': 'progress', 'message': 'Installing WhisperX and dependencies...'})}\n\n"
+
+            # Find pip executable - use sys.executable to ensure we use the right Python
+            python_exe = sys.executable
+            # Build command as list (no shell, safe from injection)
+            pip_cmd = [python_exe, "-m", "pip", "install", "--upgrade"] + packages
+
+            logger.info("Running pip install: %s", " ".join(pip_cmd))
+            packages_str = " ".join(packages)
+            yield f"data: {json.dumps({'status': 'progress', 'message': f'Running: pip install {packages_str}'})}\n\n"
+
+            # Run pip install using create_subprocess_exec (not shell)
+            process = await asyncio.create_subprocess_exec(
+                *pip_cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+            )
+
+            # Stream output
+            while True:
+                line = await process.stdout.readline()
+                if not line:
+                    break
+                line_text = line.decode().strip()
+                if line_text:
+                    logger.info("pip: %s", line_text)
+                    # Send progress updates for key lines
+                    if "Downloading" in line_text or "Installing" in line_text or "Successfully" in line_text:
+                        yield f"data: {json.dumps({'status': 'progress', 'message': line_text[:200]})}\n\n"
+
+            await process.wait()
+
+            if process.returncode == 0:
+                logger.info("ML dependencies installed successfully")
+                yield f"data: {json.dumps({'status': 'complete', 'message': 'Installation complete! Restart the app to use local transcription.'})}\n\n"
+            else:
+                logger.error("pip install failed with code %d", process.returncode)
+                yield f"data: {json.dumps({'status': 'error', 'message': f'Installation failed with exit code {process.returncode}'})}\n\n"
+
+        except Exception as e:
+            logger.exception("ML installation failed")
+            yield f"data: {json.dumps({'status': 'error', 'message': str(e)})}\n\n"
+        finally:
+            _ml_install_in_progress = False
+
+    return StreamingResponse(install_stream(), media_type="text/event-stream")

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { api, type ApiInfo, type HealthStatus, type GlobalSearchResult } from '@/lib/api';
+import { api, isElectron, type ApiInfo, type HealthStatus, type GlobalSearchResult } from '@/lib/api';
 import { RecordingsPage } from '@/pages/recordings/RecordingsPage';
 import { ProjectsPage } from '@/pages/projects/ProjectsPage';
 import { ProjectDetailPage } from '@/pages/projects/ProjectDetailPage';
@@ -14,6 +14,7 @@ import { SearchBox } from '@/components/search/SearchBox';
 import { Dashboard } from '@/components/dashboard/Dashboard';
 import { SettingsPage } from '@/pages/settings/SettingsPage';
 import { Sidebar } from '@/components/layout/Sidebar';
+import { TitleBar } from '@/components/layout/TitleBar';
 import { APP_VERSION } from '@/version'; // static fallback
 import { ChatFAB } from '@/components/ai/ChatFAB';
 import { ChatPanel } from '@/components/ai/ChatPanel';
@@ -21,6 +22,10 @@ import type { ChatMessage } from '@/components/ai/ChatMessages';
 import type { ChatAttachment } from '@/components/ai/AttachmentPicker';
 import { ChatsPage } from '@/pages/chats/ChatsPage';
 import { OnboardingTour, WelcomeModal, TourToast, TOUR_STORAGE_KEYS } from '@/components/onboarding';
+
+// Check if running on macOS in Electron (for title bar padding)
+const isMacOS = typeof navigator !== 'undefined' && navigator.platform.toLowerCase().includes('mac');
+const needsTitleBarPadding = isElectron() && isMacOS;
 
 type NavigationState =
   | { type: 'dashboard' }
@@ -449,6 +454,9 @@ export function App() {
 
   return (
     <div className="min-h-screen bg-background flex">
+      {/* macOS Title Bar (draggable region for window movement) */}
+      <TitleBar />
+
       {/* Sidebar */}
       <Sidebar
         currentTab={currentTab}
@@ -473,7 +481,7 @@ export function App() {
       />
 
       {/* Content Area - offset by sidebar width on desktop */}
-      <div className={`flex-1 flex flex-col min-h-screen overflow-hidden transition-[margin] duration-300 ${sidebarCollapsed ? 'md:ml-16' : 'md:ml-60'}`}>
+      <div className={`flex-1 flex flex-col min-h-screen overflow-hidden transition-[margin] duration-300 ${sidebarCollapsed ? 'md:ml-16' : 'md:ml-60'} ${needsTitleBarPadding ? 'pt-9' : ''}`}>
         {/* Content header with search */}
         <header className="h-14 border-b border-border bg-card flex items-center px-4 md:px-6 gap-4 shrink-0">
           <div className="w-8 md:hidden" />

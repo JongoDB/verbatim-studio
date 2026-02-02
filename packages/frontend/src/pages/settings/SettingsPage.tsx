@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { api, type ArchiveInfo, type TranscriptionSettings, type AIModel, type AIModelDownloadEvent, type OCRModel, type OCRModelDownloadEvent, type SystemInfo, type StorageLocation, type MigrationStatus, type StorageType, type StorageSubtype, type StorageLocationConfig, type OAuthStatusResponse } from '@/lib/api';
+import { api, type ArchiveInfo, type TranscriptionSettings, type AIModel, type AIModelDownloadEvent, type OCRModel, type OCRModelDownloadEvent, type SystemInfo, type MLStatus, type StorageLocation, type MigrationStatus, type StorageType, type StorageSubtype, type StorageLocationConfig, type OAuthStatusResponse } from '@/lib/api';
 import { StorageTypeSelector } from '@/components/storage/StorageTypeSelector';
 import { StorageSubtypeSelector } from '@/components/storage/StorageSubtypeSelector';
 import { StorageConfigForm } from '@/components/storage/StorageConfigForm';
@@ -114,6 +114,12 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
   // System info state
   const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
 
+  // ML dependencies state
+  const [mlStatus, setMlStatus] = useState<MLStatus | null>(null);
+  const [mlInstalling, setMlInstalling] = useState(false);
+  const [mlInstallProgress, setMlInstallProgress] = useState<string | null>(null);
+  const [mlInstallError, setMlInstallError] = useState<string | null>(null);
+
   // Storage locations state
   const [storageLocations, setStorageLocations] = useState<StorageLocation[]>([]);
   const [showAddLocation, setShowAddLocation] = useState(false);
@@ -145,15 +151,45 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
       .catch(console.error);
   }, []);
 
-  // Load archive info, config status, transcription settings, AI models, OCR models, system info, and storage locations
+  // Load archive info, config status, transcription settings, AI models, OCR models, system info, ML status, and storage locations
   useEffect(() => {
     api.archive.info().then(setArchiveInfo).catch(console.error);
     api.config.getTranscription().then(setTxSettings).catch(console.error);
     api.ai.listModels().then((r) => setAiModels(r.models)).catch(console.error);
     api.ocr.listModels().then((r) => setOcrModels(r.models)).catch(console.error);
     api.system.info().then(setSystemInfo).catch(console.error);
+    api.system.mlStatus().then(setMlStatus).catch(console.error);
     loadStorageLocations();
   }, [loadStorageLocations]);
+
+  // Handle ML dependencies installation
+  const handleInstallMl = useCallback(async () => {
+    setMlInstalling(true);
+    setMlInstallProgress('Starting installation...');
+    setMlInstallError(null);
+
+    try {
+      for await (const event of api.system.installMl()) {
+        if (event.status === 'progress') {
+          setMlInstallProgress(event.message);
+        } else if (event.status === 'complete') {
+          setMlInstallProgress(event.message);
+          // Refresh ML status after installation
+          const newStatus = await api.system.mlStatus();
+          setMlStatus(newStatus);
+          // Also refresh transcription settings which includes available engines
+          const newTxSettings = await api.config.getTranscription();
+          setTxSettings(newTxSettings);
+        } else if (event.status === 'error') {
+          setMlInstallError(event.message);
+        }
+      }
+    } catch (err) {
+      setMlInstallError(err instanceof Error ? err.message : 'Installation failed');
+    } finally {
+      setMlInstalling(false);
+    }
+  }, []);
 
   const handleExport = useCallback(async () => {
     setIsExporting(true);
@@ -838,6 +874,66 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
                     : 'WhisperX uses CPU or NVIDIA GPU'}
               </p>
             </div>
+
+            {/* ML Dependencies Installation */}
+            {txSettings.available_engines.length === 0 && mlStatus && (
+              <div className="p-4 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+                <div className="flex items-start gap-3">
+                  <svg className="w-5 h-5 text-amber-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                  <div className="flex-1">
+                    <h4 className="text-sm font-medium text-amber-800 dark:text-amber-200">
+                      Local Transcription Not Available
+                    </h4>
+                    <p className="mt-1 text-sm text-amber-700 dark:text-amber-300">
+                      {mlStatus.is_apple_silicon
+                        ? 'Install MLX Whisper for fast local transcription using Apple Silicon GPU.'
+                        : 'Install WhisperX for local transcription using CPU or NVIDIA GPU.'}
+                    </p>
+                    {mlInstallError && (
+                      <p className="mt-2 text-sm text-red-600 dark:text-red-400">
+                        Error: {mlInstallError}
+                      </p>
+                    )}
+                    {mlInstallProgress && mlInstalling && (
+                      <p className="mt-2 text-sm text-amber-600 dark:text-amber-400">
+                        {mlInstallProgress}
+                      </p>
+                    )}
+                    {!mlInstallProgress?.includes('complete') && (
+                      <button
+                        onClick={handleInstallMl}
+                        disabled={mlInstalling}
+                        className="mt-3 inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {mlInstalling ? (
+                          <>
+                            <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                            </svg>
+                            Installing...
+                          </>
+                        ) : (
+                          <>
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                            </svg>
+                            Install {mlStatus.is_apple_silicon ? 'MLX Whisper' : 'WhisperX'}
+                          </>
+                        )}
+                      </button>
+                    )}
+                    {mlInstallProgress?.includes('complete') && (
+                      <p className="mt-2 text-sm text-green-600 dark:text-green-400 font-medium">
+                        ✓ {mlInstallProgress}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Engine Caveats */}
             {txSettings.engine_caveats.length > 0 && (

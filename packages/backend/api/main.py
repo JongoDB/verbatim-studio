@@ -2,6 +2,7 @@
 
 import subprocess
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -26,8 +27,22 @@ from services.jobs import job_queue
 file_watcher: FileWatcherService | None = None
 
 
-def _get_git_version() -> str:
-    """Read version from git tags at startup."""
+def _get_version() -> str:
+    """Read version from pyproject.toml or git tags at startup."""
+    # First try pyproject.toml (works in packaged Electron app)
+    try:
+        import tomllib
+        pyproject_path = Path(__file__).parent.parent / "pyproject.toml"
+        if pyproject_path.exists():
+            with open(pyproject_path, "rb") as f:
+                data = tomllib.load(f)
+                version = data.get("project", {}).get("version")
+                if version:
+                    return f"v{version}"
+    except Exception:
+        pass
+
+    # Fall back to git describe (works in development)
     try:
         result = subprocess.run(
             ["git", "describe", "--tags", "--always"],
@@ -40,7 +55,7 @@ def _get_git_version() -> str:
     return "dev"
 
 
-APP_VERSION = _get_git_version()
+APP_VERSION = _get_version()
 
 # Allow uploads up to 10 GB (Starlette default is 1 GB)
 MultiPartParser.max_file_size = 10 * 1024 * 1024 * 1024

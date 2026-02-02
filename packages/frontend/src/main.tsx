@@ -4,8 +4,8 @@ import { App } from './app/App';
 import './index.css';
 import { initializeApiUrl } from './lib/api';
 
-// Register service worker for PWA support
-if ('serviceWorker' in navigator) {
+// Register service worker for PWA support (skip in Electron - file:// doesn't support SW)
+if ('serviceWorker' in navigator && window.location.protocol !== 'file:') {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').catch((error) => {
       console.warn('Service worker registration failed:', error);

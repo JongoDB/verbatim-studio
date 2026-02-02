@@ -958,6 +958,21 @@ export interface SystemInfo {
   max_upload_bytes: number;
 }
 
+export interface MLStatus {
+  whisperx_installed: boolean;
+  mlx_whisper_installed: boolean;
+  torch_installed: boolean;
+  pyannote_installed: boolean;
+  is_apple_silicon: boolean;
+  recommended_engine: string | null;
+  install_in_progress: boolean;
+}
+
+export interface MLInstallEvent {
+  status: 'progress' | 'complete' | 'error';
+  message: string;
+}
+
 // Storage Locations
 export type StorageType = 'local' | 'network' | 'cloud';
 export type StorageSubtype =
@@ -1116,14 +1131,20 @@ export interface OAuthCredentialsUpdate {
 }
 
 class ApiClient {
-  private baseUrl: string;
+  private customBaseUrl?: string;
 
   constructor(baseUrl?: string) {
-    this.baseUrl = baseUrl ?? getApiBaseUrl();
+    this.customBaseUrl = baseUrl;
+  }
+
+  // Get the current base URL - uses custom URL if set, otherwise dynamic lookup
+  private get baseUrl(): string {
+    return this.customBaseUrl ?? getApiBaseUrl();
   }
 
   private async request<T>(path: string, options?: RequestInit): Promise<T> {
-    const response = await fetch(`${this.baseUrl}${path}`, {
+    const currentBaseUrl = this.baseUrl;
+    const response = await fetch(`${currentBaseUrl}${path}`, {
       ...options,
       headers: {
         'Content-Type': 'application/json',
@@ -2054,6 +2075,47 @@ class ApiClient {
   // System
   system = {
     info: () => this.request<SystemInfo>('/api/system/info'),
+    mlStatus: () => this.request<MLStatus>('/api/system/ml-status'),
+    installMl: async function* (): AsyncGenerator<MLInstallEvent> {
+      const baseUrl = getApiBaseUrl();
+      const response = await fetch(`${baseUrl}/api/system/install-ml`, {
+        method: 'POST',
+      });
+
+      if (!response.ok) {
+        yield { status: 'error', message: `HTTP ${response.status}: ${response.statusText}` };
+        return;
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) {
+        yield { status: 'error', message: 'No response body' };
+        return;
+      }
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6)) as MLInstallEvent;
+              yield data;
+            } catch {
+              // Ignore parse errors
+            }
+          }
+        }
+      }
+    },
   };
 
   // Storage Locations

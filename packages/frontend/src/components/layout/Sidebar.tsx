@@ -1,4 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
+import { isElectron } from '../../lib/api';
+
+// Import logos to get correct bundled paths (works with both http and file:// protocols)
+import logoIcon from '/logo-icon.png';
+import logoFull from '/logo.png';
+
+// Check if running on macOS in Electron (for traffic light padding)
+const isMacOS = typeof navigator !== 'undefined' && navigator.platform.toLowerCase().includes('mac');
 
 type Theme = 'light' | 'dark' | 'system';
 
@@ -159,6 +167,11 @@ export function Sidebar({ currentTab, onNavigate, theme, onCycleTheme, version, 
           collapsed ? 'md:w-16' : 'md:w-60',
         ].join(' ')}
       >
+        {/* macOS title bar spacer (only in Electron on macOS) - matches TitleBar height */}
+        {isElectron() && isMacOS && (
+          <div className="h-9 shrink-0" aria-hidden="true" />
+        )}
+
         {/* Top: Brand + collapse toggle */}
         <div className={`flex items-center h-14 border-b border-border shrink-0 ${collapsed ? 'md:justify-center md:px-2' : 'gap-2 px-3'}`}>
           {collapsed ? (
@@ -169,7 +182,7 @@ export function Sidebar({ currentTab, onNavigate, theme, onCycleTheme, version, 
               aria-label="Expand sidebar"
             >
               <img
-                src="/logo-icon.png"
+                src={logoIcon}
                 alt="Verbatim Studio"
                 className="h-8 w-auto object-contain"
               />
@@ -178,7 +191,7 @@ export function Sidebar({ currentTab, onNavigate, theme, onCycleTheme, version, 
             // Expanded: show full logo with tagline
             <div className="flex flex-col">
               <img
-                src="/logo.png"
+                src={logoFull}
                 alt="Verbatim Studio"
                 className="h-8 object-contain dark:invert dark:hue-rotate-180"
               />
