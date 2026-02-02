@@ -21,19 +21,5 @@ interface DirectoryPickerOptions {
 
 interface Window {
   showDirectoryPicker(options?: DirectoryPickerOptions): Promise<FileSystemDirectoryHandle>;
-  electronAPI?: {
-    platform: NodeJS.Platform;
-    getAppVersion: () => Promise<string>;
-    getApiUrl: () => Promise<string | null>;
-    getApiPort: () => Promise<number | null>;
-    getConnectionMode: () => Promise<'local' | 'connected' | 'hybrid'>;
-    minimize: () => void;
-    maximize: () => void;
-    close: () => void;
-    openDirectoryDialog: () => Promise<string | null>;
-    openFileDialog: (options?: {
-      filters?: { name: string; extensions: string[] }[];
-      multiple?: boolean;
-    }) => Promise<string | string[] | null>;
-  };
+  // electronAPI types are defined in ./types/electron.d.ts
 }

@@ -10,6 +10,7 @@ build/
 *.tsbuildinfo
 *.d.ts
 !vite-env.d.ts
+!**/types/*.d.ts
 vite.config.js
 
 # Python
