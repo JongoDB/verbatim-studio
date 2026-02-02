@@ -74,6 +74,23 @@ if [ -f "$SCRIPT_DIR/requirements-ml.txt" ]; then
   cp "$SCRIPT_DIR/requirements-ml.txt" "$RESOURCES_DIR/"
 fi
 
+# Download and copy FFmpeg binaries
+echo "Setting up FFmpeg..."
+FFMPEG_DIR="$PROJECT_ROOT/build/resources/ffmpeg"
+if [ ! -f "$FFMPEG_DIR/ffmpeg" ] && [ ! -f "$FFMPEG_DIR/ffmpeg.exe" ]; then
+  echo "Downloading FFmpeg..."
+  "$SCRIPT_DIR/download-ffmpeg.sh"
+fi
+
+if [ -d "$FFMPEG_DIR" ]; then
+  echo "Copying FFmpeg binaries..."
+  mkdir -p "$RESOURCES_DIR/ffmpeg"
+  cp -R "$FFMPEG_DIR/"* "$RESOURCES_DIR/ffmpeg/" 2>/dev/null || true
+  ls -la "$RESOURCES_DIR/ffmpeg"
+else
+  echo "Warning: FFmpeg binaries not found, video processing may not work"
+fi
+
 echo ""
 echo "=== Done ==="
 echo "Resources prepared at: $RESOURCES_DIR"

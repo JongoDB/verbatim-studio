@@ -29,6 +29,45 @@ router = APIRouter(prefix="/recordings", tags=["recordings"])
 VIDEO_MIME_PREFIXES = ("video/",)
 
 
+def _get_ffmpeg_path() -> str:
+    """Get the path to ffmpeg binary.
+
+    Checks for bundled ffmpeg in Electron app resources first,
+    then falls back to system PATH.
+    """
+    import os
+    import shutil
+
+    # Check for bundled ffmpeg in Electron resources
+    # When running in Electron, VERBATIM_ELECTRON=1 is set
+    if os.environ.get("VERBATIM_ELECTRON") == "1":
+        # Try to find the resources path from the Python path
+        # The bundled Python is at resources/python/bin/python3
+        # FFmpeg should be at resources/ffmpeg/ffmpeg
+        import sys
+        python_path = Path(sys.executable)
+        # Go up from python/bin/python3 to resources, then into ffmpeg
+        resources_path = python_path.parent.parent.parent
+
+        if sys.platform == "win32":
+            bundled_ffmpeg = resources_path / "ffmpeg" / "ffmpeg.exe"
+        else:
+            bundled_ffmpeg = resources_path / "ffmpeg" / "ffmpeg"
+
+        if bundled_ffmpeg.exists():
+            logger.debug("Using bundled ffmpeg: %s", bundled_ffmpeg)
+            return str(bundled_ffmpeg)
+
+    # Fall back to system ffmpeg
+    system_ffmpeg = shutil.which("ffmpeg")
+    if system_ffmpeg:
+        logger.debug("Using system ffmpeg: %s", system_ffmpeg)
+        return system_ffmpeg
+
+    # Return "ffmpeg" and let it fail with FileNotFoundError
+    return "ffmpeg"
+
+
 def _is_video(mime_type: str | None) -> bool:
     """Check if a MIME type is a video format."""
     return mime_type is not None and mime_type.startswith(VIDEO_MIME_PREFIXES)
@@ -54,9 +93,10 @@ async def _extract_audio_from_video(video_path: Path) -> Path | None:
     Returns the path to the extracted WAV file, or None if extraction fails.
     """
     audio_path = video_path.parent / "audio.wav"
+    ffmpeg_path = _get_ffmpeg_path()
     try:
         process = await asyncio.create_subprocess_exec(
-            "ffmpeg", "-i", str(video_path),
+            ffmpeg_path, "-i", str(video_path),
             "-vn",             # no video
             "-acodec", "pcm_s16le",  # 16-bit PCM
             "-ar", "16000",    # 16kHz (WhisperX optimal)

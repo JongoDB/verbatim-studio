@@ -1,6 +1,6 @@
 {
   "name": "@verbatim/electron",
-  "version": "0.25.22",
+  "version": "0.25.23",
   "description": "Verbatim Studio - Transcription and Research Tool",
   "author": "Verbatim Studio",
   "private": true,
@@ -54,6 +54,11 @@
       {
         "from": "../../scripts/requirements-ml.txt",
         "to": "requirements-ml.txt"
+      },
+      {
+        "from": "../../build/resources/ffmpeg",
+        "to": "ffmpeg",
+        "filter": ["**/*"]
       }
     ],
     "mac": {

@@ -340,6 +340,56 @@ class MLStatus(BaseModel):
     install_in_progress: bool = False
 
 
+class DependencyStatus(BaseModel):
+    """Comprehensive dependency status for the app."""
+
+    # System binaries
+    ffmpeg_available: bool
+    ffmpeg_path: str | None
+    ffmpeg_bundled: bool
+
+    # ML packages
+    transcription_ready: bool
+    diarization_ready: bool
+    hf_token_set: bool
+
+    # Features availability
+    video_processing: bool
+    audio_transcription: bool
+    speaker_diarization: bool
+    ocr_available: bool
+    embeddings_available: bool
+    llm_available: bool
+
+
+def _check_ffmpeg() -> tuple[bool, str | None, bool]:
+    """Check if ffmpeg is available and whether it's bundled.
+
+    Returns: (available, path, is_bundled)
+    """
+    import shutil
+
+    # Check for bundled ffmpeg first
+    if os.environ.get("VERBATIM_ELECTRON") == "1":
+        python_path = Path(sys.executable)
+        resources_path = python_path.parent.parent.parent
+
+        if sys.platform == "win32":
+            bundled_ffmpeg = resources_path / "ffmpeg" / "ffmpeg.exe"
+        else:
+            bundled_ffmpeg = resources_path / "ffmpeg" / "ffmpeg"
+
+        if bundled_ffmpeg.exists():
+            return True, str(bundled_ffmpeg), True
+
+    # Check system PATH
+    system_ffmpeg = shutil.which("ffmpeg")
+    if system_ffmpeg:
+        return True, system_ffmpeg, False
+
+    return False, None, False
+
+
 def _is_apple_silicon() -> bool:
     """Check if running on Apple Silicon Mac."""
     return sys.platform == "darwin" and platform.machine() == "arm64"
@@ -382,6 +432,51 @@ async def get_ml_status() -> MLStatus:
         is_apple_silicon=is_apple,
         recommended_engine=recommended,
         install_in_progress=_ml_install_in_progress,
+    )
+
+
+@router.get("/dependency-check", response_model=DependencyStatus)
+async def check_dependencies() -> DependencyStatus:
+    """Check all system dependencies and their availability.
+
+    This helps users understand what features are available and what's missing.
+    """
+    from core.transcription_settings import get_transcription_settings
+
+    # Check FFmpeg
+    ffmpeg_available, ffmpeg_path, ffmpeg_bundled = _check_ffmpeg()
+
+    # Check ML packages
+    whisperx = _check_package_installed("whisperx")
+    mlx_whisper = _check_package_installed("mlx_whisper")
+    torch = _check_package_installed("torch")
+    pyannote = _check_package_installed("pyannote.audio")
+    transformers = _check_package_installed("transformers")
+    sentence_transformers = _check_package_installed("sentence_transformers")
+    llama_cpp = _check_package_installed("llama_cpp")
+
+    # Check HF token
+    settings = await get_transcription_settings()
+    hf_token_set = bool(settings.get("hf_token"))
+
+    # Determine feature availability
+    is_apple = _is_apple_silicon()
+    transcription_ready = mlx_whisper if is_apple else (whisperx and torch)
+    diarization_ready = whisperx and pyannote and torch and hf_token_set
+
+    return DependencyStatus(
+        ffmpeg_available=ffmpeg_available,
+        ffmpeg_path=ffmpeg_path,
+        ffmpeg_bundled=ffmpeg_bundled,
+        transcription_ready=transcription_ready,
+        diarization_ready=diarization_ready,
+        hf_token_set=hf_token_set,
+        video_processing=ffmpeg_available,
+        audio_transcription=transcription_ready,
+        speaker_diarization=diarization_ready,
+        ocr_available=transformers,
+        embeddings_available=sentence_transformers,
+        llm_available=llama_cpp,
     )
 
 

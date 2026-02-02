@@ -51,3 +51,6 @@ models/
 .playwright-mcp/
 *.db-wal
 *.db-shm
+
+# Downloaded FFmpeg binaries
+build/resources/ffmpeg/
