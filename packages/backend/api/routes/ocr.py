@@ -32,6 +32,7 @@ OCR_PYTHON_DEPS = [
     "qwen-vl-utils>=0.0.8",
     "accelerate>=0.26.0",
     "torch>=2.0.0",  # Required by transformers for model inference
+    "torchvision>=0.15.0",  # Required by qwen-vl-utils for image processing
 ]
 
 
@@ -184,9 +185,13 @@ def _do_download_sync(model_id: str, repo: str, dest_path: Path, marker_file: Pa
             logger.info("OCR Python dependencies installed successfully")
 
         _download_phase[model_id] = "downloading"
+        import os
         from huggingface_hub import snapshot_download
 
         logger.info("Starting OCR model download: %s -> %s", repo, dest_path)
+
+        # Set longer timeout for large model downloads (default is 10s which is too short)
+        os.environ["HF_HUB_DOWNLOAD_TIMEOUT"] = "300"  # 5 minutes
 
         # Only download files needed for inference (exclude demos, docs, examples)
         # Note: resume_download=True is the default, allowing interrupted downloads to resume
@@ -194,6 +199,8 @@ def _do_download_sync(model_id: str, repo: str, dest_path: Path, marker_file: Pa
             repo_id=repo,
             repo_type="model",
             local_dir=str(dest_path),
+            etag_timeout=300,  # 5 minutes for metadata requests
+            max_workers=1,  # Single thread to avoid connection issues
             allow_patterns=[
                 "*.safetensors",
                 "*.json",
