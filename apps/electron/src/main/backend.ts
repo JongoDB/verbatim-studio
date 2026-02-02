@@ -134,12 +134,21 @@ class BackendManager extends EventEmitter {
 
   private getPythonPath(): string {
     if (app.isPackaged) {
-      // Bundled Python
+      // Bundled Python in resources
       const resourcesPath = process.resourcesPath;
-      return path.join(resourcesPath, 'python', 'bin', 'python3.12');
+      if (process.platform === 'win32') {
+        return path.join(resourcesPath, 'python', 'python.exe');
+      } else {
+        return path.join(resourcesPath, 'python', 'bin', 'python3');
+      }
     } else {
       // Development: Use venv Python
-      return path.join(__dirname, '../../../../packages/backend/.venv/bin/python');
+      const backendPath = path.join(__dirname, '../../../../packages/backend');
+      if (process.platform === 'win32') {
+        return path.join(backendPath, '.venv', 'Scripts', 'python.exe');
+      } else {
+        return path.join(backendPath, '.venv', 'bin', 'python');
+      }
     }
   }
 
