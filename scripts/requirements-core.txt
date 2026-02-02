@@ -1,0 +1,44 @@
+# Core dependencies bundled with the Electron app
+# ML dependencies are downloaded on first use (not bundled)
+# Use >= constraints to match pyproject.toml
+
+# Web framework
+fastapi>=0.115.0
+uvicorn[standard]>=0.34.0
+pydantic>=2.10.0
+pydantic-settings>=2.7.0
+
+# Database
+sqlalchemy>=2.0.0
+aiosqlite>=0.20.0
+greenlet>=3.0.0
+
+# HTTP client
+httpx>=0.28.0
+
+# File handling
+python-multipart>=0.0.18
+aiofiles>=24.1.0
+mutagen>=1.47.0
+
+# Document processing
+python-docx>=1.1.0
+openpyxl>=3.1.0
+python-pptx>=0.6.23
+PyMuPDF>=1.24.0
+
+# File system watching
+watchdog>=4.0.0
+
+# Credential encryption
+keyring>=25.0.0
+cryptography>=46.0.0
+
+# OAuth providers
+aiohttp>=3.9.0
+google-api-python-client>=2.0.0
+google-auth-oauthlib>=1.0.0
+google-auth>=2.0.0
+
+# Export
+reportlab>=4.0.0
