@@ -1,22 +1,78 @@
 // Backend API URL configuration
-// - In development with Vite proxy: use empty string (relative URLs)
-// - In production or with tunnel: uses same origin
-// - Override with VITE_API_URL if backend is on different host
-const API_BASE_URL = import.meta.env.VITE_API_URL ?? '';
+// Priority:
+// 1. Electron app: use URL from main process via IPC
+// 2. VITE_API_URL environment variable
+// 3. Empty string (relative URLs for same-origin)
+
+// Cache the API URL once resolved
+let cachedApiBaseUrl: string | null = null;
+let apiUrlPromise: Promise<string> | null = null;
+
+/**
+ * Initialize the API base URL.
+ * In Electron, this fetches the URL from the main process.
+ * Call this early in app startup.
+ */
+export async function initializeApiUrl(): Promise<string> {
+  if (cachedApiBaseUrl !== null) {
+    return cachedApiBaseUrl;
+  }
+
+  if (apiUrlPromise) {
+    return apiUrlPromise;
+  }
+
+  apiUrlPromise = (async () => {
+    // Check if running in Electron
+    if (window.electronAPI?.getApiUrl) {
+      const url = await window.electronAPI.getApiUrl();
+      if (url) {
+        console.log('[API] Using Electron backend URL:', url);
+        cachedApiBaseUrl = url;
+        return url;
+      }
+    }
+
+    // Fall back to environment variable or empty string
+    const envUrl = import.meta.env.VITE_API_URL ?? '';
+    console.log('[API] Using environment URL:', envUrl || '(relative)');
+    cachedApiBaseUrl = envUrl;
+    return envUrl;
+  })();
+
+  return apiUrlPromise;
+}
+
+/**
+ * Get the API base URL synchronously.
+ * Returns cached value or empty string if not yet initialized.
+ * Prefer using initializeApiUrl() at app startup.
+ */
+function getApiBaseUrl(): string {
+  return cachedApiBaseUrl ?? import.meta.env.VITE_API_URL ?? '';
+}
+
+/**
+ * Check if running in Electron
+ */
+export function isElectron(): boolean {
+  return typeof window !== 'undefined' && !!window.electronAPI;
+}
 
 /**
  * Get the WebSocket URL for a given API path.
  * Automatically handles:
  * - Protocol (ws:// vs wss:// based on current page protocol)
- * - Host (uses current origin or VITE_API_URL if set)
+ * - Host (uses current origin or API_BASE_URL if set)
  * - Development mode: connects directly to backend (Vite WS proxy unreliable)
  */
 export function getWebSocketUrl(path: string): string {
   const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const apiBaseUrl = getApiBaseUrl();
 
-  if (API_BASE_URL) {
+  if (apiBaseUrl) {
     // If API_BASE_URL is set, use it (convert http(s) to ws(s))
-    const apiUrl = new URL(API_BASE_URL);
+    const apiUrl = new URL(apiBaseUrl);
     const apiWsProtocol = apiUrl.protocol === 'https:' ? 'wss:' : 'ws:';
     return `${apiWsProtocol}//${apiUrl.host}${path}`;
   }
@@ -36,7 +92,7 @@ export function getWebSocketUrl(path: string): string {
  * Uses relative URLs when API_BASE_URL is not set.
  */
 export function getApiUrl(path: string): string {
-  return `${API_BASE_URL}${path}`;
+  return `${getApiBaseUrl()}${path}`;
 }
 
 // Interfaces matching backend response models
@@ -1019,8 +1075,8 @@ export interface OAuthCredentialsUpdate {
 class ApiClient {
   private baseUrl: string;
 
-  constructor(baseUrl: string = API_BASE_URL) {
-    this.baseUrl = baseUrl;
+  constructor(baseUrl?: string) {
+    this.baseUrl = baseUrl ?? getApiBaseUrl();
   }
 
   private async request<T>(path: string, options?: RequestInit): Promise<T> {
