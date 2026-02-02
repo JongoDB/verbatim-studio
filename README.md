@@ -106,6 +106,32 @@ The desktop app is self-contained—no Python, Node.js, or other dependencies re
 On first launch, Verbatim Studio will download the required AI models (~3-5 GB total). This happens once and models are cached locally.
 
 <details>
+<summary><strong>macOS: "App is damaged" or "unidentified developer" warning</strong></summary>
+
+The app is not yet code-signed. To open it:
+
+1. **Right-click** (or Control-click) the app and select **Open**
+2. Click **Open** in the dialog that appears
+
+Or, if that doesn't work:
+
+1. Open **System Settings** → **Privacy & Security**
+2. Scroll down to find the blocked app message
+3. Click **Open Anyway**
+
+</details>
+
+<details>
+<summary><strong>Windows: SmartScreen warning</strong></summary>
+
+The app is not yet code-signed. When you see the SmartScreen warning:
+
+1. Click **More info**
+2. Click **Run anyway**
+
+</details>
+
+<details>
 <summary><strong>Development Setup (Build from Source)</strong></summary>
 
 #### Prerequisites
