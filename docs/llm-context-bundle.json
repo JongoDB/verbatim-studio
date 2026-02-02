@@ -1,5 +1,5 @@
 {
-  "version": "1.0.0",
+  "version": "1.1.0",
   "generated_at": "2026-02-01",
   "app": {
     "name": "Verbatim Studio",
@@ -10,25 +10,25 @@
     {
       "key": "dashboard",
       "label": "Dashboard",
-      "description": "Home page with overview statistics, recent recordings, and quick actions",
+      "description": "Overview stats, recent recordings, quick actions, onboarding tour",
       "path": "/"
     },
     {
       "key": "recordings",
       "label": "Recordings",
-      "description": "Upload and manage audio/video files, start transcriptions, view status",
+      "description": "Upload audio/video files, apply templates, start transcription, bulk operations",
       "path": "/recordings"
     },
     {
       "key": "projects",
       "label": "Projects",
-      "description": "Organize recordings into groups with shared metadata and analytics",
+      "description": "Organize recordings with custom project types, metadata schemas, and analytics",
       "path": "/projects"
     },
     {
       "key": "documents",
       "label": "Documents",
-      "description": "Upload and manage PDFs and other documents with OCR text extraction",
+      "description": "Upload PDFs and images with OCR text extraction, add page-anchored notes",
       "path": "/documents"
     },
     {
@@ -47,19 +47,19 @@
     {
       "key": "search",
       "label": "Search",
-      "description": "Global search across recordings, transcripts, documents, and notes",
+      "description": "Keyword or semantic (AI-powered) search across recordings, documents, and notes",
       "path": "/search"
     },
     {
       "key": "files",
       "label": "Files",
-      "description": "File browser for navigating folder structure and moving files",
+      "description": "Browse folder structure, move files between storage locations",
       "path": "/browser"
     },
     {
       "key": "settings",
       "label": "Settings",
-      "description": "Configure transcription, AI models, storage, and app preferences",
+      "description": "Configure transcription, AI models, storage locations, backup/restore",
       "path": "/settings"
     }
   ],
@@ -67,27 +67,54 @@
     {
       "id": "transcription",
       "name": "Audio/Video Transcription",
-      "description": "Convert audio and video files to text using local WhisperX AI models",
+      "description": "Convert audio and video files to text using local WhisperX AI models with optional speaker diarization",
       "ui_location": "Recordings page",
       "steps": [
         "Navigate to Recordings in the sidebar",
         "Drag and drop files or click Upload",
         "Enter a title and optional metadata",
+        "Optionally select a recording template",
         "Click Transcribe to start processing",
         "Wait for status to change to Completed",
         "Click the recording to view the transcript"
       ]
     },
     {
+      "id": "recording-templates",
+      "name": "Recording Templates",
+      "description": "Reusable templates with custom metadata fields for recordings",
+      "ui_location": "Settings or during upload",
+      "field_types": ["text", "textarea", "date", "number", "select"],
+      "steps": [
+        "Create a template with custom fields",
+        "When uploading a recording, select the template",
+        "Fill in the custom metadata fields"
+      ]
+    },
+    {
+      "id": "project-types",
+      "name": "Project Types",
+      "description": "Custom metadata schemas for projects (similar to recording templates)",
+      "ui_location": "Settings or when creating project",
+      "steps": [
+        "Create a project type with custom fields",
+        "When creating a project, select the type",
+        "Fill in project-level metadata"
+      ]
+    },
+    {
       "id": "transcript-editing",
       "name": "Transcript Editing",
-      "description": "Edit transcript text, change speakers, add highlights and comments",
+      "description": "Edit transcript text, manage speakers, add highlights and comments",
       "ui_location": "Recording detail / Transcript view",
-      "steps": [
-        "Click any segment text to edit",
-        "Click speaker label to change speaker",
-        "Click highlight icon to color-code segments",
-        "Click comment icon to add notes"
+      "capabilities": [
+        "Edit segment text",
+        "Rename speakers",
+        "Merge duplicate speakers",
+        "Reassign segments to different speakers",
+        "Set speaker colors",
+        "Highlight segments (6 colors)",
+        "Add comments to segments"
       ]
     },
     {
@@ -95,24 +122,54 @@
       "name": "Speaker Identification",
       "description": "Automatically identify and label different speakers in a recording",
       "ui_location": "Settings > Transcription (enable), Transcript view (manage)",
-      "steps": [
-        "Enable diarization in Settings > Transcription",
-        "Add HuggingFace token if required",
-        "Transcribe a recording",
-        "Rename speakers in the transcript view"
+      "capabilities": [
+        "Auto-generated labels (SPEAKER_00, SPEAKER_01, etc.)",
+        "Rename speakers to friendly names",
+        "Assign colors to speakers",
+        "Merge duplicate speakers",
+        "Reassign segments between speakers"
+      ],
+      "requirements": ["Enable diarization in Settings", "HuggingFace token required"]
+    },
+    {
+      "id": "highlights",
+      "name": "Segment Highlights",
+      "description": "Color-code important transcript segments",
+      "ui_location": "Transcript view",
+      "colors": ["yellow", "green", "blue", "red", "purple", "orange"],
+      "notes": "One highlight per segment, bulk operations supported"
+    },
+    {
+      "id": "tags",
+      "name": "Tags",
+      "description": "Color-coded labels for organizing and filtering recordings",
+      "ui_location": "Recordings page, Recording detail",
+      "capabilities": [
+        "Custom hex colors",
+        "Bulk apply/remove",
+        "Filter recordings by tag"
       ]
     },
     {
       "id": "projects",
       "name": "Project Organization",
-      "description": "Group related recordings into projects with custom metadata",
+      "description": "Group related recordings into projects with custom metadata and analytics",
       "ui_location": "Projects page",
       "steps": [
         "Navigate to Projects",
         "Click New Project",
-        "Enter name and optional project type",
+        "Enter name and select project type (optional)",
         "Assign recordings from the Recordings page"
       ]
+    },
+    {
+      "id": "semantic-search",
+      "name": "Semantic Search",
+      "description": "AI-powered meaning-based search using embeddings",
+      "ui_location": "Search page",
+      "how_it_works": "Uses vector embeddings to find conceptually related content, not just exact text matches",
+      "example": "Searching 'money discussion' finds segments about 'budget', 'costs', 'revenue'",
+      "vs_keyword": "Keyword search finds exact text matches; semantic search finds related meanings"
     },
     {
       "id": "ai-chat",
@@ -124,18 +181,25 @@
         "Click attachment icon to add context",
         "Select recordings or documents",
         "Type your question and press Enter"
+      ],
+      "example_questions": [
+        "Summarize the key points",
+        "What action items were mentioned?",
+        "Who spoke about the budget?",
+        "Compare both transcripts on marketing"
       ]
     },
     {
-      "id": "search",
-      "name": "Global Search",
-      "description": "Find content across all recordings, documents, and notes",
-      "ui_location": "Search page",
-      "steps": [
-        "Navigate to Search",
-        "Enter your search query",
-        "Choose keyword or semantic search",
-        "Click a result to navigate to it"
+      "id": "ai-analysis",
+      "name": "AI Analysis",
+      "description": "Built-in transcript analysis features",
+      "ui_location": "Transcript view",
+      "analysis_types": [
+        "Summarization (summary, key points, action items, topics)",
+        "Sentiment analysis",
+        "Entity extraction (people, organizations, places)",
+        "Question extraction",
+        "Action item identification"
       ]
     },
     {
@@ -143,12 +207,14 @@
       "name": "Live Transcription",
       "description": "Transcribe speech in real-time from your microphone",
       "ui_location": "Live page",
+      "badge": "BETA",
       "steps": [
         "Navigate to Live",
         "Click Connect",
         "Allow microphone access",
+        "Select language",
         "Speak to see real-time transcription",
-        "Click Save to keep the session"
+        "Click Save to keep the session as a recording"
       ]
     },
     {
@@ -156,29 +222,61 @@
       "name": "Transcript Export",
       "description": "Export transcripts to various formats",
       "ui_location": "Transcript view toolbar",
-      "formats": ["TXT", "SRT", "VTT", "DOCX", "PDF"]
+      "formats": [
+        {"id": "txt", "name": "TXT", "description": "Plain text with optional timestamps"},
+        {"id": "srt", "name": "SRT", "description": "SubRip subtitle format for video"},
+        {"id": "vtt", "name": "VTT", "description": "WebVTT subtitle format for web video"},
+        {"id": "docx", "name": "DOCX", "description": "Microsoft Word document"},
+        {"id": "pdf", "name": "PDF", "description": "Formatted PDF document"}
+      ]
     },
     {
       "id": "documents",
       "name": "Document Management",
-      "description": "Upload PDFs and documents with OCR text extraction",
+      "description": "Upload and process documents with OCR text extraction",
       "ui_location": "Documents page",
-      "steps": [
-        "Navigate to Documents",
-        "Upload PDF or image files",
-        "Wait for OCR processing",
-        "View extracted text and add notes"
+      "supported_formats": ["PDF", "PNG", "JPG", "TIFF", "DOCX", "XLSX", "PPTX", "TXT", "MD"],
+      "capabilities": [
+        "OCR text extraction",
+        "Markdown extraction",
+        "Page-anchored notes",
+        "Include in AI chat context"
       ]
+    },
+    {
+      "id": "notes",
+      "name": "Notes",
+      "description": "Contextual notes anchored to specific locations",
+      "anchor_types": [
+        {"type": "timestamp", "for": "Recordings"},
+        {"type": "page", "for": "Documents"},
+        {"type": "paragraph", "for": "Documents"},
+        {"type": "selection", "for": "Documents"}
+      ]
+    },
+    {
+      "id": "storage-locations",
+      "name": "Storage Locations",
+      "description": "Configure where files are stored",
+      "ui_location": "Settings > Storage",
+      "types": [
+        {"type": "local", "description": "Local file system"},
+        {"type": "network", "subtypes": ["SMB (Windows shares)", "NFS"]},
+        {"type": "cloud", "subtypes": ["Google Drive", "OneDrive", "Dropbox"], "auth": "OAuth"}
+      ],
+      "features": ["Test connection", "Set default", "Status monitoring", "Encrypted credentials"]
     },
     {
       "id": "backup",
       "name": "Backup and Restore",
       "description": "Export and import full database backups",
       "ui_location": "Settings > Backup/Archive",
-      "steps": [
-        "Navigate to Settings > Backup/Archive",
-        "Click Export to create backup",
-        "Click Import to restore from backup"
+      "format": ".vbz (ZIP archive)",
+      "capabilities": [
+        "Full database export",
+        "Optional media file inclusion",
+        "Import with merge mode",
+        "Version compatibility checking"
       ]
     }
   ],
@@ -206,44 +304,53 @@
       "model": "Whisper model size (tiny, base, small, medium, large)",
       "device": "CPU or GPU (CUDA for Nvidia, MPS for Apple Silicon)",
       "compute_type": "Precision level (float32, float16, int8)",
+      "batch_size": "Processing chunks (higher = faster but more memory)",
+      "language": "Source audio language",
       "diarization": "Enable speaker identification",
-      "huggingface_token": "Required for some models and diarization"
+      "huggingface_token": "Required for diarization and some models"
     },
     "ai_llm": {
-      "models": "Download and manage chat AI models",
+      "models": "Download and manage chat AI models (Mistral, Llama, etc.)",
       "active_model": "Select which model to use",
       "gpu_layers": "How much to offload to GPU"
     },
     "ocr": {
-      "models": "Download and manage OCR models"
+      "models": "Download and manage OCR models for document text extraction"
     },
     "storage": {
       "locations": "Add local, network, or cloud storage",
-      "cloud_providers": "Google Drive, OneDrive, Dropbox, S3",
-      "default_location": "Where new files are stored"
+      "cloud_providers": "Google Drive, OneDrive, Dropbox (OAuth)",
+      "default_location": "Where new files are stored",
+      "test_connection": "Verify storage is accessible"
     },
     "backup": {
-      "export": "Create full database backup",
-      "import": "Restore from backup file"
+      "export": "Create full database backup (.vbz file)",
+      "import": "Restore from backup file with merge options",
+      "include_media": "Option to include audio/video files"
+    },
+    "system_info": {
+      "hardware": "CPU, RAM, GPU details",
+      "services": "Backend service status",
+      "version": "App and model versions"
     }
   },
   "troubleshooting": [
     {
       "issue": "Model not loading",
-      "solution": "Navigate to Settings > AI/LLM or Settings > Transcription and download a model"
+      "solution": "Navigate to Settings > AI/LLM and download a model"
     },
     {
       "issue": "Transcription failed",
-      "causes": ["Unsupported file format", "Corrupted file", "Out of memory"],
-      "solution": "Try converting to MP3/WAV, use a smaller model, or switch to CPU"
+      "causes": ["Unsupported file format", "Corrupted file", "Out of memory", "GPU error"],
+      "solution": "Try converting to MP3/WAV, use a smaller model (tiny/base), or switch to CPU"
     },
     {
       "issue": "Transcription is slow",
-      "solution": "Use a smaller model (tiny or base), enable GPU acceleration, close other apps"
+      "solution": "Use a smaller model, enable GPU acceleration, increase batch size, close other apps"
     },
     {
       "issue": "No speakers detected",
-      "solution": "Enable diarization in Settings > Transcription and add HuggingFace token"
+      "solution": "Enable diarization in Settings > Transcription. Requires HuggingFace token."
     },
     {
       "issue": "Live transcription not working",
@@ -254,16 +361,28 @@
       "solution": "Download OCR models in Settings > OCR"
     },
     {
-      "issue": "Cloud storage connection failed",
-      "solution": "Re-authenticate in Settings > Storage"
+      "issue": "Cloud storage authentication expired",
+      "solution": "Navigate to Settings > Storage and click Re-authenticate"
+    },
+    {
+      "issue": "Storage location unreachable",
+      "solution": "Check network connection, re-authenticate OAuth, verify path exists"
+    },
+    {
+      "issue": "Semantic search not finding results",
+      "solution": "Embeddings generate automatically but may take time. Try keyword search or rephrase query."
     },
     {
       "issue": "Chat assistant not responding",
-      "solution": "Ensure AI model is downloaded in Settings > AI/LLM, check connection status"
+      "solution": "Ensure AI model is downloaded and activated in Settings > AI/LLM, check connection status"
     },
     {
       "issue": "Export not working",
       "solution": "Ensure transcription is complete, check disk space"
+    },
+    {
+      "issue": "Backup import failing",
+      "solution": "Check archive version compatibility, ensure file isn't corrupted, verify disk space"
     }
   ],
   "knowledge_files": [

@@ -137,32 +137,54 @@ Guidelines:
 # Help context injected when help-related keywords are detected
 MAX_HELP_CONTEXT = """
 Verbatim Studio Navigation:
-- Dashboard: Overview stats, recent items, quick actions
-- Recordings: Upload audio/video, start transcription, manage files
-- Projects: Organize recordings into groups
-- Documents: Upload PDFs with OCR text extraction
-- Chats: View saved AI conversations
+- Dashboard: Overview stats, recent items, quick actions, onboarding tour
+- Recordings: Upload audio/video, apply templates, transcribe, bulk operations
+- Projects: Organize recordings with custom project types and metadata
+- Documents: Upload PDFs/images, OCR text extraction, page-anchored notes
+- Chats: View and resume saved AI conversations
 - Live: Real-time microphone transcription (BETA)
-- Search: Find content across recordings and documents
-- Files: Browse folder structure
-- Settings: Configure transcription, AI models, storage
+- Search: Keyword or semantic (AI-powered) search across all content
+- Files: Browse folder structure, move files between storage locations
+- Settings: Transcription, AI models, storage locations, backup/restore
+
+Core Features:
+- Recording Templates: Custom metadata fields (text, date, number, dropdown) for recordings
+- Project Types: Custom metadata schemas for projects
+- Tags: Color-coded labels for filtering recordings
+- Speakers: Auto-detected (diarization), can rename, merge, assign colors
+- Highlights: Color-code segments (yellow, green, blue, red, purple, orange)
+- Comments: Add notes to transcript segments
+- Notes: Anchor to timestamps (recordings) or pages (documents)
+- Semantic Search: AI-powered meaning-based search using embeddings
+- AI Analysis: Summarization, sentiment, entity extraction, action items
+
+Storage Options:
+- Local: File system storage
+- Network: SMB (Windows shares), NFS
+- Cloud (OAuth): Google Drive, OneDrive, Dropbox
 
 Common Tasks:
-- Transcribe: Recordings > Upload file > Click Transcribe
-- Edit transcript: Click segment text to edit, click speaker to reassign
-- Export: In transcript view, click Export > choose format (TXT, SRT, VTT, DOCX, PDF)
-- AI chat: Click chat bubble (bottom-right), attach content, ask questions
-- Projects: Projects > New Project, then assign recordings
+- Transcribe: Recordings > Upload > (optional) Select template > Transcribe
+- Edit transcript: Click segment text to edit, speaker label to reassign
+- Highlight: Click highlight icon on segment, choose color
+- Merge speakers: In speakers panel, merge duplicates
+- Export: Transcript view > Export > TXT/SRT/VTT/DOCX/PDF
+- Semantic search: Search page > Enter query > Select "Semantic" match type
+- Cloud storage: Settings > Storage > Add > Select provider > Authenticate
+- Backup: Settings > Backup/Archive > Export (creates .vbz file)
 
-Keyboard Shortcuts (in transcript view):
+Keyboard Shortcuts (transcript view):
 - Space/K: Play/Pause
 - J/L: Skip back/forward 10s
 - Arrow keys: Skip 5s or jump segments
+- Shift+,/.: Skip 1s
 
 Troubleshooting:
 - Model not loading: Settings > AI/LLM > Download a model
-- Transcription failed: Try smaller model, check file format
-- No speakers: Enable diarization in Settings > Transcription
+- Transcription failed: Try smaller model (tiny/base), check file format, switch to CPU
+- No speakers: Enable diarization in Settings > Transcription (needs HuggingFace token)
+- Cloud auth expired: Settings > Storage > Re-authenticate
+- Semantic search empty: Embeddings generate automatically, may take time
 """
 
 
@@ -562,10 +584,29 @@ async def chat_multi_stream(
 
         # App-specific terms (strong signal)
         app_terms = [
-            "sidebar", "settings", "recordings", "transcribe", "transcript", "export",
-            "project", "upload", "download", "model", "whisper", "diarization",
-            "speaker", "segment", "shortcut", "keyboard", "theme", "backup",
-            "live", "microphone", "ocr", "document", "search", "max", "chat",
+            # Navigation
+            "sidebar", "dashboard", "settings", "recordings", "projects", "documents",
+            "chats", "files", "browser", "navigation", "menu",
+            # Core features
+            "transcribe", "transcript", "transcription", "export", "import",
+            "upload", "download", "model", "whisper", "diarization",
+            "speaker", "segment", "highlight", "comment", "note",
+            # Organization
+            "project", "tag", "template", "recording template", "project type",
+            "metadata", "custom field",
+            # Search
+            "search", "semantic", "keyword", "embedding", "find",
+            # AI
+            "max", "chat", "assistant", "summarize", "analyze", "sentiment",
+            # Storage
+            "storage", "cloud", "google drive", "onedrive", "dropbox", "oauth",
+            "backup", "restore", "archive",
+            # Settings
+            "shortcut", "keyboard", "theme", "language", "huggingface",
+            # Live
+            "live", "microphone", "real-time", "realtime",
+            # Documents
+            "ocr", "pdf", "document",
         ]
 
         # Check for help phrases
