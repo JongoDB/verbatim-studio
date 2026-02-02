@@ -6,18 +6,130 @@
 
 ## Overview
 
-Plan for transitioning Verbatim Studio from the current development environment (browser + Python venv) to a production Electron app with self-contained dependencies.
+Plan for transitioning Verbatim Studio from the current development environment (browser + Python venv) to a production Electron app with self-contained dependencies. The app supports both basic (local) and enterprise (server-connected) tiers through a unified architecture.
 
 ## Key Design Decisions
 
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
+| App architecture | Unified app with connection modes | Single codebase, graceful upgrade path, offline-first |
 | Python runtime | Embedded (python-build-standalone) | Maintainable, debuggable, cross-platform binaries available |
-| Backend communication | HTTP over localhost | Zero frontend changes, existing API code works as-is |
+| Backend communication | HTTP over localhost or remote | Zero frontend changes, existing API code works as-is |
 | ML dependencies | Download on first use | Keeps app small (~150MB), users only download what they need |
 | Data location | User-configurable, platform defaults | Matches existing Storage Locations feature |
 | Build pipeline | GitHub Actions (full CI) | No manual steps, automated for all platforms |
 | Dev/prod detection | Runtime environment variables | Single codebase, no code duplication |
+
+## Unified App Architecture
+
+Rather than separate apps for basic and enterprise tiers, we build a single Electron app that supports multiple connection modes:
+
+### Connection Modes
+
+| Mode | Description | Backend | Use Case |
+|------|-------------|---------|----------|
+| Local | Everything on-device | Embedded Python | Basic tier, offline work |
+| Connected | Thin client to remote server | Remote enterprise server | Enterprise tier |
+| Hybrid | Local + sync to server | Both | Enterprise users needing offline access |
+
+### Mode Selection UI
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Settings → Connection                                      │
+│  ─────────────────────────────────────────────────────────  │
+│                                                             │
+│  ○ Local Mode (default)                                     │
+│    Everything runs on your device. No internet required.    │
+│                                                             │
+│  ○ Connect to Server                         [Enterprise]   │
+│    ┌─────────────────────────────────────────────────────┐  │
+│    │ https://company.verbatim.studio                     │  │
+│    └─────────────────────────────────────────────────────┘  │
+│    [ Test Connection ]                                      │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Benefits of Unified Approach
+
+1. **Single app, single codebase** — Less maintenance, consistent UX
+2. **Graceful upgrade path** — Basic users can connect to server later without reinstalling
+3. **Offline-first for enterprise** — Work locally, sync when back online
+4. **Flexible deployment** — Same app works for individuals and organizations
+
+### Phased Implementation
+
+**Phase A: Local + Connected (no sync)**
+- User picks one mode or the other
+- Switching modes shows different data (not merged)
+- Enterprise users connect to their server
+- Basic users stay local
+
+**Phase B: Hybrid Sync (later)**
+- Per-project sync settings
+- Offline queue for pending uploads
+- Conflict resolution (last-write-wins or manual)
+- Background sync when connected
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Project: Q4 Interviews                      [Local Only ▼] │
+│  ─────────────────────────────────────────────────────────  │
+│                                                             │
+│  Storage:                                                   │
+│    ○ Local Only — stays on this device                      │
+│    ○ Synced — available on server + this device             │
+│    ○ Server Only — stream from server, don't store locally  │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Electron Startup Logic
+
+```typescript
+// apps/electron/src/main.ts
+
+async function start() {
+  const settings = await loadSettings();
+
+  if (settings.connectionMode === 'local') {
+    // Spawn embedded Python backend
+    await spawnPythonBackend();
+    apiBaseUrl = `http://127.0.0.1:${port}`;
+  } else {
+    // Connect to remote server
+    apiBaseUrl = settings.serverUrl;
+    // Optionally spawn local Python for hybrid mode
+    if (settings.connectionMode === 'hybrid') {
+      await spawnPythonBackend();
+      localApiUrl = `http://127.0.0.1:${port}`;
+    }
+  }
+
+  createMainWindow(apiBaseUrl);
+}
+```
+
+### Backend Adapters (Enterprise)
+
+The backend uses adapters to support both tiers:
+
+```
+packages/backend/
+  adapters/
+    database/
+      sqlite.py      # Basic tier (local)
+      postgres.py    # Enterprise tier (server)
+    storage/
+      local.py       # Local filesystem
+      s3.py          # Enterprise cloud storage
+    auth/
+      none.py        # Basic tier (no auth)
+      rbac.py        # Enterprise tier (roles, SSO)
+```
+
+Same API surface, different implementations. The frontend doesn't know or care which adapter is in use.
 
 ## High-Level Architecture
 
@@ -90,32 +202,44 @@ numpy==2.0.2
 
 ```
 1. Electron main process starts
-   - Find free port (e.g., 52847)
+   - Load user settings (connection mode, server URL)
    - Set environment variables:
      VERBATIM_ELECTRON=1
-     VERBATIM_PORT=52847
      VERBATIM_DATA_DIR=~/Library/Application Support/...
 
-2. Spawn Python backend
-   {resources}/python-standalone/bin/python -m uvicorn
-     api.main:app --host 127.0.0.1 --port 52847
+2. Determine backend based on connection mode:
 
-3. Wait for backend ready
-   - Poll http://127.0.0.1:52847/health every 100ms
-   - Timeout after 30s (show error if fails)
-   - Show splash screen during wait
+   LOCAL MODE:
+   - Find free port (e.g., 52847)
+   - Set VERBATIM_PORT=52847
+   - Spawn Python backend:
+     {resources}/python-standalone/bin/python -m uvicorn
+       api.main:app --host 127.0.0.1 --port 52847
+   - Wait for backend ready (poll /health every 100ms)
+   - apiBaseUrl = http://127.0.0.1:52847
 
-4. Load renderer
+   CONNECTED MODE:
+   - apiBaseUrl = settings.serverUrl (e.g., https://company.verbatim.studio)
+   - Test connection to remote server
+   - No local Python spawned
+
+   HYBRID MODE:
+   - Spawn local Python (same as Local Mode)
+   - Also configure remote server URL
+   - localApiUrl = http://127.0.0.1:52847
+   - remoteApiUrl = settings.serverUrl
+
+3. Load renderer
    - Create BrowserWindow
    - Load bundled frontend
-   - Frontend reads port from window.electronAPI.getPort()
+   - Frontend reads API URL from window.electronAPI.getApiUrl()
 
-5. App ready
+4. App ready
    - Hide splash, show main window
-   - Backend + Frontend communicating over localhost
+   - Backend + Frontend communicating
 ```
 
-On quit, Electron sends SIGTERM to Python process and waits for graceful shutdown.
+On quit (Local/Hybrid modes), Electron sends SIGTERM to Python process and waits for graceful shutdown.
 
 ## ML Dependencies Installation Flow
 
@@ -226,15 +350,61 @@ if ml_deps:
 ```typescript
 // src/lib/api.ts
 
-function getApiBaseUrl(): string {
-  if (window.electronAPI?.getPort) {
-    const port = window.electronAPI.getPort();
-    return `http://127.0.0.1:${port}`;
+type ConnectionMode = 'local' | 'connected' | 'hybrid';
+
+interface ElectronAPI {
+  getConnectionMode: () => ConnectionMode;
+  getApiUrl: () => string;
+  getLocalApiUrl?: () => string;  // For hybrid mode
+  getRemoteApiUrl?: () => string; // For hybrid mode
+}
+
+declare global {
+  interface Window {
+    electronAPI?: ElectronAPI;
   }
+}
+
+function getApiBaseUrl(): string {
+  // Electron app
+  if (window.electronAPI?.getApiUrl) {
+    return window.electronAPI.getApiUrl();
+  }
+  // Browser dev mode
   return import.meta.env.VITE_API_URL || 'http://localhost:8000';
 }
 
 export const API_BASE = getApiBaseUrl();
+
+// For hybrid mode: check if we should use local or remote for specific operations
+export function getApiUrlForOperation(operation: 'sync' | 'default'): string {
+  if (window.electronAPI?.getConnectionMode?.() === 'hybrid') {
+    if (operation === 'sync') {
+      return window.electronAPI.getRemoteApiUrl?.() || API_BASE;
+    }
+    return window.electronAPI.getLocalApiUrl?.() || API_BASE;
+  }
+  return API_BASE;
+}
+```
+
+### Electron Preload Script
+
+```typescript
+// apps/electron/src/preload.ts
+
+import { contextBridge, ipcRenderer } from 'electron';
+
+contextBridge.exposeInMainWorld('electronAPI', {
+  getConnectionMode: () => ipcRenderer.sendSync('get-connection-mode'),
+  getApiUrl: () => ipcRenderer.sendSync('get-api-url'),
+  getLocalApiUrl: () => ipcRenderer.sendSync('get-local-api-url'),
+  getRemoteApiUrl: () => ipcRenderer.sendSync('get-remote-api-url'),
+
+  // Native features
+  showOpenDialog: (options) => ipcRenderer.invoke('show-open-dialog', options),
+  showSaveDialog: (options) => ipcRenderer.invoke('show-save-dialog', options),
+});
 ```
 
 ## GitHub Actions Build Pipeline
@@ -306,12 +476,13 @@ jobs:
 - [ ] Add environment detection to backend (`is_electron()`, `get_data_dir()`)
 - [ ] Add `window.electronAPI` detection to frontend
 
-### Phase 2: Electron Shell
+### Phase 2: Electron Shell (Local Mode)
 
 - [ ] Update `apps/electron/src/main.ts` to spawn Python backend
 - [ ] Implement port finding, health polling, graceful shutdown
-- [ ] Create preload script exposing `getPort()`, native file dialogs
+- [ ] Create preload script exposing `getApiUrl()`, native file dialogs
 - [ ] Bundle built frontend into Electron
+- [ ] Implement settings persistence for connection mode
 
 ### Phase 3: ML Dependencies Flow
 
@@ -327,7 +498,23 @@ jobs:
 - [ ] Test PR builds (no signing)
 - [ ] Test release builds (with signing)
 
-### Phase 5: Polish
+### Phase 5: Connected Mode (Enterprise)
+
+- [ ] Add Connection settings UI (server URL, test connection)
+- [ ] Implement connected mode startup (skip Python spawn)
+- [ ] Add authentication flow for enterprise servers (SSO, API keys)
+- [ ] Test against enterprise backend (PostgreSQL, Redis, etc.)
+
+### Phase 6: Hybrid Mode + Sync
+
+- [ ] Add per-project sync settings UI
+- [ ] Implement sync status indicators
+- [ ] Add offline queue for pending operations
+- [ ] Implement background sync service
+- [ ] Add conflict resolution UI (last-write-wins or manual merge)
+- [ ] Handle large file uploads/downloads with progress
+
+### Phase 7: Polish
 
 - [ ] Auto-updates (electron-updater + GitHub Releases)
 - [ ] System tray integration
@@ -343,3 +530,5 @@ jobs:
 - App size <200MB without models
 - Dev workflow unchanged (browser + venv still works)
 - GitHub Actions builds all platform/arch combinations automatically
+- Seamless switching between local and connected modes
+- Enterprise users can work offline and sync when reconnected
