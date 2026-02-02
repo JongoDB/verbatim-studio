@@ -39,9 +39,24 @@ app.on('activate', () => {
   }
 });
 
-app.on('before-quit', async () => {
+let isQuitting = false;
+
+app.on('before-quit', async (event) => {
+  if (isQuitting) return;
+
+  // Prevent default to handle async cleanup
+  event.preventDefault();
+  isQuitting = true;
+
   console.log('[Main] Shutting down...');
-  await backendManager.stop();
+  try {
+    await backendManager.stop();
+  } catch (error) {
+    console.error('[Main] Error stopping backend:', error);
+  }
+
+  // Now actually quit
+  app.quit();
 });
 
 app.on('window-all-closed', () => {
@@ -51,9 +66,13 @@ app.on('window-all-closed', () => {
 });
 
 app.on('second-instance', () => {
-  if (mainWindow) {
-    if (mainWindow.isMinimized()) mainWindow.restore();
-    mainWindow.focus();
+  try {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+  } catch (error) {
+    console.error('[Main] Error handling second instance:', error);
   }
 });
 
