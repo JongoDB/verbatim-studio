@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from persistence.database import get_db
 from persistence.models import Recording, Transcript, Segment, Project, Job
+from services.storage import get_active_storage_location
 
 router = APIRouter(prefix="/stats", tags=["stats"])
 
@@ -61,47 +62,80 @@ async def get_stats(
 ) -> DashboardStats:
     """Get dashboard statistics."""
 
+    # Get active storage location for filtering
+    active_location = await get_active_storage_location()
+    active_path = active_location.config.get("path") if active_location else None
+
+    # Build base recording query with storage location filter
+    recording_base = select(Recording)
+    if active_path:
+        recording_base = recording_base.where(Recording.file_path.startswith(active_path))
+
     # Recording stats
-    recording_result = await db.execute(
-        select(
-            func.count(Recording.id).label("total"),
-            func.sum(Recording.duration_seconds).label("total_duration"),
-            func.avg(Recording.duration_seconds).label("avg_duration"),
-        )
+    recording_query = select(
+        func.count(Recording.id).label("total"),
+        func.sum(Recording.duration_seconds).label("total_duration"),
+        func.avg(Recording.duration_seconds).label("avg_duration"),
     )
+    if active_path:
+        recording_query = recording_query.where(Recording.file_path.startswith(active_path))
+    recording_result = await db.execute(recording_query)
     recording_row = recording_result.one()
 
     # Recordings by status
-    status_result = await db.execute(
-        select(
-            Recording.status,
-            func.count(Recording.id).label("count"),
-        ).group_by(Recording.status)
-    )
+    status_query = select(
+        Recording.status,
+        func.count(Recording.id).label("count"),
+    ).group_by(Recording.status)
+    if active_path:
+        status_query = status_query.where(Recording.file_path.startswith(active_path))
+    status_result = await db.execute(status_query)
     status_counts = {row.status: row.count for row in status_result.all()}
 
-    # Transcript stats
-    transcript_result = await db.execute(
-        select(
-            func.count(Transcript.id).label("total"),
-            func.sum(Transcript.word_count).label("total_words"),
+    # Get recording IDs for this storage location to filter transcripts/segments
+    if active_path:
+        rec_ids_result = await db.execute(
+            select(Recording.id).where(Recording.file_path.startswith(active_path))
         )
+        recording_ids = [row[0] for row in rec_ids_result.all()]
+    else:
+        recording_ids = None
+
+    # Transcript stats (filtered by recordings in this storage location)
+    transcript_query = select(
+        func.count(Transcript.id).label("total"),
+        func.sum(Transcript.word_count).label("total_words"),
     )
+    if recording_ids is not None:
+        if recording_ids:
+            transcript_query = transcript_query.where(Transcript.recording_id.in_(recording_ids))
+        else:
+            # No recordings means no transcripts
+            transcript_query = transcript_query.where(False)
+    transcript_result = await db.execute(transcript_query)
     transcript_row = transcript_result.one()
 
-    # Segment count
-    segment_count_result = await db.execute(select(func.count(Segment.id)))
+    # Segment count (filtered by recordings in this storage location)
+    segment_query = select(func.count(Segment.id)).select_from(Segment).join(Transcript)
+    if recording_ids is not None:
+        if recording_ids:
+            segment_query = segment_query.where(Transcript.recording_id.in_(recording_ids))
+        else:
+            segment_query = segment_query.where(False)
+    segment_count_result = await db.execute(segment_query)
     segment_count = segment_count_result.scalar() or 0
 
-    # Languages breakdown
-    language_result = await db.execute(
-        select(
-            Transcript.language,
-            func.count(Transcript.id).label("count"),
-        )
-        .where(Transcript.language.is_not(None))
-        .group_by(Transcript.language)
-    )
+    # Languages breakdown (filtered by recordings in this storage location)
+    language_query = select(
+        Transcript.language,
+        func.count(Transcript.id).label("count"),
+    ).where(Transcript.language.is_not(None)).group_by(Transcript.language)
+    if recording_ids is not None:
+        if recording_ids:
+            language_query = language_query.where(Transcript.recording_id.in_(recording_ids))
+        else:
+            language_query = language_query.where(False)
+    language_result = await db.execute(language_query)
     language_counts = {row.language: row.count for row in language_result.all()}
 
     # Project stats
