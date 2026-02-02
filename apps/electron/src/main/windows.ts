@@ -25,8 +25,10 @@ export function createMainWindow(): BrowserWindow {
     mainWindow.loadURL('http://localhost:5173');
     mainWindow.webContents.openDevTools();
   } else {
-    // Production: load bundled frontend
-    mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
+    // Production: load bundled frontend from extraResources
+    const frontendPath = path.join(process.resourcesPath, 'frontend', 'index.html');
+    console.log('[Window] Loading frontend from:', frontendPath);
+    mainWindow.loadFile(frontendPath);
   }
 
   // Show when ready

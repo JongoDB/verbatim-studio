@@ -17,11 +17,9 @@ async function bootstrap(): Promise<void> {
     // Register IPC handlers
     registerIpcHandlers();
 
-    // Start backend in development (production will use bundled)
-    if (!app.isPackaged) {
-      console.log('[Main] Starting backend in development mode');
-      await backendManager.start();
-    }
+    // Start backend (both development and production)
+    console.log('[Main] Starting backend...');
+    await backendManager.start();
 
     mainWindow = createMainWindow();
 
