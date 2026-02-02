@@ -39,12 +39,21 @@ export function createMainWindow(): BrowserWindow {
   // Use dom-ready which fires before did-finish-load, ensuring URL is available before app init
   mainWindow.webContents.on('dom-ready', () => {
     const apiUrl = backendManager.getApiUrl();
-    console.log('[Window] Injecting API URL:', apiUrl);
+    const port = backendManager.port;
+    const isRunning = backendManager.isRunning();
+    console.log('[Window] dom-ready - Backend status: running=%s, port=%s, apiUrl=%s', isRunning, port, apiUrl);
+
     if (apiUrl) {
       mainWindow.webContents.executeJavaScript(`
         window.__VERBATIM_API_URL__ = '${apiUrl}';
         console.log('[Injected] API URL set to:', window.__VERBATIM_API_URL__);
-      `);
+      `).then(() => {
+        console.log('[Window] API URL injection succeeded');
+      }).catch((err) => {
+        console.error('[Window] API URL injection FAILED:', err);
+      });
+    } else {
+      console.error('[Window] Cannot inject API URL - backend not ready');
     }
   });
 

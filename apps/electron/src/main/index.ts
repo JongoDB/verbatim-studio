@@ -19,7 +19,13 @@ async function bootstrap(): Promise<void> {
 
     // Start backend (both development and production)
     console.log('[Main] Starting backend...');
+    console.log('[Main] app.isPackaged:', app.isPackaged);
+    console.log('[Main] process.resourcesPath:', process.resourcesPath);
+
     await backendManager.start();
+
+    console.log('[Main] Backend started successfully, port:', backendManager.port);
+    console.log('[Main] Backend API URL:', backendManager.getApiUrl());
 
     mainWindow = createMainWindow();
 

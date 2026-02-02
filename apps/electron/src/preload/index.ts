@@ -1,9 +1,12 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
 console.log('[Preload] Loading preload script...');
+console.log('[Preload] contextBridge available:', !!contextBridge);
+console.log('[Preload] ipcRenderer available:', !!ipcRenderer);
 
-// Expose safe APIs to renderer
-contextBridge.exposeInMainWorld('electronAPI', {
+try {
+  // Expose safe APIs to renderer
+  contextBridge.exposeInMainWorld('electronAPI', {
   platform: process.platform,
 
   // App info
@@ -28,7 +31,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     multiple?: boolean;
   }): Promise<string | string[] | null> =>
     ipcRenderer.invoke('dialog:openFile', options),
-});
+  });
+  console.log('[Preload] contextBridge.exposeInMainWorld succeeded');
+} catch (err) {
+  console.error('[Preload] contextBridge.exposeInMainWorld FAILED:', err);
+}
 
 // Type declaration for renderer
 declare global {
