@@ -168,25 +168,24 @@ Open [http://localhost:5173](http://localhost:5173) in your browser.
 
 ## Architecture
 
-Verbatim Studio uses a clean adapter-based architecture supporting two deployment tiers:
+Verbatim Studio uses a clean adapter-based architecture:
 
-```
+<pre align="center">
 ┌─────────────────────────────────────────────────────────────┐
-│                       Frontend (React)                       │
-│  Dashboard • Recordings • Projects • Documents • Search     │
+│                     <b>Frontend</b> (React)                        │
+│   Dashboard • Recordings • Projects • Documents • Search    │
 ├─────────────────────────────────────────────────────────────┤
-│                       Backend (FastAPI)                      │
-│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐           │
-│  │ IDatabase   │ │ ITranscribe │ │ IAIService  │           │
-│  │ Adapter     │ │ Engine      │ │             │           │
-│  └──────┬──────┘ └──────┬──────┘ └──────┬──────┘           │
-│         │               │               │                   │
-│    ┌────┴────┐    ┌────┴────┐    ┌────┴────┐              │
-│    │ SQLite  │    │WhisperX │    │llama.cpp│              │
-│    │ (Basic) │    │MLX Whis │    │ (Local) │              │
-│    └─────────┘    └─────────┘    └─────────┘              │
+│                     <b>Backend</b> (FastAPI)                       │
+│                                                             │
+│    ┌─────────────┐  ┌─────────────┐  ┌─────────────┐       │
+│    │  Database   │  │Transcription│  │     AI      │       │
+│    │   Adapter   │  │   Engine    │  │   Service   │       │
+│    └──────┬──────┘  └──────┬──────┘  └──────┬──────┘       │
+│           │                │                │               │
+│       SQLite          WhisperX         llama.cpp           │
+│                      MLX Whisper        Granite            │
 └─────────────────────────────────────────────────────────────┘
-```
+</pre>
 
 ### Tech Stack
 
@@ -203,7 +202,7 @@ Verbatim Studio uses a clean adapter-based architecture supporting two deploymen
 
 ## Roadmap
 
-### Current Release (v0.22.x) — Basic Tier
+### Current Release (v0.23.x) — Basic Tier
 
 - [x] Local AI transcription with speaker diarization
 - [x] Live transcription from microphone
@@ -246,19 +245,16 @@ Create a `.env` file in `packages/backend/`:
 
 ```bash
 # Core settings
-MODE=basic                          # 'basic' or 'enterprise'
-DATA_DIR=~/.verbatim-studio         # Where to store data
+VERBATIM_MODE=basic                 # 'basic' or 'enterprise'
+VERBATIM_DATA_DIR=~/.verbatim-studio
 
 # Transcription
-WHISPER_MODEL=large-v3              # tiny, base, small, medium, large-v3
-WHISPER_DEVICE=auto                 # auto, cpu, cuda, mps
-
-# AI (optional - models download automatically)
-LLM_MODEL=llama-3.2-3b-instruct     # Local LLM model name
+VERBATIM_WHISPERX_MODEL=base        # tiny, base, small, medium, large-v3
+VERBATIM_WHISPERX_DEVICE=auto       # auto, cpu, cuda, mps
 
 # OAuth (optional - for cloud storage)
-GOOGLE_CLIENT_ID=your-client-id
-GOOGLE_CLIENT_SECRET=your-secret
+VERBATIM_GOOGLE_CLIENT_ID=your-client-id
+VERBATIM_GOOGLE_CLIENT_SECRET=your-secret
 ```
 
 </details>
@@ -269,10 +265,10 @@ On first use, Verbatim Studio downloads required AI models:
 
 | Model | Size | Purpose |
 |-------|------|---------|
-| Whisper large-v3 | ~3 GB | Transcription |
+| Whisper (base) | ~150 MB | Transcription (configurable up to large-v3) |
 | pyannote speaker diarization | ~200 MB | Speaker identification |
-| sentence-transformers | ~500 MB | Semantic search |
-| Llama 3.2 3B | ~2 GB | AI assistant (optional) |
+| nomic-embed-text-v1.5 | ~550 MB | Semantic search embeddings |
+| IBM Granite 3.3 8B | ~5 GB | AI assistant (optional, 2B lite version available) |
 
 Models are cached in `~/.cache/huggingface/` and only download once.
 
