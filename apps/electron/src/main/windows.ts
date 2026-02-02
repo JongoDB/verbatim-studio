@@ -1,5 +1,6 @@
 import { BrowserWindow, shell, app } from 'electron';
 import path from 'path';
+import { backendManager } from './backend';
 
 export function createMainWindow(): BrowserWindow {
   const preloadPath = path.join(__dirname, '../preload/index.js');
@@ -33,6 +34,19 @@ export function createMainWindow(): BrowserWindow {
     console.log('[Window] Loading frontend from:', frontendPath);
     mainWindow.loadFile(frontendPath);
   }
+
+  // Inject API URL into page early (backup for when preload fails)
+  // Use dom-ready which fires before did-finish-load, ensuring URL is available before app init
+  mainWindow.webContents.on('dom-ready', () => {
+    const apiUrl = backendManager.getApiUrl();
+    console.log('[Window] Injecting API URL:', apiUrl);
+    if (apiUrl) {
+      mainWindow.webContents.executeJavaScript(`
+        window.__VERBATIM_API_URL__ = '${apiUrl}';
+        console.log('[Injected] API URL set to:', window.__VERBATIM_API_URL__);
+      `);
+    }
+  });
 
   // Enable dev tools with keyboard shortcut (Cmd+Option+I / Ctrl+Shift+I)
   mainWindow.webContents.on('before-input-event', (event, input) => {

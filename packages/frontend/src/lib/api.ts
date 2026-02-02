@@ -1,8 +1,16 @@
 // Backend API URL configuration
 // Priority:
-// 1. Electron app: use URL from main process via IPC
-// 2. VITE_API_URL environment variable
-// 3. Empty string (relative URLs for same-origin)
+// 1. Electron app: use URL from main process via IPC (preload)
+// 2. Electron app fallback: injected URL via executeJavaScript
+// 3. VITE_API_URL environment variable
+// 4. Empty string (relative URLs for same-origin)
+
+// Extend window type for injected API URL
+declare global {
+  interface Window {
+    __VERBATIM_API_URL__?: string;
+  }
+}
 
 // Cache the API URL once resolved
 let cachedApiBaseUrl: string | null = null;
@@ -23,14 +31,39 @@ export async function initializeApiUrl(): Promise<string> {
   }
 
   apiUrlPromise = (async () => {
-    // Check if running in Electron
+    // Check if running in Electron via preload
     if (window.electronAPI?.getApiUrl) {
-      const url = await window.electronAPI.getApiUrl();
-      if (url) {
-        console.log('[API] Using Electron backend URL:', url);
-        cachedApiBaseUrl = url;
-        return url;
+      try {
+        const url = await window.electronAPI.getApiUrl();
+        if (url) {
+          console.log('[API] Using Electron backend URL (preload):', url);
+          cachedApiBaseUrl = url;
+          return url;
+        }
+      } catch (err) {
+        console.warn('[API] Failed to get URL from preload:', err);
       }
+    }
+
+    // Check for injected URL (fallback when preload fails)
+    if (window.__VERBATIM_API_URL__) {
+      console.log('[API] Using injected backend URL:', window.__VERBATIM_API_URL__);
+      cachedApiBaseUrl = window.__VERBATIM_API_URL__;
+      return window.__VERBATIM_API_URL__;
+    }
+
+    // If running in Electron (file:// protocol) but no URL yet, wait briefly for injection
+    if (window.location.protocol === 'file:') {
+      console.log('[API] Running in Electron, waiting for API URL injection...');
+      for (let i = 0; i < 10; i++) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        if (window.__VERBATIM_API_URL__) {
+          console.log('[API] Using injected backend URL (after wait):', window.__VERBATIM_API_URL__);
+          cachedApiBaseUrl = window.__VERBATIM_API_URL__;
+          return window.__VERBATIM_API_URL__;
+        }
+      }
+      console.error('[API] Failed to get API URL in Electron - backend may not be running');
     }
 
     // Fall back to environment variable or empty string
