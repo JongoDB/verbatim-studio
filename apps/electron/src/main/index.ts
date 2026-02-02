@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, dialog } from 'electron';
 import { createMainWindow } from './windows';
 import { backendManager } from './backend';
 import { registerIpcHandlers } from './ipc';
@@ -33,6 +33,10 @@ async function bootstrap(): Promise<void> {
     initAutoUpdater(mainWindow);
   } catch (error) {
     console.error('[Main] Failed to start:', error);
+    dialog.showErrorBox(
+      'Verbatim Studio - Startup Failed',
+      `Failed to start backend:\n\n${error instanceof Error ? error.message : String(error)}\n\nCheck Console.app for more details.`
+    );
     app.quit();
   }
 }

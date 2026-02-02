@@ -175,6 +175,7 @@ class BackendManager extends EventEmitter {
 
     console.log(`[Backend] Waiting for health at ${url}`);
 
+    let lastError = '';
     while (Date.now() - startTime < timeout) {
       try {
         const response = await fetch(url);
@@ -182,13 +183,14 @@ class BackendManager extends EventEmitter {
           console.log('[Backend] Health check passed');
           return;
         }
-      } catch {
-        // Not ready yet
+        lastError = `HTTP ${response.status}`;
+      } catch (err) {
+        lastError = err instanceof Error ? err.message : String(err);
       }
       await new Promise((r) => setTimeout(r, 500));
     }
 
-    throw new Error('Backend failed to start within timeout');
+    throw new Error(`Backend failed to start within ${timeout/1000}s. Last error: ${lastError}`);
   }
 
   private startHealthCheck(): void {
