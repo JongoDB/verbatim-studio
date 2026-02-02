@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { api, type SummarizationResponse, type AIChatResponse } from '@/lib/api';
 
 interface AIAnalysisPanelProps {
@@ -98,12 +99,12 @@ export function AIAnalysisPanel({ transcriptId }: AIAnalysisPanelProps) {
           <p className="text-xs text-gray-500 dark:text-gray-500 mb-3">
             Download a language model in Settings to enable AI-powered analysis.
           </p>
-          <a
-            href="/settings"
+          <Link
+            to="/settings"
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-purple-600 text-white hover:bg-purple-700 transition-colors"
           >
             Go to Settings
-          </a>
+          </Link>
         </div>
       )}
 

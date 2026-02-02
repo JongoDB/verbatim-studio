@@ -360,17 +360,18 @@ NAMED ENTITIES:
         return models
 
     async def is_available(self) -> bool:
-        """Check if the AI service is available."""
-        if self._available is not None:
-            return self._available
-
+        """Check if the AI service is available and a model is configured."""
+        # Check if llama_cpp library is installed
         try:
             from llama_cpp import Llama
-            self._available = True
         except ImportError:
-            self._available = False
+            return False
 
-        return self._available
+        # Check if a model is configured and exists
+        if not self._model_path:
+            return False
+
+        return Path(self._model_path).exists()
 
     async def get_service_info(self) -> dict[str, str | int | float | bool]:
         """Get information about the AI service."""
