@@ -2414,11 +2414,20 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
                             onChange={(e) => setEditingLocation({ ...editingLocation, config: { ...editingLocation.config, path: e.target.value } })}
                             className="flex-1 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 py-2 px-3 text-sm font-mono text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                           />
-                          {'showDirectoryPicker' in window && (
+                          {(window.electronAPI?.openDirectoryDialog || 'showDirectoryPicker' in window) && (
                             <button
                               type="button"
                               onClick={async () => {
                                 try {
+                                  // Prefer Electron's native dialog (returns full path)
+                                  if (window.electronAPI?.openDirectoryDialog) {
+                                    const fullPath = await window.electronAPI.openDirectoryDialog();
+                                    if (fullPath) {
+                                      setEditingLocation({ ...editingLocation, config: { ...editingLocation.config, path: fullPath } });
+                                    }
+                                    return;
+                                  }
+                                  // Fallback to browser API (only returns folder name)
                                   const dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
                                   setEditingLocation({ ...editingLocation, config: { ...editingLocation.config, path: dirHandle.name } });
                                 } catch {

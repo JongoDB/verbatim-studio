@@ -89,6 +89,12 @@ async def get_active_storage_path() -> Path:
             path_str = location.config.get("path")
             if path_str:
                 path = Path(path_str)
+                # Warn if path is not absolute (legacy entries before fix)
+                if not path.is_absolute():
+                    logger.warning(
+                        f"Storage location has relative path '{path_str}'. "
+                        "Please update to an absolute path in Settings."
+                    )
                 path.mkdir(parents=True, exist_ok=True)
                 return path
         # For cloud storage, return None - callers should use adapters

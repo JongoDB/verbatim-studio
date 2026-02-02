@@ -229,6 +229,12 @@ async def create_storage_location(body: StorageLocationCreate) -> StorageLocatio
     # Validate local path exists
     if body.type == "local" and body.config.path:
         path = Path(body.config.path)
+        # Require absolute paths for local storage to avoid ambiguity
+        if not path.is_absolute():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Path must be absolute (e.g., /Users/you/Documents/verbatim), got: {body.config.path}",
+            )
         if not path.exists():
             # Try to create it
             try:
@@ -292,6 +298,12 @@ async def update_storage_location(
             # Validate local path exists
             if location.type == "local" and body.config.path:
                 path = Path(body.config.path)
+                # Require absolute paths for local storage to avoid ambiguity
+                if not path.is_absolute():
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Path must be absolute (e.g., /Users/you/Documents/verbatim), got: {body.config.path}",
+                    )
                 if not path.exists():
                     try:
                         path.mkdir(parents=True, exist_ok=True)
