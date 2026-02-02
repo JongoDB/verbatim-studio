@@ -1,0 +1,289 @@
+{
+  "version": "1.0.0",
+  "generated_at": "2026-02-01",
+  "app": {
+    "name": "Verbatim Studio",
+    "tagline": "Transcription you can trust",
+    "description": "A privacy-first application for transcribing audio and video files. All processing happens locally on the user's device - no data is sent to external servers."
+  },
+  "navigation": [
+    {
+      "key": "dashboard",
+      "label": "Dashboard",
+      "description": "Home page with overview statistics, recent recordings, and quick actions",
+      "path": "/"
+    },
+    {
+      "key": "recordings",
+      "label": "Recordings",
+      "description": "Upload and manage audio/video files, start transcriptions, view status",
+      "path": "/recordings"
+    },
+    {
+      "key": "projects",
+      "label": "Projects",
+      "description": "Organize recordings into groups with shared metadata and analytics",
+      "path": "/projects"
+    },
+    {
+      "key": "documents",
+      "label": "Documents",
+      "description": "Upload and manage PDFs and other documents with OCR text extraction",
+      "path": "/documents"
+    },
+    {
+      "key": "chats",
+      "label": "Chats",
+      "description": "View and resume saved AI conversation sessions",
+      "path": "/chats"
+    },
+    {
+      "key": "live",
+      "label": "Live",
+      "badge": "BETA",
+      "description": "Real-time transcription from microphone",
+      "path": "/live"
+    },
+    {
+      "key": "search",
+      "label": "Search",
+      "description": "Global search across recordings, transcripts, documents, and notes",
+      "path": "/search"
+    },
+    {
+      "key": "files",
+      "label": "Files",
+      "description": "File browser for navigating folder structure and moving files",
+      "path": "/browser"
+    },
+    {
+      "key": "settings",
+      "label": "Settings",
+      "description": "Configure transcription, AI models, storage, and app preferences",
+      "path": "/settings"
+    }
+  ],
+  "features": [
+    {
+      "id": "transcription",
+      "name": "Audio/Video Transcription",
+      "description": "Convert audio and video files to text using local WhisperX AI models",
+      "ui_location": "Recordings page",
+      "steps": [
+        "Navigate to Recordings in the sidebar",
+        "Drag and drop files or click Upload",
+        "Enter a title and optional metadata",
+        "Click Transcribe to start processing",
+        "Wait for status to change to Completed",
+        "Click the recording to view the transcript"
+      ]
+    },
+    {
+      "id": "transcript-editing",
+      "name": "Transcript Editing",
+      "description": "Edit transcript text, change speakers, add highlights and comments",
+      "ui_location": "Recording detail / Transcript view",
+      "steps": [
+        "Click any segment text to edit",
+        "Click speaker label to change speaker",
+        "Click highlight icon to color-code segments",
+        "Click comment icon to add notes"
+      ]
+    },
+    {
+      "id": "speaker-diarization",
+      "name": "Speaker Identification",
+      "description": "Automatically identify and label different speakers in a recording",
+      "ui_location": "Settings > Transcription (enable), Transcript view (manage)",
+      "steps": [
+        "Enable diarization in Settings > Transcription",
+        "Add HuggingFace token if required",
+        "Transcribe a recording",
+        "Rename speakers in the transcript view"
+      ]
+    },
+    {
+      "id": "projects",
+      "name": "Project Organization",
+      "description": "Group related recordings into projects with custom metadata",
+      "ui_location": "Projects page",
+      "steps": [
+        "Navigate to Projects",
+        "Click New Project",
+        "Enter name and optional project type",
+        "Assign recordings from the Recordings page"
+      ]
+    },
+    {
+      "id": "ai-chat",
+      "name": "AI Chat Assistant",
+      "description": "Ask questions about your transcripts and documents using AI",
+      "ui_location": "Chat bubble (bottom-right corner)",
+      "steps": [
+        "Click the chat bubble icon",
+        "Click attachment icon to add context",
+        "Select recordings or documents",
+        "Type your question and press Enter"
+      ]
+    },
+    {
+      "id": "search",
+      "name": "Global Search",
+      "description": "Find content across all recordings, documents, and notes",
+      "ui_location": "Search page",
+      "steps": [
+        "Navigate to Search",
+        "Enter your search query",
+        "Choose keyword or semantic search",
+        "Click a result to navigate to it"
+      ]
+    },
+    {
+      "id": "live-transcription",
+      "name": "Live Transcription",
+      "description": "Transcribe speech in real-time from your microphone",
+      "ui_location": "Live page",
+      "steps": [
+        "Navigate to Live",
+        "Click Connect",
+        "Allow microphone access",
+        "Speak to see real-time transcription",
+        "Click Save to keep the session"
+      ]
+    },
+    {
+      "id": "export",
+      "name": "Transcript Export",
+      "description": "Export transcripts to various formats",
+      "ui_location": "Transcript view toolbar",
+      "formats": ["TXT", "SRT", "VTT", "DOCX", "PDF"]
+    },
+    {
+      "id": "documents",
+      "name": "Document Management",
+      "description": "Upload PDFs and documents with OCR text extraction",
+      "ui_location": "Documents page",
+      "steps": [
+        "Navigate to Documents",
+        "Upload PDF or image files",
+        "Wait for OCR processing",
+        "View extracted text and add notes"
+      ]
+    },
+    {
+      "id": "backup",
+      "name": "Backup and Restore",
+      "description": "Export and import full database backups",
+      "ui_location": "Settings > Backup/Archive",
+      "steps": [
+        "Navigate to Settings > Backup/Archive",
+        "Click Export to create backup",
+        "Click Import to restore from backup"
+      ]
+    }
+  ],
+  "keyboard_shortcuts": [
+    {"key": "Space", "action": "Play / Pause"},
+    {"key": "K", "action": "Play / Pause (YouTube-style)"},
+    {"key": "J", "action": "Skip back 10 seconds"},
+    {"key": "L", "action": "Skip forward 10 seconds"},
+    {"key": "Left Arrow", "action": "Skip back 5 seconds"},
+    {"key": "Right Arrow", "action": "Skip forward 5 seconds"},
+    {"key": "Up Arrow", "action": "Jump to previous segment"},
+    {"key": "Down Arrow", "action": "Jump to next segment"},
+    {"key": "Shift + ,", "action": "Skip back 1 second"},
+    {"key": "Shift + .", "action": "Skip forward 1 second"},
+    {"key": "Escape", "action": "Close modal / Go back"}
+  ],
+  "settings": {
+    "general": {
+      "theme": "Light, dark, or system preference",
+      "default_language": "Default language for transcriptions",
+      "playback_speed": "Default audio playback rate (0.5x - 2x)",
+      "auto_transcribe": "Automatically transcribe new uploads"
+    },
+    "transcription": {
+      "model": "Whisper model size (tiny, base, small, medium, large)",
+      "device": "CPU or GPU (CUDA for Nvidia, MPS for Apple Silicon)",
+      "compute_type": "Precision level (float32, float16, int8)",
+      "diarization": "Enable speaker identification",
+      "huggingface_token": "Required for some models and diarization"
+    },
+    "ai_llm": {
+      "models": "Download and manage chat AI models",
+      "active_model": "Select which model to use",
+      "gpu_layers": "How much to offload to GPU"
+    },
+    "ocr": {
+      "models": "Download and manage OCR models"
+    },
+    "storage": {
+      "locations": "Add local, network, or cloud storage",
+      "cloud_providers": "Google Drive, OneDrive, Dropbox, S3",
+      "default_location": "Where new files are stored"
+    },
+    "backup": {
+      "export": "Create full database backup",
+      "import": "Restore from backup file"
+    }
+  },
+  "troubleshooting": [
+    {
+      "issue": "Model not loading",
+      "solution": "Navigate to Settings > AI/LLM or Settings > Transcription and download a model"
+    },
+    {
+      "issue": "Transcription failed",
+      "causes": ["Unsupported file format", "Corrupted file", "Out of memory"],
+      "solution": "Try converting to MP3/WAV, use a smaller model, or switch to CPU"
+    },
+    {
+      "issue": "Transcription is slow",
+      "solution": "Use a smaller model (tiny or base), enable GPU acceleration, close other apps"
+    },
+    {
+      "issue": "No speakers detected",
+      "solution": "Enable diarization in Settings > Transcription and add HuggingFace token"
+    },
+    {
+      "issue": "Live transcription not working",
+      "solution": "Check microphone permission, system audio settings, try reconnecting"
+    },
+    {
+      "issue": "OCR not extracting text",
+      "solution": "Download OCR models in Settings > OCR"
+    },
+    {
+      "issue": "Cloud storage connection failed",
+      "solution": "Re-authenticate in Settings > Storage"
+    },
+    {
+      "issue": "Chat assistant not responding",
+      "solution": "Ensure AI model is downloaded in Settings > AI/LLM, check connection status"
+    },
+    {
+      "issue": "Export not working",
+      "solution": "Ensure transcription is complete, check disk space"
+    }
+  ],
+  "knowledge_files": [
+    "knowledge/getting-started/overview.md",
+    "knowledge/getting-started/first-transcription.md",
+    "knowledge/getting-started/navigation.md",
+    "knowledge/transcribing/uploading-files.md",
+    "knowledge/transcribing/transcription-settings.md",
+    "knowledge/transcribing/editing-transcripts.md",
+    "knowledge/transcribing/exporting.md",
+    "knowledge/organizing/projects.md",
+    "knowledge/organizing/tags.md",
+    "knowledge/organizing/documents.md",
+    "knowledge/organizing/file-browser.md",
+    "knowledge/analyzing/search.md",
+    "knowledge/analyzing/ai-chat.md",
+    "knowledge/analyzing/project-analytics.md",
+    "knowledge/live-transcription/real-time.md",
+    "knowledge/settings/configuration.md",
+    "knowledge/troubleshooting/common-issues.md",
+    "knowledge/troubleshooting/error-messages.md"
+  ]
+}
