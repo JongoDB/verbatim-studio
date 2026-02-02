@@ -84,6 +84,11 @@
         }
       ],
       "category": "Office"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "JongoDB",
+      "repo": "verbatim-studio"
     }
   }
 }
