@@ -31,13 +31,40 @@ def process_document_job(db: Session, document_id: str) -> None:
     db.commit()
 
     try:
-        # Get file path - check if already absolute (new storage format)
+        # Get file path - try multiple resolution strategies
         file_path = Path(doc.file_path)
-        if not file_path.is_absolute():
-            # Backwards compatibility for old relative paths
-            file_path = storage_service.get_full_path(doc.file_path)
-        if not file_path.exists():
-            raise FileNotFoundError(f"File not found: {file_path}")
+        resolved_path = None
+
+        # Strategy 1: Direct path (if absolute or exists relative to CWD)
+        if file_path.exists():
+            resolved_path = file_path
+        # Strategy 2: For documents with storage_location_id, resolve relative to storage location
+        elif doc.storage_location_id and not file_path.is_absolute():
+            from persistence.models import StorageLocation
+            location = db.get(StorageLocation, doc.storage_location_id)
+            if location and location.type == "local" and location.config.get("path"):
+                storage_path = Path(location.config["path"])
+                # Try: storage_path / file_path
+                candidate = storage_path / doc.file_path.lstrip("/")
+                if candidate.exists():
+                    resolved_path = candidate
+                # Also try if file_path already includes the storage folder name
+                elif "/" in doc.file_path:
+                    path_parts = doc.file_path.split("/", 1)
+                    if len(path_parts) > 1:
+                        candidate = storage_path / path_parts[1]
+                        if candidate.exists():
+                            resolved_path = candidate
+        # Strategy 3: Fallback to media_dir for legacy paths
+        if not resolved_path and not file_path.is_absolute():
+            fallback_path = storage_service.get_full_path(doc.file_path)
+            if fallback_path.exists():
+                resolved_path = fallback_path
+
+        if not resolved_path:
+            raise FileNotFoundError(f"File not found: {doc.file_path}")
+
+        file_path = resolved_path
 
         # Check if OCR is enabled for this document
         enable_ocr = doc.metadata_.get("enable_ocr", False)

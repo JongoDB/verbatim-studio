@@ -468,21 +468,49 @@ async def download_document_file(
                 content_disposition_type="inline",
             )
 
-    # File path handling:
-    # - For local storage locations, file_path is relative to CWD (e.g., "verbatim/file.pdf")
-    # - For legacy paths, may need to use media_dir
+    # File path handling - try multiple resolution strategies
     file_path = Path(doc.file_path)
-    if not file_path.exists() and not file_path.is_absolute():
-        # Fallback for old paths stored relative to media_dir
-        file_path = storage_service.get_full_path(doc.file_path)
-    if not file_path.exists():
+    resolved_path = None
+
+    # Strategy 1: Direct path (if absolute or exists relative to CWD)
+    if file_path.exists():
+        resolved_path = file_path
+    # Strategy 2: For documents with storage_location_id, resolve relative to storage location
+    elif doc.storage_location_id and not file_path.is_absolute():
+        location_result = await db.execute(
+            select(StorageLocation).where(StorageLocation.id == doc.storage_location_id)
+        )
+        location = location_result.scalar_one_or_none()
+        if location and location.type == "local" and location.config.get("path"):
+            storage_path = Path(location.config["path"])
+            # If storage path itself is relative, the file might be at that relative location
+            candidate = storage_path / doc.file_path.lstrip("/")
+            if candidate.exists():
+                resolved_path = candidate
+            # Also try if file_path already includes the storage folder name
+            elif "/" in doc.file_path:
+                # file_path might be like "verbatim/file.png", storage path is "/Users/.../verbatim"
+                # In this case, the file_path folder name should be stripped
+                path_parts = doc.file_path.split("/", 1)
+                if len(path_parts) > 1:
+                    candidate = storage_path / path_parts[1]
+                    if candidate.exists():
+                        resolved_path = candidate
+    # Strategy 3: Fallback to media_dir for legacy paths
+    if not resolved_path and not file_path.is_absolute():
+        fallback_path = storage_service.get_full_path(doc.file_path)
+        if fallback_path.exists():
+            resolved_path = fallback_path
+
+    if not resolved_path:
+        logger.warning(f"File not found for document {doc.id}: tried {doc.file_path}")
         raise HTTPException(status_code=404, detail="File not found on disk")
 
     # For inline viewing (iframe), use content-disposition: inline
     content_disposition = "inline" if inline else "attachment"
 
     return FileResponse(
-        path=file_path,
+        path=resolved_path,
         filename=doc.filename,
         media_type=doc.mime_type,
         content_disposition_type=content_disposition,
