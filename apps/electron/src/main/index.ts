@@ -2,6 +2,7 @@ import { app, BrowserWindow } from 'electron';
 import { createMainWindow } from './windows';
 import { backendManager } from './backend';
 import { registerIpcHandlers } from './ipc';
+import { initAutoUpdater } from './updater';
 
 // Single instance lock
 const gotTheLock = app.requestSingleInstanceLock();
@@ -23,6 +24,9 @@ async function bootstrap(): Promise<void> {
     }
 
     mainWindow = createMainWindow();
+
+    // Initialize auto-updater
+    initAutoUpdater(mainWindow);
   } catch (error) {
     console.error('[Main] Failed to start:', error);
     app.quit();
