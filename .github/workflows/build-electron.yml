@@ -92,18 +92,19 @@ jobs:
         shell: bash
         run: |
           PYTHON_BIN="build/python-standalone/python-macos-arm64/bin/python3"
+          SITE_PACKAGES="build/python-standalone/python-macos-arm64/lib/python3.12/site-packages"
           echo "=== Installed ML packages ==="
-          "$PYTHON_BIN" -m pip list | grep -E "torch|whisper|pyannote|mlx|transformers|huggingface|sentence|numpy" || true
+          "$PYTHON_BIN" -m pip list --path "$SITE_PACKAGES" | grep -E "torch|whisper|pyannote|mlx|transformers|huggingface|sentence|numpy" || true
           echo ""
-          echo "=== STRICT Version Verification ==="
+          echo "=== STRICT Version Verification (using pip show) ==="
           FAILED=0
 
-          # Function to check exact version
+          # Function to check exact version using pip show (more reliable than import)
           check_version() {
             local pkg=$1
             local expected=$2
-            local import_name=${3:-$1}
-            local actual=$("$PYTHON_BIN" -c "import $import_name; print($import_name.__version__)" 2>/dev/null || echo "NOT_INSTALLED")
+            local actual=$("$PYTHON_BIN" -m pip show "$pkg" --path "$SITE_PACKAGES" 2>/dev/null | grep "^Version:" | cut -d' ' -f2)
+            if [ -z "$actual" ]; then actual="NOT_INSTALLED"; fi
             if [ "$actual" = "$expected" ]; then
               echo "✓ $pkg: $actual"
             else
@@ -112,21 +113,14 @@ jobs:
             fi
           }
 
-          check_version "torch" "2.8.0" "torch" || FAILED=1
-          check_version "torchaudio" "2.8.0" "torchaudio" || FAILED=1
-          check_version "huggingface_hub" "0.36.1" "huggingface_hub" || FAILED=1
-          check_version "transformers" "4.48.0" "transformers" || FAILED=1
-          check_version "numpy" "2.0.2" "numpy" || FAILED=1
-
-          # Packages with non-standard module names
-          WHISPERX_VER=$("$PYTHON_BIN" -c "import whisperx; print(whisperx.__version__)" 2>/dev/null || echo "NOT_INSTALLED")
-          if [ "$WHISPERX_VER" = "3.3.4" ]; then echo "✓ whisperx: $WHISPERX_VER"; else echo "✗ whisperx: $WHISPERX_VER (expected 3.3.4)"; FAILED=1; fi
-
-          PYANNOTE_VER=$("$PYTHON_BIN" -c "import pyannote.audio; print(pyannote.audio.__version__)" 2>/dev/null || echo "NOT_INSTALLED")
-          if [ "$PYANNOTE_VER" = "3.3.2" ]; then echo "✓ pyannote.audio: $PYANNOTE_VER"; else echo "✗ pyannote.audio: $PYANNOTE_VER (expected 3.3.2)"; FAILED=1; fi
-
-          MLX_VER=$("$PYTHON_BIN" -c "import mlx_whisper; print(mlx_whisper.__version__)" 2>/dev/null || echo "NOT_INSTALLED")
-          if [ "$MLX_VER" = "0.4.3" ]; then echo "✓ mlx-whisper: $MLX_VER"; else echo "✗ mlx-whisper: $MLX_VER (expected 0.4.3)"; FAILED=1; fi
+          check_version "torch" "2.8.0" || FAILED=1
+          check_version "torchaudio" "2.8.0" || FAILED=1
+          check_version "huggingface_hub" "0.36.1" || FAILED=1
+          check_version "transformers" "4.48.0" || FAILED=1
+          check_version "numpy" "2.0.2" || FAILED=1
+          check_version "whisperx" "3.3.4" || FAILED=1
+          check_version "pyannote.audio" "3.3.2" || FAILED=1
+          check_version "mlx-whisper" "0.4.3" || FAILED=1
 
           echo ""
           if [ $FAILED -eq 1 ]; then

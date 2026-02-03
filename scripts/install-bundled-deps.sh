@@ -124,7 +124,7 @@ else
 fi
 
 # =============================================================================
-# Verify critical version constraints
+# Verify critical version constraints using pip show (more reliable than import)
 # =============================================================================
 echo ""
 echo "=== Verifying Installed Versions ==="
@@ -132,7 +132,11 @@ echo "=== Verifying Installed Versions ==="
 verify_version() {
   local package=$1
   local expected=$2
-  local actual=$("$PYTHON_BIN" -c "import $package; print($package.__version__)" 2>/dev/null || echo "NOT INSTALLED")
+  local actual=$("$PYTHON_BIN" -m pip show "$package" --path "$SITE_PACKAGES" 2>/dev/null | grep "^Version:" | cut -d' ' -f2)
+
+  if [ -z "$actual" ]; then
+    actual="NOT INSTALLED"
+  fi
 
   if [ "$actual" = "$expected" ]; then
     echo "✓ $package: $actual"
@@ -149,37 +153,13 @@ verify_version "torch" "2.8.0" || FAILED=1
 verify_version "torchaudio" "2.8.0" || FAILED=1
 verify_version "huggingface_hub" "0.36.1" || FAILED=1
 verify_version "transformers" "4.48.0" || FAILED=1
-
-# Check pyannote.audio
-PYANNOTE_VERSION=$("$PYTHON_BIN" -c "import pyannote.audio; print(pyannote.audio.__version__)" 2>/dev/null || echo "NOT INSTALLED")
-if [ "$PYANNOTE_VERSION" = "3.3.2" ]; then
-  echo "✓ pyannote.audio: $PYANNOTE_VERSION"
-else
-  echo "✗ pyannote.audio: $PYANNOTE_VERSION (expected 3.3.2)"
-  FAILED=1
-fi
-
-# Check whisperx
-WHISPERX_VERSION=$("$PYTHON_BIN" -c "import whisperx; print(whisperx.__version__)" 2>/dev/null || echo "NOT INSTALLED")
-if [ "$WHISPERX_VERSION" = "3.3.4" ]; then
-  echo "✓ whisperx: $WHISPERX_VERSION"
-else
-  echo "✗ whisperx: $WHISPERX_VERSION (expected 3.3.4)"
-  FAILED=1
-fi
-
-# Check numpy
+verify_version "pyannote.audio" "3.3.2" || FAILED=1
+verify_version "whisperx" "3.3.4" || FAILED=1
 verify_version "numpy" "2.0.2" || FAILED=1
 
 # Apple Silicon specific
 if [ "$PLATFORM" = "macos" ] && [ "$ARCH" = "arm64" ]; then
-  MLX_VERSION=$("$PYTHON_BIN" -c "import mlx_whisper; print(mlx_whisper.__version__)" 2>/dev/null || echo "NOT INSTALLED")
-  if [ "$MLX_VERSION" = "0.4.3" ]; then
-    echo "✓ mlx-whisper: $MLX_VERSION"
-  else
-    echo "✗ mlx-whisper: $MLX_VERSION (expected 0.4.3)"
-    FAILED=1
-  fi
+  verify_version "mlx-whisper" "0.4.3" || FAILED=1
 fi
 
 echo ""
