@@ -1,48 +1,46 @@
 # ML dependencies - prebundled with the Electron app
-# Version-pinned for compatibility
+# STRICT version pins to prevent pip from pulling incompatible versions
 
 # =============================================================================
-# PyTorch ecosystem (must be compatible versions)
+# PyTorch ecosystem - MUST install together to ensure compatibility
 # =============================================================================
-torch>=2.8.0,<2.9.0
-torchaudio>=2.8.0,<2.9.0
-torchvision>=0.23.0,<0.24.0
+torch==2.8.0
+torchaudio==2.8.0
+torchvision==0.23.0
+
+# =============================================================================
+# HuggingFace ecosystem - version-critical for whisperx compatibility
+# =============================================================================
+# huggingface_hub 1.x removed use_auth_token parameter needed by whisperx
+huggingface_hub==0.36.1
+# transformers 5.x requires huggingface_hub>=1.3 which breaks whisperx
+transformers==4.47.0
 
 # =============================================================================
 # Transcription engines
 # =============================================================================
 # MLX Whisper for Apple Silicon (fast GPU transcription)
-mlx-whisper>=0.4.0,<0.5.0
-
+mlx-whisper==0.4.3
 # WhisperX for cross-platform transcription and alignment
-whisperx>=3.1.0,<4.0.0
+whisperx==3.3.4
 
 # =============================================================================
 # Speaker diarization
 # =============================================================================
-pyannote.audio>=3.1.0,<4.0.0
-
-# =============================================================================
-# HuggingFace ecosystem (version-critical for whisperx compatibility)
-# =============================================================================
-# transformers 5.x requires huggingface_hub>=1.3 which removed use_auth_token
-transformers>=4.45.0,<5.0.0
-# huggingface_hub 1.x removed use_auth_token parameter needed by whisperx
-huggingface_hub>=0.34.0,<1.0.0
+pyannote.audio==3.3.2
 
 # =============================================================================
 # Vision/OCR models
 # =============================================================================
-qwen-vl-utils>=0.0.8
-accelerate>=0.26.0
+qwen-vl-utils==0.0.8
+accelerate==1.3.0
 
 # =============================================================================
 # Semantic search embeddings
 # =============================================================================
-sentence-transformers>=2.2.0,<3.0.0
+sentence-transformers==3.4.1
 
 # =============================================================================
-# Numpy (let pip resolve compatible version with numba)
+# Other ML dependencies with strict pins
 # =============================================================================
-# Don't pin numpy tightly - numba and other packages need flexibility
-numpy>=2.0.0,<3.0.0
+numpy==2.0.2

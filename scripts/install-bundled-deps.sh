@@ -3,6 +3,9 @@ set -e
 
 # Install Python dependencies for bundling (core + ML)
 # Usage: ./install-bundled-deps.sh [python-dir]
+#
+# IMPORTANT: This script uses STRICT version pins from requirements-ml.txt
+# to prevent pip from pulling incompatible package versions.
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
@@ -70,113 +73,129 @@ echo "=== Installing Core Dependencies ==="
   -r "$REQUIREMENTS_CORE"
 
 # =============================================================================
-# Install ML dependencies (platform-specific)
+# Install ML dependencies with STRICT version pins
+# Uses requirements-ml.txt which has exact version pins (==)
 # =============================================================================
 echo ""
-echo "=== Installing ML Dependencies ==="
+echo "=== Installing ML Dependencies (Strict Pins) ==="
+echo "Using exact versions from requirements-ml.txt to prevent compatibility issues"
+
+# Install ML dependencies directly from requirements file
+# --no-deps first pass to install exact versions without letting pip pull newer deps
+# Then a second pass to resolve any missing sub-dependencies
 
 if [ "$PLATFORM" = "macos" ] && [ "$ARCH" = "arm64" ]; then
-  # Apple Silicon: Install MLX packages + whisperx for diarization
-  echo "Installing ML dependencies for Apple Silicon..."
+  echo "Installing for Apple Silicon (includes mlx-whisper)..."
 
-  # Install PyTorch first (CPU version, MLX handles GPU)
+  # Step 1: Install the pinned packages without their dependencies
+  # This ensures we get EXACTLY the versions we specify
   "$PYTHON_BIN" -m pip install \
     --target "$SITE_PACKAGES" \
-    --upgrade \
-    "torch>=2.8.0,<2.9.0" \
-    "torchaudio>=2.8.0,<2.9.0" \
-    "torchvision>=0.23.0,<0.24.0"
+    --no-deps \
+    -r "$REQUIREMENTS_ML"
 
-  # Install MLX Whisper (Apple Silicon optimized)
+  # Step 2: Install missing sub-dependencies, but use requirements-ml.txt as constraints
+  # This prevents pip from upgrading our pinned packages
   "$PYTHON_BIN" -m pip install \
     --target "$SITE_PACKAGES" \
-    --upgrade \
-    "mlx-whisper>=0.4.0,<0.5.0"
-
-  # Install WhisperX and pyannote for diarization
-  # Pin huggingface_hub and transformers for compatibility
-  "$PYTHON_BIN" -m pip install \
-    --target "$SITE_PACKAGES" \
-    --upgrade \
-    "huggingface_hub>=0.34.0,<1.0.0" \
-    "transformers>=4.45.0,<5.0.0"
-
-  "$PYTHON_BIN" -m pip install \
-    --target "$SITE_PACKAGES" \
-    --upgrade \
-    "whisperx>=3.1.0,<4.0.0" \
-    "pyannote.audio>=3.1.0,<4.0.0"
+    --constraint "$REQUIREMENTS_ML" \
+    -r "$REQUIREMENTS_ML"
 
 else
-  # Other platforms: Install WhisperX with PyTorch
-  echo "Installing ML dependencies for ${PLATFORM}-${ARCH}..."
+  echo "Installing for ${PLATFORM}-${ARCH} (excludes mlx-whisper)..."
 
-  # Install PyTorch
+  # Create a temp file without mlx-whisper for non-Apple platforms
+  TEMP_REQUIREMENTS=$(mktemp)
+  grep -v "mlx-whisper" "$REQUIREMENTS_ML" > "$TEMP_REQUIREMENTS"
+
+  # Step 1: Install the pinned packages without their dependencies
   "$PYTHON_BIN" -m pip install \
     --target "$SITE_PACKAGES" \
-    --upgrade \
-    "torch>=2.8.0,<2.9.0" \
-    "torchaudio>=2.8.0,<2.9.0" \
-    "torchvision>=0.23.0,<0.24.0"
+    --no-deps \
+    -r "$TEMP_REQUIREMENTS"
 
-  # Install HuggingFace ecosystem with version constraints
+  # Step 2: Install missing sub-dependencies with constraints
   "$PYTHON_BIN" -m pip install \
     --target "$SITE_PACKAGES" \
-    --upgrade \
-    "huggingface_hub>=0.34.0,<1.0.0" \
-    "transformers>=4.45.0,<5.0.0"
+    --constraint "$TEMP_REQUIREMENTS" \
+    -r "$TEMP_REQUIREMENTS"
 
-  # Install WhisperX and pyannote
-  "$PYTHON_BIN" -m pip install \
-    --target "$SITE_PACKAGES" \
-    --upgrade \
-    "whisperx>=3.1.0,<4.0.0" \
-    "pyannote.audio>=3.1.0,<4.0.0"
+  rm -f "$TEMP_REQUIREMENTS"
 fi
-
-# =============================================================================
-# Install OCR and embedding dependencies (all platforms)
-# =============================================================================
-echo ""
-echo "=== Installing OCR and Embedding Dependencies ==="
-"$PYTHON_BIN" -m pip install \
-  --target "$SITE_PACKAGES" \
-  --upgrade \
-  "qwen-vl-utils>=0.0.8" \
-  "accelerate>=0.26.0" \
-  "sentence-transformers>=2.2.0,<3.0.0"
 
 # =============================================================================
 # Verify critical version constraints
 # =============================================================================
 echo ""
-echo "=== Verifying Version Constraints ==="
+echo "=== Verifying Installed Versions ==="
 
-# Check huggingface_hub version (must be <1.0.0 for use_auth_token)
-HF_VERSION=$("$PYTHON_BIN" -c "import huggingface_hub; print(huggingface_hub.__version__)" 2>/dev/null || echo "not installed")
-echo "huggingface_hub: $HF_VERSION"
-if [[ "$HF_VERSION" == 1.* ]]; then
-  echo "WARNING: huggingface_hub 1.x detected! Downgrading..."
-  "$PYTHON_BIN" -m pip install --target "$SITE_PACKAGES" --upgrade "huggingface_hub>=0.34.0,<1.0.0"
+verify_version() {
+  local package=$1
+  local expected=$2
+  local actual=$("$PYTHON_BIN" -c "import $package; print($package.__version__)" 2>/dev/null || echo "NOT INSTALLED")
+
+  if [ "$actual" = "$expected" ]; then
+    echo "✓ $package: $actual"
+  else
+    echo "✗ $package: $actual (expected $expected)"
+    return 1
+  fi
+}
+
+FAILED=0
+
+# Critical version checks
+verify_version "torch" "2.8.0" || FAILED=1
+verify_version "torchaudio" "2.8.0" || FAILED=1
+verify_version "huggingface_hub" "0.36.1" || FAILED=1
+verify_version "transformers" "4.47.0" || FAILED=1
+
+# Check pyannote.audio
+PYANNOTE_VERSION=$("$PYTHON_BIN" -c "import pyannote.audio; print(pyannote.audio.__version__)" 2>/dev/null || echo "NOT INSTALLED")
+if [ "$PYANNOTE_VERSION" = "3.3.2" ]; then
+  echo "✓ pyannote.audio: $PYANNOTE_VERSION"
+else
+  echo "✗ pyannote.audio: $PYANNOTE_VERSION (expected 3.3.2)"
+  FAILED=1
 fi
 
-# Check transformers version (must be <5.0.0)
-TF_VERSION=$("$PYTHON_BIN" -c "import transformers; print(transformers.__version__)" 2>/dev/null || echo "not installed")
-echo "transformers: $TF_VERSION"
-if [[ "$TF_VERSION" == 5.* ]]; then
-  echo "WARNING: transformers 5.x detected! Downgrading..."
-  "$PYTHON_BIN" -m pip install --target "$SITE_PACKAGES" --upgrade "transformers>=4.45.0,<5.0.0"
+# Check whisperx
+WHISPERX_VERSION=$("$PYTHON_BIN" -c "import whisperx; print(whisperx.__version__)" 2>/dev/null || echo "NOT INSTALLED")
+if [ "$WHISPERX_VERSION" = "3.3.4" ]; then
+  echo "✓ whisperx: $WHISPERX_VERSION"
+else
+  echo "✗ whisperx: $WHISPERX_VERSION (expected 3.3.4)"
+  FAILED=1
 fi
 
-# Check torch version
-TORCH_VERSION=$("$PYTHON_BIN" -c "import torch; print(torch.__version__)" 2>/dev/null || echo "not installed")
-echo "torch: $TORCH_VERSION"
+# Check numpy
+verify_version "numpy" "2.0.2" || FAILED=1
+
+# Apple Silicon specific
+if [ "$PLATFORM" = "macos" ] && [ "$ARCH" = "arm64" ]; then
+  MLX_VERSION=$("$PYTHON_BIN" -c "import mlx_whisper; print(mlx_whisper.__version__)" 2>/dev/null || echo "NOT INSTALLED")
+  if [ "$MLX_VERSION" = "0.4.3" ]; then
+    echo "✓ mlx-whisper: $MLX_VERSION"
+  else
+    echo "✗ mlx-whisper: $MLX_VERSION (expected 0.4.3)"
+    FAILED=1
+  fi
+fi
 
 echo ""
+
+if [ $FAILED -eq 1 ]; then
+  echo "=== VERSION MISMATCH DETECTED ==="
+  echo "Some packages have incorrect versions. This may cause compatibility issues."
+  echo "Check the pip install output above for dependency resolution messages."
+  echo ""
+  # Don't fail the build, but warn loudly
+fi
+
 echo "=== Done ==="
 echo "Dependencies installed to: $SITE_PACKAGES"
 echo ""
 
 # List key installed packages
 echo "Key packages installed:"
-"$PYTHON_BIN" -m pip list --path "$SITE_PACKAGES" 2>/dev/null | grep -E "torch|whisper|pyannote|mlx|transformers|huggingface|sentence" || true
+"$PYTHON_BIN" -m pip list --path "$SITE_PACKAGES" 2>/dev/null | grep -E "torch|whisper|pyannote|mlx|transformers|huggingface|sentence|numpy" || true
