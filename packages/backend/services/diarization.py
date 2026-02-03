@@ -6,6 +6,24 @@ from collections.abc import Callable, Coroutine
 from pathlib import Path
 from typing import Any
 
+# PyTorch 2.6+ changed weights_only=True default for torch.load()
+# This breaks pyannote model loading which uses many custom classes.
+# Patch must happen BEFORE any pyannote/whisperx imports.
+try:
+    import torch
+    from lightning_fabric.utilities import cloud_io
+    _original_pl_load = cloud_io._load
+    _original_torch_load = torch.load
+
+    def _patched_pl_load(path_or_url, map_location=None, **kwargs):
+        # Force weights_only=False for pyannote compatibility
+        kwargs["weights_only"] = False
+        return _original_torch_load(path_or_url, map_location=map_location, **kwargs)
+
+    cloud_io._load = _patched_pl_load
+except ImportError:
+    pass  # torch or lightning_fabric not installed
+
 logger = logging.getLogger(__name__)
 
 # Type for progress callback
@@ -52,34 +70,6 @@ class DiarizationService:
             ) from e
 
         self._whisperx = whisperx
-
-        # PyTorch 2.6+ changed weights_only=True default for torch.load()
-        # This breaks pyannote model loading which uses omegaconf classes.
-        # Add all omegaconf classes to safe globals (permanent fix).
-        import torch
-        try:
-            import omegaconf
-            from omegaconf import DictConfig, ListConfig
-            from omegaconf.base import ContainerMetadata, Metadata
-            from omegaconf.nodes import ValueNode
-            torch.serialization.add_safe_globals([
-                ListConfig,
-                DictConfig,
-                ContainerMetadata,
-                Metadata,
-                ValueNode,
-                omegaconf.listconfig.ListConfig,
-                omegaconf.dictconfig.DictConfig,
-            ])
-            logger.debug("Added omegaconf safe globals for pyannote compatibility")
-        except ImportError:
-            # If omegaconf not available, fall back to weights_only=False patch
-            logger.warning("omegaconf not available, using weights_only=False fallback")
-            _original_torch_load = torch.load
-            def _patched_torch_load(*args, **kwargs):
-                kwargs["weights_only"] = False
-                return _original_torch_load(*args, **kwargs)
-            torch.load = _patched_torch_load
 
         logger.info("Loading WhisperX diarization pipeline (device=%s)", self.device)
 
