@@ -4,11 +4,11 @@ import { MessageSquarePlus, ChevronLeft, ChevronRight, ZoomIn, ZoomOut } from 'l
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 
+// Import PDF.js worker as URL for proper bundling in production
+import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+
 // Set up PDF.js worker
-pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-  'pdfjs-dist/build/pdf.worker.min.mjs',
-  import.meta.url
-).toString();
+pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
 interface PDFViewerProps {
   url: string;

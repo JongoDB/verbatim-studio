@@ -23,7 +23,21 @@ from sqlalchemy import text
 
 
 def _get_git_version() -> str:
-    """Read version from git tags."""
+    """Read version from pyproject.toml or git tags."""
+    # First try pyproject.toml (works in packaged Electron app)
+    try:
+        import tomllib
+        pyproject_path = Path(__file__).parent.parent.parent / "pyproject.toml"
+        if pyproject_path.exists():
+            with open(pyproject_path, "rb") as f:
+                data = tomllib.load(f)
+                version = data.get("project", {}).get("version")
+                if version:
+                    return f"v{version}"
+    except Exception:
+        pass
+
+    # Fall back to git describe (works in development)
     try:
         result = subprocess.run(
             ["git", "describe", "--tags", "--always"],
