@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { renderAsync } from 'docx-preview';
@@ -102,13 +102,14 @@ export function DocumentViewerPage({ documentId, onBack }: DocumentViewerPagePro
     (document.mime_type.startsWith('image/') || document.mime_type === 'application/pdf') &&
     document.metadata?.ocr_engine !== 'qwen2-vl-ocr';
 
-  // Check if document has OCR results
-  const hasOcrResults = document?.metadata?.ocr_engine === 'qwen2-vl-ocr';
+  // Check if document has extracted text (OCR or PyMuPDF)
+  const hasExtractedText = document?.metadata?.ocr_engine &&
+    ['qwen2-vl-ocr', 'pymupdf', 'pypdf'].includes(document.metadata.ocr_engine as string);
 
   // Fetch OCR content when document has OCR results
   useEffect(() => {
     async function fetchOcrContent() {
-      if (!document || !hasOcrResults) {
+      if (!document || !hasExtractedText) {
         setOcrContent(null);
         return;
       }
@@ -120,7 +121,27 @@ export function DocumentViewerPage({ documentId, onBack }: DocumentViewerPagePro
       }
     }
     fetchOcrContent();
-  }, [document, hasOcrResults, documentId]);
+  }, [document, hasExtractedText, documentId]);
+
+  // Parse OCR content into pages (format: "## Page N\n\ntext...")
+  const ocrPages = useMemo(() => {
+    if (!ocrContent) return {};
+    const pages: Record<number, string> = {};
+    // Split by page headers
+    const parts = ocrContent.split(/(?=## Page \d+)/);
+    for (const part of parts) {
+      const match = part.match(/^## Page (\d+)\n\n?([\s\S]*)/);
+      if (match) {
+        const pageNum = parseInt(match[1], 10);
+        const pageText = match[2].trim();
+        pages[pageNum] = pageText;
+      }
+    }
+    return pages;
+  }, [ocrContent]);
+
+  // Get OCR text for current page
+  const currentPageOcrText = ocrPages[currentPdfPage] || null;
 
   // Poll for status updates when document is processing
   useEffect(() => {
@@ -485,28 +506,36 @@ export function DocumentViewerPage({ documentId, onBack }: DocumentViewerPagePro
         {document.status === 'completed' && (
           <>
             {isPdf && (
-              <div className="flex flex-col h-[calc(100vh-260px)]">
-                <PDFViewer
-                  url={api.documents.getFileUrl(documentId, true)}
-                  onSelectionNote={handlePdfSelectionNote}
-                  currentPage={currentPdfPage}
-                  onPageChange={setCurrentPdfPage}
-                  highlightText={highlightText}
-                  onHighlightCleared={() => setHighlightText(null)}
-                />
-                {/* OCR Results */}
+              <div className="overflow-auto h-[calc(100vh-260px)]">
+                <div className="h-[calc(100vh-280px)]">
+                  <PDFViewer
+                    url={api.documents.getFileUrl(documentId, true)}
+                    onSelectionNote={handlePdfSelectionNote}
+                    currentPage={currentPdfPage}
+                    onPageChange={setCurrentPdfPage}
+                    highlightText={highlightText}
+                    onHighlightCleared={() => setHighlightText(null)}
+                  />
+                </div>
+                {/* OCR Results - synced with current page */}
                 {ocrContent && (
-                  <div className="border-t border-gray-200 dark:border-gray-700 p-4 max-h-[30vh] overflow-auto">
+                  <div className="border-t border-gray-200 dark:border-gray-700 p-4">
                     <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2">
                       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                       </svg>
-                      Extracted Text (OCR)
+                      Extracted Text (Page {currentPdfPage})
                     </h3>
                     <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-4">
-                      <pre className="text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap font-mono">
-                        {ocrContent}
-                      </pre>
+                      {currentPageOcrText ? (
+                        <pre className="text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap font-mono">
+                          {currentPageOcrText}
+                        </pre>
+                      ) : (
+                        <p className="text-sm text-gray-500 dark:text-gray-400 italic">
+                          No extracted text for this page
+                        </p>
+                      )}
                     </div>
                   </div>
                 )}

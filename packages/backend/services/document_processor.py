@@ -286,74 +286,92 @@ class DocumentProcessor:
         enable_ocr: bool = False,
         check_cancelled: Callable[[], bool] | None = None,
     ) -> dict:
-        """Process PDF using OCR (if enabled) with PyMuPDF fallback."""
-        if enable_ocr and self._is_ocr_available():
-            try:
+        """Process PDF: try text extraction first, use OCR only for scanned/image PDFs."""
+        if check_cancelled and check_cancelled():
+            raise ProcessingCancelledError("Processing cancelled before starting")
+
+        # Always try PyMuPDF text extraction first (fast and accurate for text-based PDFs)
+        pymupdf_result = self._process_pdf_fallback(file_path)
+
+        # Check if we got meaningful text (threshold: avg 100 chars per page)
+        text_length = len(pymupdf_result.get("text", "") or "")
+        page_count = pymupdf_result.get("page_count") or 1
+        chars_per_page = text_length / page_count if page_count > 0 else 0
+
+        # If we got good text extraction, use it (no need for slow OCR)
+        if chars_per_page >= 100:
+            logger.info(f"PyMuPDF extracted {text_length} chars ({chars_per_page:.0f}/page) from {file_path.name}")
+            return pymupdf_result
+
+        # Text extraction yielded sparse results - this might be a scanned PDF
+        logger.info(f"Sparse text extraction ({chars_per_page:.0f} chars/page) for {file_path.name}")
+
+        # Only use OCR if explicitly enabled AND model is available
+        if not enable_ocr:
+            logger.info(f"OCR not enabled, returning sparse PyMuPDF result for {file_path.name}")
+            return pymupdf_result
+
+        if not self._is_ocr_available():
+            logger.info(f"OCR enabled but model not downloaded for {file_path.name}")
+            return pymupdf_result
+
+        # Run OCR on the scanned/image PDF
+        try:
+            logger.info(f"Running OCR on scanned PDF: {file_path.name}")
+
+            if not PYMUPDF_AVAILABLE:
+                logger.warning("PyMuPDF not available for PDF to image conversion")
+                return pymupdf_result
+
+            import fitz
+            from PIL import Image
+            import io
+
+            doc = fitz.open(file_path)
+            markdown_parts = []
+
+            for i, page in enumerate(doc):
                 if check_cancelled and check_cancelled():
-                    raise ProcessingCancelledError("Processing cancelled before starting")
+                    doc.close()
+                    raise ProcessingCancelledError(f"Processing cancelled at page {i+1}/{len(doc)}")
 
-                logger.info(f"Processing {file_path.name} with Qwen2-VL OCR")
+                logger.info(f"OCR processing page {i+1}/{len(doc)} of {file_path.name}")
 
-                # Convert PDF pages to images using PyMuPDF
-                if not PYMUPDF_AVAILABLE:
-                    logger.warning("PyMuPDF not available for PDF to image conversion")
-                    return self._process_pdf_fallback(file_path)
+                # Render page to image (150 DPI - balance between quality and memory)
+                mat = fitz.Matrix(150/72, 150/72)
+                pix = page.get_pixmap(matrix=mat)
+                img_data = pix.tobytes("png")
 
-                import fitz
-                from PIL import Image
-                import io
+                # Clean up pixmap immediately to free memory
+                del pix
 
-                doc = fitz.open(file_path)
-                markdown_parts = []
+                image = Image.open(io.BytesIO(img_data))
+                del img_data  # Free the PNG bytes
 
-                for i, page in enumerate(doc):
-                    if check_cancelled and check_cancelled():
-                        doc.close()
-                        raise ProcessingCancelledError(f"Processing cancelled at page {i+1}/{len(doc)}")
+                # Run OCR on the page image
+                page_text = _run_ocr_on_image(image, check_cancelled)
+                markdown_parts.append(f"## Page {i+1}\n\n{page_text}")
 
-                    logger.info(f"OCR processing page {i+1}/{len(doc)} of {file_path.name}")
+                # Clean up image and force garbage collection
+                del image
+                gc.collect()
 
-                    # Render page to image (150 DPI - balance between quality and memory)
-                    mat = fitz.Matrix(150/72, 150/72)
-                    pix = page.get_pixmap(matrix=mat)
-                    img_data = pix.tobytes("png")
+            doc.close()
 
-                    # Clean up pixmap immediately to free memory
-                    del pix
+            combined_markdown = "\n\n".join(markdown_parts)
+            plain_text = combined_markdown.replace("#", "").replace("*", "").replace("|", " ")
 
-                    image = Image.open(io.BytesIO(img_data))
-                    del img_data  # Free the PNG bytes
-
-                    # Run OCR on the page image
-                    page_text = _run_ocr_on_image(image, check_cancelled)
-                    markdown_parts.append(f"## Page {i+1}\n\n{page_text}")
-
-                    # Clean up image and force garbage collection
-                    del image
-                    gc.collect()
-
-                doc.close()
-
-                combined_markdown = "\n\n".join(markdown_parts)
-                plain_text = combined_markdown.replace("#", "").replace("*", "").replace("|", " ")
-
-                return {
-                    "text": plain_text,
-                    "markdown": combined_markdown,
-                    "page_count": len(markdown_parts),
-                    "metadata": {"ocr_engine": "qwen2-vl-ocr"},
-                }
-            except ProcessingCancelledError:
-                raise
-            except Exception as e:
-                logger.warning(f"OCR failed, falling back to PyMuPDF: {e}")
-                return self._process_pdf_fallback(file_path)
-        else:
-            if enable_ocr:
-                logger.info(f"OCR enabled but model not downloaded for {file_path.name}")
-            else:
-                logger.debug(f"OCR not enabled, using standard extraction for {file_path.name}")
-            return self._process_pdf_fallback(file_path)
+            return {
+                "text": plain_text,
+                "markdown": combined_markdown,
+                "page_count": len(markdown_parts),
+                "metadata": {"ocr_engine": "qwen2-vl-ocr"},
+            }
+        except ProcessingCancelledError:
+            raise
+        except Exception as e:
+            logger.warning(f"OCR failed, using PyMuPDF result: {e}")
+            return pymupdf_result
 
     def _process_pdf_fallback(self, file_path: Path) -> dict:
         """Fallback PDF processing using PyMuPDF or pypdf."""
@@ -363,14 +381,18 @@ class DocumentProcessor:
                 logger.info(f"Processing {file_path.name} with PyMuPDF")
                 doc = fitz.open(file_path)
                 text_parts = []
-                for page in doc:
-                    text_parts.append(page.get_text())
+                markdown_parts = []
+                for i, page in enumerate(doc):
+                    page_text = page.get_text()
+                    text_parts.append(page_text)
+                    markdown_parts.append(f"## Page {i+1}\n\n{page_text}")
                 text = "\n\n".join(text_parts)
+                markdown = "\n\n".join(markdown_parts)
                 page_count = len(doc)
                 doc.close()
                 return {
                     "text": text,
-                    "markdown": text,
+                    "markdown": markdown,
                     "page_count": page_count,
                     "metadata": {"ocr_engine": "pymupdf"},
                 }
@@ -383,14 +405,17 @@ class DocumentProcessor:
                 logger.info(f"Processing {file_path.name} with pypdf")
                 reader = PdfReader(file_path)
                 text_parts = []
-                for page in reader.pages:
+                markdown_parts = []
+                for i, page in enumerate(reader.pages):
                     page_text = page.extract_text()
                     if page_text:
                         text_parts.append(page_text)
+                        markdown_parts.append(f"## Page {i+1}\n\n{page_text}")
                 text = "\n\n".join(text_parts)
+                markdown = "\n\n".join(markdown_parts)
                 return {
                     "text": text,
-                    "markdown": text,
+                    "markdown": markdown,
                     "page_count": len(reader.pages),
                     "metadata": {"ocr_engine": "pypdf"},
                 }

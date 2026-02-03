@@ -75,7 +75,7 @@ function StatCard({
     return (
       <button
         onClick={onClick}
-        className="w-full text-left rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5 hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors"
+        className="w-full text-left rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
       >
         {content}
       </button>
@@ -504,7 +504,7 @@ export function Dashboard({ onNavigateToRecordings, onNavigateToProjects, onView
                         onNavigateToRecordings?.();
                       }
                     }}
-                    className="w-full flex items-center gap-3 p-2 -mx-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors text-left"
+                    className="w-full flex items-center gap-3 p-2 -mx-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors text-left group"
                   >
                     <svg className="w-4 h-4 shrink-0 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
@@ -562,7 +562,7 @@ export function Dashboard({ onNavigateToRecordings, onNavigateToProjects, onView
                 <button
                   key={project.id}
                   onClick={() => onNavigateToProjects?.()}
-                  className="w-full flex items-center gap-3 p-2 -mx-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors text-left"
+                  className="w-full flex items-center gap-3 p-2 -mx-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors text-left group"
                 >
                   <svg className="w-4 h-4 shrink-0 text-purple-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />

@@ -111,7 +111,7 @@ async def upload_document(
     file: UploadFile = File(...),
     title: str = Form(None),
     project_id: str = Form(None),
-    enable_ocr: bool = Form(False),
+    enable_ocr: str = Form("false"),  # String because FormData sends 'true'/'false'
 ) -> DocumentResponse:
     """Upload a new document.
 
@@ -201,6 +201,8 @@ async def upload_document(
             final_title = filename
 
     # Create document record with OCR preference in metadata
+    # Convert string 'true'/'false' to bool (FormData sends strings)
+    ocr_enabled = enable_ocr.lower() == 'true' if isinstance(enable_ocr, str) else bool(enable_ocr)
     doc = Document(
         id=doc_id,
         title=final_title,
@@ -211,7 +213,7 @@ async def upload_document(
         project_id=project_id,
         storage_location_id=storage_location_id,
         status="pending",
-        metadata_={"enable_ocr": enable_ocr},
+        metadata_={"enable_ocr": ocr_enabled},
     )
     db.add(doc)
     await db.commit()
