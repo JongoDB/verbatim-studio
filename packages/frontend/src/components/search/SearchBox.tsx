@@ -230,14 +230,18 @@ export function SearchBox({ onResultClick, placeholder = 'Search files and conte
                             ? (result.document_title || result.recording_title || 'Note')
                             : result.type === 'conversation'
                             ? highlightMatch(result.conversation_title || result.title || 'Untitled Chat', query)
-                            : result.recording_title
+                            : highlightMatch(result.recording_title, query)
                           }
                         </div>
 
                         {/* Text preview (for segment, document, note, or conversation) */}
-                        {(result.type === 'segment' || result.type === 'document' || result.type === 'note' || result.type === 'conversation') && result.text && (
+                        {(result.type === 'segment' || result.type === 'document' || result.type === 'note' || result.type === 'conversation') && (
                           <div className="mt-1 text-sm text-gray-600 dark:text-gray-300 line-clamp-2">
-                            {highlightMatch(result.text, query)}
+                            {result.text
+                              ? highlightMatch(result.text, query)
+                              : result.type === 'document'
+                              ? 'Document content match'
+                              : 'Content match'}
                           </div>
                         )}
 
@@ -266,6 +270,11 @@ export function SearchBox({ onResultClick, placeholder = 'Search files and conte
                               semantic
                             </span>
                           )}
+                          {result.match_type === 'keyword' && (
+                            <span className="px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300">
+                              keyword
+                            </span>
+                          )}
                           {result.start_time !== null && (
                             <span>at {formatTime(result.start_time)}</span>
                           )}
@@ -273,6 +282,7 @@ export function SearchBox({ onResultClick, placeholder = 'Search files and conte
                             <span>
                               {result.anchor_type === 'page' ? `Page ${(result.anchor_data as Record<string, unknown>)?.page || ''}` :
                                result.anchor_type === 'selection' ? 'Selection' :
+                               result.anchor_type === 'timestamp' ? `${(result.anchor_data as Record<string, unknown>)?.time || ''}s` :
                                result.anchor_type}
                             </span>
                           )}
