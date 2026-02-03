@@ -192,6 +192,8 @@ export function SearchBox({ onResultClick, placeholder = 'Search files and conte
                           ? 'text-purple-500'
                           : result.type === 'note'
                           ? 'text-amber-500'
+                          : result.type === 'conversation'
+                          ? 'text-cyan-500'
                           : 'text-green-500'
                       }`}>
                         {result.type === 'recording' ? (
@@ -205,6 +207,10 @@ export function SearchBox({ onResultClick, placeholder = 'Search files and conte
                         ) : result.type === 'note' ? (
                           <svg className="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                             <path strokeLinecap="round" strokeLinejoin="round" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
+                          </svg>
+                        ) : result.type === 'conversation' ? (
+                          <svg className="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                           </svg>
                         ) : (
                           <svg className="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -222,12 +228,14 @@ export function SearchBox({ onResultClick, placeholder = 'Search files and conte
                             ? highlightMatch(result.document_title || result.title, query)
                             : result.type === 'note'
                             ? (result.document_title || result.recording_title || 'Note')
+                            : result.type === 'conversation'
+                            ? highlightMatch(result.conversation_title || result.title || 'Untitled Chat', query)
                             : result.recording_title
                           }
                         </div>
 
-                        {/* Text preview (for segment, document, or note) */}
-                        {(result.type === 'segment' || result.type === 'document' || result.type === 'note') && result.text && (
+                        {/* Text preview (for segment, document, note, or conversation) */}
+                        {(result.type === 'segment' || result.type === 'document' || result.type === 'note' || result.type === 'conversation') && result.text && (
                           <div className="mt-1 text-sm text-gray-600 dark:text-gray-300 line-clamp-2">
                             {highlightMatch(result.text, query)}
                           </div>
@@ -242,10 +250,17 @@ export function SearchBox({ onResultClick, placeholder = 'Search files and conte
                               ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300'
                               : result.type === 'note'
                               ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300'
+                              : result.type === 'conversation'
+                              ? 'bg-cyan-100 dark:bg-cyan-900/30 text-cyan-700 dark:text-cyan-300'
                               : 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
                           }`}>
-                            {result.type === 'recording' ? 'Recording' : result.type === 'document' ? 'Document' : result.type === 'note' ? 'Note' : 'Segment'}
+                            {result.type === 'recording' ? 'Recording' : result.type === 'document' ? 'Document' : result.type === 'note' ? 'Note' : result.type === 'conversation' ? 'Chat' : 'Segment'}
                           </span>
+                          {result.type === 'conversation' && result.message_role && (
+                            <span className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400">
+                              {result.message_role === 'user' ? 'You' : 'Assistant'}
+                            </span>
+                          )}
                           {result.match_type === 'semantic' && (
                             <span className="px-1.5 py-0.5 rounded bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300">
                               semantic
