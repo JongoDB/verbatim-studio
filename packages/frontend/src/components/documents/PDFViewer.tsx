@@ -4,11 +4,8 @@ import { MessageSquarePlus, ChevronLeft, ChevronRight, ZoomIn, ZoomOut } from 'l
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 
-// Import PDF.js worker as URL for proper bundling in production
-import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
-
-// Set up PDF.js worker
-pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+// Set up PDF.js worker using CDN (works in all environments including Electron)
+pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 interface PDFViewerProps {
   url: string;
