@@ -102,6 +102,23 @@ jobs:
           PACKAGE_LIST=$("$PYTHON_BIN" -m pip list --path "$SITE_PACKAGES" --format=freeze 2>/dev/null)
           FAILED=0
 
+          # Check if a package is installed (any version)
+          check_installed() {
+            local pkg=$1
+            local pattern=$(echo "$pkg" | sed 's/-/_/g; s/\./_/g')
+            local version=$(echo "$PACKAGE_LIST" | grep -i "^${pattern}==" | cut -d'=' -f3 | head -1)
+            if [ -z "$version" ]; then
+              # Try original name
+              version=$(echo "$PACKAGE_LIST" | grep -i "^${pkg}==" | cut -d'=' -f3 | head -1)
+            fi
+            if [ -n "$version" ]; then
+              echo "✓ $pkg: $version"
+            else
+              echo "✗ $pkg: NOT_INSTALLED"
+              return 1
+            fi
+          }
+
           check_version() {
             local pkg=$1
             local expected=$2
@@ -121,6 +138,13 @@ jobs:
             fi
           }
 
+          # Core document processing packages (verify installed)
+          check_installed "PyMuPDF" || FAILED=1
+          check_installed "python-docx" || FAILED=1
+          check_installed "openpyxl" || FAILED=1
+          check_installed "python-pptx" || FAILED=1
+
+          # ML packages (verify exact versions)
           check_version "torch" "2.8.0" || FAILED=1
           check_version "torchaudio" "2.8.0" || FAILED=1
           check_version "huggingface-hub" "0.36.1" || FAILED=1

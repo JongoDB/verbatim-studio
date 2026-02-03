@@ -159,7 +159,25 @@ verify_version() {
 
 FAILED=0
 
-# Critical version checks
+# Core package checks (document processing) - just verify installed
+check_installed() {
+  local package=$1
+  local pattern=$(echo "$package" | sed 's/-/_/g; s/\./_/g')
+  if echo "$PACKAGE_LIST" | grep -qi "^${pattern}=="; then
+    local version=$(echo "$PACKAGE_LIST" | grep -i "^${pattern}==" | cut -d'=' -f3 | head -1)
+    echo "✓ $package: $version"
+  else
+    echo "✗ $package: NOT INSTALLED"
+    return 1
+  fi
+}
+
+check_installed "PyMuPDF" || FAILED=1
+check_installed "python_docx" || FAILED=1
+check_installed "openpyxl" || FAILED=1
+check_installed "python_pptx" || FAILED=1
+
+# Critical ML version checks
 verify_version "torch" "2.8.0" || FAILED=1
 verify_version "torchaudio" "2.8.0" || FAILED=1
 verify_version "huggingface_hub" "0.36.1" || FAILED=1

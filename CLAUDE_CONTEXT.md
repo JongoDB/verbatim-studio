@@ -78,6 +78,60 @@ pnpm --filter @verbatim/frontend build
 pnpm --filter @verbatim/electron dist
 ```
 
+## Release Notes Guidelines
+
+**Every GitHub release MUST include user-friendly release notes.** These notes are displayed to users when they check for updates (via the "What's New" dialog).
+
+### Format
+```markdown
+## What's New in vX.Y.Z
+
+### ✨ New Features
+- Brief, user-friendly description of new feature
+- Another feature (explain benefit to user, not technical details)
+
+### 🐛 Bug Fixes
+- Fixed issue where [user-facing problem] occurred
+- Resolved [describe what users experienced]
+
+### 🔧 Improvements
+- Improved [feature] for better [benefit]
+- Enhanced [area] performance
+
+### 📝 Notes
+- Any important notes users should know (e.g., "Requires re-download of models")
+```
+
+### Writing Guidelines
+1. **User-focused**: Describe what changed from the user's perspective, not implementation details
+2. **Plain language**: Avoid technical jargon (say "search is faster" not "optimized SQL queries")
+3. **Actionable**: If users need to do something, tell them clearly
+4. **Concise**: One line per item, get to the point
+5. **Categorized**: Use the sections above to organize changes
+
+### Examples
+**Good**: "Fixed issue where search results wouldn't show chat conversations"
+**Bad**: "Fixed SearchBox.tsx to handle type='conversation' with proper styling"
+
+**Good**: "Added speaker identification for transcriptions (requires HuggingFace token)"
+**Bad**: "Integrated pyannote diarization pipeline with HF auth"
+
+### Creating the Release
+When pushing a tag, GitHub Actions creates a draft release. Edit the release to add notes:
+```bash
+# After pushing the tag
+gh release edit vX.Y.Z --notes "$(cat << 'EOF'
+## What's New in vX.Y.Z
+
+### ✨ New Features
+- ...
+
+### 🐛 Bug Fixes
+- ...
+EOF
+)"
+```
+
 ## Common Development Commands
 
 ```bash
