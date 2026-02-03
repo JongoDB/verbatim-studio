@@ -36,7 +36,13 @@ export function createMainWindow(): BrowserWindow {
   }
 
   // Inject API URL into page early (backup for when preload fails)
-  // Use dom-ready which fires before did-finish-load, ensuring URL is available before app init
+  // Use did-start-navigation to inject before any JS runs (handles reloads)
+  mainWindow.webContents.on('did-start-navigation', () => {
+    const apiUrl = backendManager.getApiUrl();
+    console.log('[Window] did-start-navigation - will inject API URL:', apiUrl);
+  });
+
+  // Also inject on dom-ready as backup
   mainWindow.webContents.on('dom-ready', () => {
     const apiUrl = backendManager.getApiUrl();
     const port = backendManager.port;
@@ -57,11 +63,53 @@ export function createMainWindow(): BrowserWindow {
     }
   });
 
-  // Enable dev tools with keyboard shortcut (Cmd+Option+I / Ctrl+Shift+I)
+  // Handle page reloads - inject URL via preload on every navigation
+  mainWindow.webContents.on('did-finish-load', () => {
+    const apiUrl = backendManager.getApiUrl();
+    if (apiUrl) {
+      // Re-inject in case dom-ready injection was too late
+      mainWindow.webContents.executeJavaScript(`
+        if (!window.__VERBATIM_API_URL__) {
+          window.__VERBATIM_API_URL__ = '${apiUrl}';
+          console.log('[Injected on did-finish-load] API URL set to:', window.__VERBATIM_API_URL__);
+        }
+      `).catch(() => {});
+    }
+  });
+
+  // Handle reload properly in production - intercept Cmd+R/Ctrl+R
   mainWindow.webContents.on('before-input-event', (event, input) => {
+    // Handle Cmd+R / Ctrl+R reload
+    if ((input.meta || input.control) && input.key === 'r' && !input.shift && !input.alt) {
+      event.preventDefault();
+      console.log('[Window] Intercepted reload shortcut');
+
+      if (!app.isPackaged) {
+        mainWindow.loadURL('http://localhost:5173');
+      } else {
+        const frontendPath = path.join(process.resourcesPath, 'frontend', 'index.html');
+        console.log('[Window] Reloading from:', frontendPath);
+        mainWindow.loadFile(frontendPath);
+      }
+      return;
+    }
+
+    // Enable dev tools with keyboard shortcut (Cmd+Option+I / Ctrl+Shift+I)
     if ((input.meta && input.alt && input.key === 'i') ||
         (input.control && input.shift && input.key === 'I')) {
       mainWindow.webContents.toggleDevTools();
+    }
+  });
+
+  // Prevent navigation to invalid URLs in production
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    console.log('[Window] will-navigate to:', url);
+    if (app.isPackaged && !url.startsWith('file://') && !url.startsWith('http://localhost')) {
+      // Allow file:// and localhost URLs only in packaged app
+      if (!url.startsWith('https://') && !url.startsWith('http://')) {
+        console.log('[Window] Blocking invalid navigation');
+        event.preventDefault();
+      }
     }
   });
 

@@ -11,7 +11,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from persistence import get_db
-from persistence.models import Document, DocumentEmbedding, Note, Recording, Segment, SegmentEmbedding, Transcript
+from persistence.models import (
+    Conversation,
+    ConversationMessage,
+    Document,
+    DocumentEmbedding,
+    Note,
+    Recording,
+    Segment,
+    SegmentEmbedding,
+    Transcript,
+)
 from services.embedding import bytes_to_embedding, embedding_service
 
 logger = logging.getLogger(__name__)
@@ -448,7 +458,7 @@ async def _semantic_search_documents(
 class GlobalSearchResult(BaseModel):
     """A result from global search."""
 
-    type: str  # "recording", "segment", "document", or "note"
+    type: str  # "recording", "segment", "document", "note", or "conversation"
     id: str
     title: str | None
     text: str | None
@@ -466,6 +476,10 @@ class GlobalSearchResult(BaseModel):
     note_id: str | None = None
     anchor_type: str | None = None
     anchor_data: dict | None = None
+    # Conversation fields (for chat results)
+    conversation_id: str | None = None
+    conversation_title: str | None = None
+    message_role: str | None = None  # "user" or "assistant"
     # Common fields
     created_at: datetime
     match_type: str | None = None  # "keyword" or "semantic"
@@ -486,10 +500,11 @@ async def global_search(
     limit: Annotated[int, Query(ge=1, le=50, description="Maximum results")] = 20,
     semantic: Annotated[bool, Query(description="Include semantic search results")] = True,
 ) -> GlobalSearchResponse:
-    """Search across recordings, segments, and documents.
+    """Search across recordings, segments, documents, notes, and conversations.
 
     Returns a combined list of matching recordings (by title),
-    segments (by text content), and documents (by OCR/extracted text).
+    segments (by text content), documents (by OCR/extracted text),
+    notes (by content), and conversations (by title and message content).
 
     Args:
         db: Database session.
@@ -502,8 +517,8 @@ async def global_search(
     """
     results: list[GlobalSearchResult] = []
 
-    # Allocate limits: recordings (1/5), segments (1/5), documents (1/5), notes (1/5), semantic (1/5)
-    keyword_limit = limit // 5 or 1
+    # Allocate limits: recordings, segments, documents, notes, conversations, semantic (1/6 each)
+    keyword_limit = limit // 6 or 1
 
     # Search recordings by title
     recording_query = (
@@ -688,6 +703,85 @@ async def global_search(
                 anchor_type=note.anchor_type,
                 anchor_data=note.anchor_data,
                 created_at=note.created_at,
+                match_type="keyword",
+            )
+        )
+
+    # Search conversation messages by content
+    conversation_query = (
+        select(
+            ConversationMessage,
+            Conversation.id.label("conv_id"),
+            Conversation.title.label("conv_title"),
+        )
+        .join(Conversation, ConversationMessage.conversation_id == Conversation.id)
+        .where(ConversationMessage.content.ilike(f"%{q}%"))
+        .order_by(ConversationMessage.created_at.desc())
+        .limit(keyword_limit)
+    )
+    conversation_result = await db.execute(conversation_query)
+    conversations = conversation_result.all()
+
+    seen_conv_ids = set()
+    for row in conversations:
+        message = row[0]
+        conv_id = row[1]
+        conv_title = row[2]
+        seen_conv_ids.add(conv_id)
+
+        # Extract a snippet around the match
+        text_snippet = message.content
+        if len(text_snippet) > 200:
+            idx = text_snippet.lower().find(q.lower())
+            if idx >= 0:
+                start = max(0, idx - 50)
+                end = min(len(text_snippet), idx + len(q) + 150)
+                text_snippet = (
+                    ("..." if start > 0 else "")
+                    + text_snippet[start:end]
+                    + ("..." if end < len(text_snippet) else "")
+                )
+            else:
+                text_snippet = text_snippet[:200] + "..."
+
+        results.append(
+            GlobalSearchResult(
+                type="conversation",
+                id=message.id,
+                title=conv_title,
+                text=text_snippet,
+                conversation_id=conv_id,
+                conversation_title=conv_title,
+                message_role=message.role,
+                created_at=message.created_at,
+                match_type="keyword",
+            )
+        )
+
+    # Also search conversation titles directly
+    conv_title_query = (
+        select(Conversation)
+        .where(Conversation.title.ilike(f"%{q}%"))
+        .order_by(Conversation.updated_at.desc())
+        .limit(keyword_limit)
+    )
+    conv_title_result = await db.execute(conv_title_query)
+    conv_titles = conv_title_result.scalars().all()
+
+    for conv in conv_titles:
+        if conv.id in seen_conv_ids:
+            continue  # Already found via message search
+        seen_conv_ids.add(conv.id)
+
+        results.append(
+            GlobalSearchResult(
+                type="conversation",
+                id=conv.id,
+                title=conv.title,
+                text=conv.title,
+                conversation_id=conv.id,
+                conversation_title=conv.title,
+                created_at=conv.created_at,
                 match_type="keyword",
             )
         )

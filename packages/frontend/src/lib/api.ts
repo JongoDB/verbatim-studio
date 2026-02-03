@@ -41,17 +41,25 @@ export async function initializeApiUrl(): Promise<string> {
 
     // Check if running in Electron via preload
     if (window.electronAPI?.getApiUrl) {
-      try {
-        console.log('[API] Calling electronAPI.getApiUrl()...');
-        const url = await window.electronAPI.getApiUrl();
-        console.log('[API] electronAPI.getApiUrl() returned:', url);
-        if (url) {
-          console.log('[API] Using Electron backend URL (preload):', url);
-          cachedApiBaseUrl = url;
-          return url;
+      // Retry a few times in case backend isn't ready yet (e.g., on reload)
+      for (let attempt = 0; attempt < 5; attempt++) {
+        try {
+          console.log('[API] Calling electronAPI.getApiUrl() attempt', attempt + 1);
+          const url = await window.electronAPI.getApiUrl();
+          console.log('[API] electronAPI.getApiUrl() returned:', url);
+          if (url) {
+            console.log('[API] Using Electron backend URL (preload):', url);
+            cachedApiBaseUrl = url;
+            return url;
+          }
+          // URL was null, wait and retry
+          if (attempt < 4) {
+            await new Promise(resolve => setTimeout(resolve, 200));
+          }
+        } catch (err) {
+          console.warn('[API] Failed to get URL from preload:', err);
+          break;
         }
-      } catch (err) {
-        console.warn('[API] Failed to get URL from preload:', err);
       }
     }
 
@@ -347,7 +355,7 @@ export interface SearchResponse {
 }
 
 export interface GlobalSearchResult {
-  type: 'recording' | 'segment' | 'document' | 'note';
+  type: 'recording' | 'segment' | 'document' | 'note' | 'conversation';
   id: string;
   title: string | null;
   text: string | null;
@@ -361,6 +369,10 @@ export interface GlobalSearchResult {
   note_id: string | null;
   anchor_type: string | null;
   anchor_data: Record<string, unknown> | null;
+  // Conversation fields
+  conversation_id: string | null;
+  conversation_title: string | null;
+  message_role: 'user' | 'assistant' | null;
   created_at: string;
   match_type?: 'keyword' | 'semantic' | null;
   similarity?: number | null;

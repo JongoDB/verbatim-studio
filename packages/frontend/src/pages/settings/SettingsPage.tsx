@@ -2807,7 +2807,25 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
                 <svg className="w-4 h-4 text-green-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                 </svg>
+                <span><strong>Documents & OCR</strong> — Extract text from PDFs and images with vision AI</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <svg className="w-4 h-4 text-green-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+                <span><strong>Video Support</strong> — Upload and transcribe video files (MP4, WebM, MOV, MKV)</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <svg className="w-4 h-4 text-green-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
                 <span><strong>AI Assistant (Max)</strong> — Chat with your transcripts, ask questions, get summaries</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <svg className="w-4 h-4 text-green-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+                <span><strong>Global Search</strong> — Keyword search across projects, transcripts, chats, notes, and OCR results</span>
               </li>
               <li className="flex items-start gap-2">
                 <svg className="w-4 h-4 text-green-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -2831,18 +2849,6 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
                 <svg className="w-4 h-4 text-green-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                 </svg>
-                <span><strong>Document Management</strong> — Upload PDFs, images, and notes with OCR</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <svg className="w-4 h-4 text-green-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                </svg>
-                <span><strong>Video Support</strong> — Upload and transcribe video files (MP4, WebM, MOV, MKV)</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <svg className="w-4 h-4 text-green-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                </svg>
                 <span><strong>Cloud Storage</strong> — Sync with Google Drive, OneDrive, and Dropbox via OAuth</span>
               </li>
             </ul>
@@ -2856,7 +2862,7 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
                 <svg className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                <span><strong>Desktop App</strong> — Native Electron application for macOS, Windows, and Linux</span>
+                <span><strong>Desktop App</strong> — Native Electron application for macOS and Windows</span>
               </li>
               <li className="flex items-start gap-2">
                 <svg className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -2887,6 +2893,18 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 <span><strong>Team Collaboration</strong> — Share projects securely with multi-user access control</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <svg className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span><strong>Team Communication</strong> — Built-in chat platform and user-tracked comments on transcript segments</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <svg className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span><strong>Secure Mobile Access</strong> — Connect to your self-hosted Verbatim server via encrypted tunnels</span>
               </li>
             </ul>
           </div>

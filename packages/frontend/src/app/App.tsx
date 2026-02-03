@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { api, isElectron, type ApiInfo, type HealthStatus, type GlobalSearchResult } from '@/lib/api';
+import { api, isElectron, type ApiInfo, type HealthStatus, type GlobalSearchResult, type SystemInfo } from '@/lib/api';
 import { RecordingsPage } from '@/pages/recordings/RecordingsPage';
 import { ProjectsPage } from '@/pages/projects/ProjectsPage';
 import { ProjectDetailPage } from '@/pages/projects/ProjectDetailPage';
@@ -120,6 +120,7 @@ function getEffectiveDarkMode(theme: Theme): boolean {
 
 export function App() {
   const [apiInfo, setApiInfo] = useState<ApiInfo | null>(null);
+  const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
   const [health, setHealth] = useState<HealthStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(true);
@@ -230,8 +231,23 @@ export function App() {
     }
   })();
 
-  const handleSearchResult = useCallback((result: GlobalSearchResult) => {
-    if (result.type === 'document' && result.document_id) {
+  const handleSearchResult = useCallback(async (result: GlobalSearchResult) => {
+    if (result.type === 'conversation' && result.conversation_id) {
+      // Load the conversation and open chat panel
+      try {
+        const detail = await api.conversations.get(result.conversation_id);
+        const messages: ChatMessage[] = detail.messages.map(m => ({
+          id: m.id,
+          role: m.role,
+          content: m.content,
+        }));
+        setChatMessages(messages);
+        setChatAttachments([]);
+        setIsChatOpen(true);
+      } catch {
+        console.error('Failed to load conversation');
+      }
+    } else if (result.type === 'document' && result.document_id) {
       // Navigate to document viewer
       setNavigation({
         type: 'document-viewer',
@@ -305,12 +321,14 @@ export function App() {
   useEffect(() => {
     async function checkBackend() {
       try {
-        const [info, healthStatus] = await Promise.all([
+        const [info, healthStatus, sysInfo] = await Promise.all([
           api.info(),
           api.health.ready(),
+          api.system.info(),
         ]);
         setApiInfo(info);
         setHealth(healthStatus);
+        setSystemInfo(sysInfo);
         setError(null);
         setIsConnecting(false);
       } catch (err) {
@@ -473,7 +491,7 @@ export function App() {
         }}
         theme={theme}
         onCycleTheme={cycleTheme}
-        version={apiInfo?.version || APP_VERSION}
+        version={systemInfo?.app_version || APP_VERSION}
         health={health}
         collapsed={sidebarCollapsed}
         onCollapsedChange={setSidebarCollapsed}
