@@ -54,30 +54,39 @@ class DiarizationService:
         self._whisperx = whisperx
 
         # PyTorch 2.6+ changed weights_only=True default for torch.load()
-        # This breaks pyannote model loading which uses custom classes.
-        # Monkey-patch torch.load to force weights_only=False for pyannote models.
+        # This breaks pyannote model loading which uses omegaconf classes.
+        # Add all omegaconf classes to safe globals (permanent fix).
         import torch
-        _original_torch_load = torch.load
-
-        def _patched_torch_load(*args, **kwargs):
-            # Force weights_only=False for pyannote compatibility
-            # Must override even if caller passes weights_only=True
-            kwargs["weights_only"] = False
-            return _original_torch_load(*args, **kwargs)
-
-        torch.load = _patched_torch_load
-        logger.debug("Patched torch.load for pyannote compatibility (weights_only=False)")
+        try:
+            import omegaconf
+            from omegaconf import DictConfig, ListConfig
+            from omegaconf.base import ContainerMetadata, Metadata
+            from omegaconf.nodes import ValueNode
+            torch.serialization.add_safe_globals([
+                ListConfig,
+                DictConfig,
+                ContainerMetadata,
+                Metadata,
+                ValueNode,
+                omegaconf.listconfig.ListConfig,
+                omegaconf.dictconfig.DictConfig,
+            ])
+            logger.debug("Added omegaconf safe globals for pyannote compatibility")
+        except ImportError:
+            # If omegaconf not available, fall back to weights_only=False patch
+            logger.warning("omegaconf not available, using weights_only=False fallback")
+            _original_torch_load = torch.load
+            def _patched_torch_load(*args, **kwargs):
+                kwargs["weights_only"] = False
+                return _original_torch_load(*args, **kwargs)
+            torch.load = _patched_torch_load
 
         logger.info("Loading WhisperX diarization pipeline (device=%s)", self.device)
 
-        try:
-            self._pipeline = DiarizationPipeline(
-                use_auth_token=self.hf_token,
-                device=self.device,
-            )
-        finally:
-            # Restore original torch.load after loading
-            torch.load = _original_torch_load
+        self._pipeline = DiarizationPipeline(
+            use_auth_token=self.hf_token,
+            device=self.device,
+        )
 
         logger.info("WhisperX diarization pipeline loaded successfully")
 

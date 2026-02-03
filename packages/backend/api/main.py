@@ -5,8 +5,17 @@
 try:
     import torch.serialization
     import omegaconf
+    from omegaconf import DictConfig, ListConfig
+    from omegaconf.base import ContainerMetadata, Metadata
+    from omegaconf.nodes import ValueNode
     # Allow omegaconf classes used by pyannote/whisperx model checkpoints
     torch.serialization.add_safe_globals([
+        ListConfig,
+        DictConfig,
+        ContainerMetadata,
+        Metadata,
+        ValueNode,
+        # Include base module classes
         omegaconf.listconfig.ListConfig,
         omegaconf.dictconfig.DictConfig,
     ])
