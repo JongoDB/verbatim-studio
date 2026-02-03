@@ -165,6 +165,10 @@ verify_version "torchaudio" "2.8.0" || FAILED=1
 verify_version "huggingface_hub" "0.36.1" || FAILED=1
 verify_version "transformers" "4.48.0" || FAILED=1
 verify_version "pyannote.audio" "3.3.2" || FAILED=1
+verify_version "pyannote.core" "5.0.0" || FAILED=1
+verify_version "pyannote.database" "5.1.3" || FAILED=1
+verify_version "pyannote.pipeline" "3.0.1" || FAILED=1
+verify_version "pyannote.metrics" "3.2.1" || FAILED=1
 verify_version "whisperx" "3.3.4" || FAILED=1
 verify_version "numpy" "2.0.2" || FAILED=1
 

@@ -29,6 +29,12 @@ whisperx==3.3.4
 # Speaker diarization
 # =============================================================================
 pyannote.audio==3.3.2
+# pyannote namespace packages - MUST be explicitly listed for --target installs
+# These are normally pulled as dependencies, but --no-deps skips them
+pyannote-core==5.0.0
+pyannote-database==5.1.3
+pyannote-pipeline==3.0.1
+pyannote-metrics==3.2.1
 
 # =============================================================================
 # Vision/OCR models
