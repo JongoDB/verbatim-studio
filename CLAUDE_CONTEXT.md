@@ -110,8 +110,10 @@ gh cache delete <ID>            # Delete specific cache
 | Backend startup | `apps/electron/src/main/backend.ts` |
 | API client | `packages/frontend/src/lib/api.ts` |
 | Main app component | `packages/frontend/src/app/App.tsx` |
+| Header search box | `packages/frontend/src/components/search/SearchBox.tsx` |
+| Search page | `packages/frontend/src/pages/search/SearchPage.tsx` |
 | Settings page | `packages/frontend/src/pages/settings/SettingsPage.tsx` |
-| Global search | `packages/backend/api/routes/search.py` |
+| Global search backend | `packages/backend/api/routes/search.py` |
 | Document processing | `packages/backend/services/document_processor.py` |
 | ML dependencies | `scripts/requirements-ml.txt` |
 | Core dependencies | `scripts/requirements-core.txt` |
@@ -134,6 +136,9 @@ gh cache delete <ID>            # Delete specific cache
 ### GitHub build has stale dependencies
 **Solution**: Clear the Python cache: `gh cache delete <ID>` for python-ml caches.
 
+### Conversations not showing in header search bar
+**Fixed in v0.26.12**: `SearchBox.tsx` now handles `type="conversation"` with cyan styling, chat icon, and "Chat" badge.
+
 ## Architecture Notes
 
 ### API URL Injection (Electron)
@@ -155,9 +160,9 @@ The backend runs on a dynamic port. The API URL is injected into the frontend vi
 ### ML Model Downloads
 Models are downloaded to `~/Library/Application Support/@verbatim/electron/models/` on first use.
 
-## Recent Features (as of v0.26.11)
+## Recent Features (as of v0.26.12)
 
-- Global search includes conversations/chat history
+- Global search includes conversations/chat history (both SearchPage and header SearchBox)
 - PDF text extraction with PyMuPDF
 - OCR with Qwen VL model
 - Speaker diarization with pyannote
