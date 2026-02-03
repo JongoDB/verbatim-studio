@@ -124,15 +124,26 @@ else
 fi
 
 # =============================================================================
-# Verify critical version constraints using pip show (more reliable than import)
+# Verify critical version constraints using pip list (reliable with --path)
 # =============================================================================
 echo ""
 echo "=== Verifying Installed Versions ==="
 
+# Get all package versions in one call for efficiency
+PACKAGE_LIST=$("$PYTHON_BIN" -m pip list --path "$SITE_PACKAGES" --format=freeze 2>/dev/null)
+
 verify_version() {
   local package=$1
   local expected=$2
-  local actual=$("$PYTHON_BIN" -m pip show "$package" --path "$SITE_PACKAGES" 2>/dev/null | grep "^Version:" | cut -d' ' -f2)
+  # pip list uses underscores, but package names might use hyphens
+  local pattern=$(echo "$package" | sed 's/-/_/g; s/\./_/g')
+  local actual=$(echo "$PACKAGE_LIST" | grep -i "^${pattern}==" | cut -d'=' -f3 | head -1)
+
+  if [ -z "$actual" ]; then
+    # Try with original name (hyphens)
+    pattern=$(echo "$package" | sed 's/_/-/g')
+    actual=$(echo "$PACKAGE_LIST" | grep -i "^${pattern}==" | cut -d'=' -f3 | head -1)
+  fi
 
   if [ -z "$actual" ]; then
     actual="NOT INSTALLED"

@@ -96,14 +96,22 @@ jobs:
           echo "=== Installed ML packages ==="
           "$PYTHON_BIN" -m pip list --path "$SITE_PACKAGES" | grep -E "torch|whisper|pyannote|mlx|transformers|huggingface|sentence|numpy" || true
           echo ""
-          echo "=== STRICT Version Verification (using pip show) ==="
+          echo "=== STRICT Version Verification ==="
+
+          # Get package list once
+          PACKAGE_LIST=$("$PYTHON_BIN" -m pip list --path "$SITE_PACKAGES" --format=freeze 2>/dev/null)
           FAILED=0
 
-          # Function to check exact version using pip show (more reliable than import)
           check_version() {
             local pkg=$1
             local expected=$2
-            local actual=$("$PYTHON_BIN" -m pip show "$pkg" --path "$SITE_PACKAGES" 2>/dev/null | grep "^Version:" | cut -d' ' -f2)
+            # Normalize package name (pip uses underscores/hyphens interchangeably)
+            local actual=$(echo "$PACKAGE_LIST" | grep -i "^${pkg}==" | cut -d'=' -f3 | head -1)
+            if [ -z "$actual" ]; then
+              # Try with underscores
+              local pkg_underscore=$(echo "$pkg" | sed 's/-/_/g; s/\./_/g')
+              actual=$(echo "$PACKAGE_LIST" | grep -i "^${pkg_underscore}==" | cut -d'=' -f3 | head -1)
+            fi
             if [ -z "$actual" ]; then actual="NOT_INSTALLED"; fi
             if [ "$actual" = "$expected" ]; then
               echo "✓ $pkg: $actual"
@@ -115,11 +123,11 @@ jobs:
 
           check_version "torch" "2.8.0" || FAILED=1
           check_version "torchaudio" "2.8.0" || FAILED=1
-          check_version "huggingface_hub" "0.36.1" || FAILED=1
+          check_version "huggingface-hub" "0.36.1" || FAILED=1
           check_version "transformers" "4.48.0" || FAILED=1
           check_version "numpy" "2.0.2" || FAILED=1
           check_version "whisperx" "3.3.4" || FAILED=1
-          check_version "pyannote.audio" "3.3.2" || FAILED=1
+          check_version "pyannote-audio" "3.3.2" || FAILED=1
           check_version "mlx-whisper" "0.4.3" || FAILED=1
 
           echo ""
