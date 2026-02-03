@@ -148,7 +148,7 @@ FAILED=0
 verify_version "torch" "2.8.0" || FAILED=1
 verify_version "torchaudio" "2.8.0" || FAILED=1
 verify_version "huggingface_hub" "0.36.1" || FAILED=1
-verify_version "transformers" "4.47.0" || FAILED=1
+verify_version "transformers" "4.48.0" || FAILED=1
 
 # Check pyannote.audio
 PYANNOTE_VERSION=$("$PYTHON_BIN" -c "import pyannote.audio; print(pyannote.audio.__version__)" 2>/dev/null || echo "NOT INSTALLED")

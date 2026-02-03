@@ -115,7 +115,7 @@ jobs:
           check_version "torch" "2.8.0" "torch" || FAILED=1
           check_version "torchaudio" "2.8.0" "torchaudio" || FAILED=1
           check_version "huggingface_hub" "0.36.1" "huggingface_hub" || FAILED=1
-          check_version "transformers" "4.47.0" "transformers" || FAILED=1
+          check_version "transformers" "4.48.0" "transformers" || FAILED=1
           check_version "numpy" "2.0.2" "numpy" || FAILED=1
 
           # Packages with non-standard module names

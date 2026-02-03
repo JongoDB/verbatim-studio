@@ -45,3 +45,7 @@ reportlab>=4.0.0
 
 # LLM inference (bundled so AI chat works out of the box)
 llama-cpp-python>=0.2.0
+
+# Pin numpy here to prevent llama-cpp-python from pulling incompatible version
+# ML deps require numpy 2.0.2 for compatibility with torch/pyannote
+numpy==2.0.2

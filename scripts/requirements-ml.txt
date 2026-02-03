@@ -14,7 +14,8 @@ torchvision==0.23.0
 # huggingface_hub 1.x removed use_auth_token parameter needed by whisperx
 huggingface_hub==0.36.1
 # transformers 5.x requires huggingface_hub>=1.3 which breaks whisperx
-transformers==4.47.0
+# whisperx 3.3.4 requires transformers>=4.48.0
+transformers==4.48.0
 
 # =============================================================================
 # Transcription engines
