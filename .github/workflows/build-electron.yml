@@ -127,7 +127,7 @@ jobs:
           check_version "transformers" "4.48.0" || FAILED=1
           check_version "numpy" "2.0.2" || FAILED=1
           check_version "whisperx" "3.3.4" || FAILED=1
-          check_version "pyannote-audio" "3.3.2" || FAILED=1
+          check_version "pyannote.audio" "3.3.2" || FAILED=1
           check_version "mlx-whisper" "0.4.3" || FAILED=1
 
           echo ""
