@@ -1,6 +1,6 @@
 [project]
 name = "verbatim-backend"
-version = "0.26.4"
+version = "0.26.5"
 description = "Verbatim Studio Backend API"
 requires-python = ">=3.11"
 dependencies = [
@@ -68,7 +68,7 @@ embeddings = [
 
 [tool.ruff]
 line-length = 100
-target-version = "0.26.4"
+target-version = "0.26.5"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W"]

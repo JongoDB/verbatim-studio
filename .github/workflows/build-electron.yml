@@ -62,16 +62,45 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pnpm-store-
 
+      # Cache Python standalone + dependencies to speed up builds
+      - name: Cache Python environment
+        uses: actions/cache@v4
+        id: python-cache
+        with:
+          path: build/python-standalone
+          key: ${{ runner.os }}-${{ matrix.arch }}-python-ml-${{ hashFiles('scripts/requirements-core.txt', 'scripts/requirements-ml.txt', 'scripts/install-bundled-deps.sh') }}
+
       - name: Install dependencies
         run: pnpm install
 
       - name: Download Python standalone
+        if: steps.python-cache.outputs.cache-hit != 'true'
         shell: bash
         run: ./scripts/download-python-standalone.sh ${{ matrix.arch }}
 
-      - name: Install Python dependencies
+      - name: Install Python dependencies (core + ML)
+        if: steps.python-cache.outputs.cache-hit != 'true'
         shell: bash
-        run: ./scripts/install-bundled-deps.sh
+        run: |
+          echo "Installing all Python dependencies (this may take a while)..."
+          ./scripts/install-bundled-deps.sh
+        env:
+          # Increase pip timeout for large packages
+          PIP_DEFAULT_TIMEOUT: 300
+
+      - name: Verify Python dependencies
+        shell: bash
+        run: |
+          PYTHON_BIN="build/python-standalone/python-macos-arm64/bin/python3"
+          echo "=== Installed ML packages ==="
+          "$PYTHON_BIN" -m pip list | grep -E "torch|whisper|pyannote|mlx|transformers|huggingface|sentence" || true
+          echo ""
+          echo "=== Version checks ==="
+          "$PYTHON_BIN" -c "import torch; print(f'torch: {torch.__version__}')" || echo "torch: NOT INSTALLED"
+          "$PYTHON_BIN" -c "import huggingface_hub; print(f'huggingface_hub: {huggingface_hub.__version__}')" || echo "huggingface_hub: NOT INSTALLED"
+          "$PYTHON_BIN" -c "import transformers; print(f'transformers: {transformers.__version__}')" || echo "transformers: NOT INSTALLED"
+          "$PYTHON_BIN" -c "import whisperx; print('whisperx: OK')" || echo "whisperx: NOT INSTALLED"
+          "$PYTHON_BIN" -c "import pyannote.audio; print('pyannote.audio: OK')" || echo "pyannote.audio: NOT INSTALLED"
 
       - name: Prepare Electron resources
         shell: bash
