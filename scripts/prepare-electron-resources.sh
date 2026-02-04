@@ -40,24 +40,35 @@ if [ ! -d "$PYTHON_DIR" ]; then
   exit 1
 fi
 
-# Clean and create resources directory (preserve whisper-models if they exist)
-WHISPER_MODELS_DIR="$RESOURCES_DIR/whisper-models"
-WHISPER_MODELS_TEMP=""
-if [ -d "$WHISPER_MODELS_DIR" ]; then
+# Clean and create resources directory (preserve cached resources if they exist)
+TEMP_PRESERVE=$(mktemp -d)
+PRESERVED_ITEMS=()
+
+# Preserve whisper-models if they exist
+if [ -d "$RESOURCES_DIR/whisper-models" ]; then
   echo "Preserving whisper-models directory..."
-  WHISPER_MODELS_TEMP=$(mktemp -d)
-  mv "$WHISPER_MODELS_DIR" "$WHISPER_MODELS_TEMP/"
+  mv "$RESOURCES_DIR/whisper-models" "$TEMP_PRESERVE/"
+  PRESERVED_ITEMS+=("whisper-models")
+fi
+
+# Preserve ffmpeg if it exists
+if [ -d "$RESOURCES_DIR/ffmpeg" ]; then
+  echo "Preserving ffmpeg directory..."
+  mv "$RESOURCES_DIR/ffmpeg" "$TEMP_PRESERVE/"
+  PRESERVED_ITEMS+=("ffmpeg")
 fi
 
 rm -rf "$RESOURCES_DIR"
 mkdir -p "$RESOURCES_DIR"
 
-# Restore whisper-models if they were preserved
-if [ -n "$WHISPER_MODELS_TEMP" ] && [ -d "$WHISPER_MODELS_TEMP/whisper-models" ]; then
-  mv "$WHISPER_MODELS_TEMP/whisper-models" "$RESOURCES_DIR/"
-  rm -rf "$WHISPER_MODELS_TEMP"
-  echo "Whisper models restored."
-fi
+# Restore preserved directories
+for item in "${PRESERVED_ITEMS[@]}"; do
+  if [ -d "$TEMP_PRESERVE/$item" ]; then
+    mv "$TEMP_PRESERVE/$item" "$RESOURCES_DIR/"
+    echo "Restored: $item"
+  fi
+done
+rm -rf "$TEMP_PRESERVE"
 
 # Copy Python
 echo "Copying Python..."

@@ -203,6 +203,14 @@ jobs:
           du -sh "$WHISPER_DIR"
           ls -la "$SNAPSHOTS_DIR"
 
+      # Cache FFmpeg binaries to avoid re-downloading every build (~50MB)
+      - name: Cache FFmpeg
+        uses: actions/cache@v4
+        id: ffmpeg-cache
+        with:
+          path: build/resources/ffmpeg
+          key: ffmpeg-v1-${{ runner.os }}-${{ matrix.arch }}-${{ hashFiles('scripts/download-ffmpeg.sh') }}
+
       - name: Prepare Electron resources
         shell: bash
         run: ./scripts/prepare-electron-resources.sh
