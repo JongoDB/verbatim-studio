@@ -24,6 +24,7 @@ import type { ChatMessage } from '@/components/ai/ChatMessages';
 import type { ChatAttachment } from '@/components/ai/AttachmentPicker';
 import { ChatsPage } from '@/pages/chats/ChatsPage';
 import { OnboardingTour, WelcomeModal, TourToast, TOUR_STORAGE_KEYS } from '@/components/onboarding';
+import { UpdatePrompt, WhatsNewDialog } from '@/components/updates';
 
 // Check if running on macOS in Electron (for title bar padding)
 const isMacOS = typeof navigator !== 'undefined' && navigator.platform.toLowerCase().includes('mac');
@@ -163,10 +164,32 @@ export function App() {
   const [isTourActive, setIsTourActive] = useState(false);
   const [showTourToast, setShowTourToast] = useState(false);
 
+  // Update dialog state
+  const [updateInfo, setUpdateInfo] = useState<{ version: string; downloadUrl: string } | null>(null);
+  const [whatsNewReleases, setWhatsNewReleases] = useState<Array<{ version: string; notes: string }> | null>(null);
+
   // Persist sidebar collapsed state
   useEffect(() => {
     localStorage.setItem('sidebar-collapsed', String(sidebarCollapsed));
   }, [sidebarCollapsed]);
+
+  // Listen for update events from Electron
+  useEffect(() => {
+    if (!window.electronAPI) return;
+
+    const cleanupAvailable = window.electronAPI.onUpdateAvailable((data) => {
+      setUpdateInfo(data);
+    });
+
+    const cleanupWhatsNew = window.electronAPI.onShowWhatsNew((data) => {
+      setWhatsNewReleases(data.releases);
+    });
+
+    return () => {
+      cleanupAvailable();
+      cleanupWhatsNew();
+    };
+  }, []);
 
   const handleViewTranscript = useCallback((recordingId: string) => {
     setNavigation({ type: 'transcript', recordingId });
@@ -631,6 +654,24 @@ export function App() {
             isVisible={showTourToast}
             onDismiss={() => setShowTourToast(false)}
           />
+
+          {/* Update Prompt */}
+          {updateInfo && (
+            <UpdatePrompt
+              version={updateInfo.version}
+              downloadUrl={updateInfo.downloadUrl}
+              onUpdate={() => {/* Download started, prompt handles rest */}}
+              onDismiss={() => setUpdateInfo(null)}
+            />
+          )}
+
+          {/* What's New Dialog */}
+          {whatsNewReleases && whatsNewReleases.length > 0 && (
+            <WhatsNewDialog
+              releases={whatsNewReleases}
+              onDismiss={() => setWhatsNewReleases(null)}
+            />
+          )}
         </div>
       </DataSyncProvider>
     </QueryClientProvider>
