@@ -1,8 +1,10 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { MetadataFieldEditor } from '@/components/shared/MetadataFieldEditor';
 import { DynamicMetadataForm } from '@/components/shared/DynamicMetadataForm';
 import { TagInput } from '@/components/shared/TagInput';
 import { api, type Project, type ProjectType, type MetadataField } from '@/lib/api';
+import { useProjects, useCreateProject, useUpdateProject, useDeleteProject } from '@/hooks';
+import type { ProjectFilters } from '@/lib/queryKeys';
 
 interface ProjectsPageProps {
   onNavigateToProject?: (projectId: string) => void;
@@ -19,15 +21,26 @@ function useDebounce<T>(value: T, delay: number): T {
 }
 
 export function ProjectsPage({ onNavigateToProject }: ProjectsPageProps) {
-  const [projects, setProjects] = useState<Project[]>([]);
   const [projectTypes, setProjectTypes] = useState<ProjectType[]>([]);
-  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const debouncedSearch = useDebounce(searchQuery, 300);
   const [filterTypeId, setFilterTypeId] = useState('');
   const [filterTag, setFilterTag] = useState('');
   const dialogRef = useRef<HTMLDivElement>(null);
-  const isInitialLoad = useRef(true);
+
+  // React Query hooks for projects
+  const queryFilters: ProjectFilters = {
+    search: debouncedSearch || undefined,
+    projectTypeId: filterTypeId || undefined,
+    tag: filterTag || undefined,
+  };
+  const { data: projectsData, isLoading: loading } = useProjects(queryFilters);
+  const projects = projectsData?.items ?? [];
+
+  // Project mutations
+  const createProject = useCreateProject();
+  const updateProject = useUpdateProject();
+  const deleteProject = useDeleteProject();
 
   // Dialogs
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -56,27 +69,18 @@ export function ProjectsPage({ onNavigateToProject }: ProjectsPageProps) {
   const [typeEditDialogOpen, setTypeEditDialogOpen] = useState(false);
   const [typeDeleteDialogOpen, setTypeDeleteDialogOpen] = useState(false);
 
-  // Load data
-  const loadData = useCallback(async (showLoading = false) => {
-    try {
-      if (showLoading) setLoading(true);
-      const [projectsRes, typesRes] = await Promise.all([
-        api.projects.list({
-          search: debouncedSearch || undefined,
-          projectTypeId: filterTypeId || undefined,
-          tag: filterTag || undefined,
-        }),
-        api.projectTypes.list(),
-      ]);
-      setProjects(projectsRes.items);
-      setProjectTypes(typesRes.items);
-    } catch (error) {
-      console.error('Failed to load data:', error);
-    } finally {
-      setLoading(false);
-      isInitialLoad.current = false;
-    }
-  }, [debouncedSearch, filterTypeId, filterTag]);
+  // Load project types on mount
+  useEffect(() => {
+    const loadProjectTypes = async () => {
+      try {
+        const typesRes = await api.projectTypes.list();
+        setProjectTypes(typesRes.items);
+      } catch (error) {
+        console.error('Failed to load project types:', error);
+      }
+    };
+    loadProjectTypes();
+  }, []);
 
   // Extract unique tags from all projects
   const uniqueTags = Array.from(
@@ -84,10 +88,6 @@ export function ProjectsPage({ onNavigateToProject }: ProjectsPageProps) {
       projects.flatMap(p => (p.metadata?.tags as string[]) || [])
     )
   ).sort();
-
-  useEffect(() => {
-    loadData(isInitialLoad.current);
-  }, [loadData]);
 
   const resetForm = () => {
     setForm({
@@ -112,60 +112,50 @@ export function ProjectsPage({ onNavigateToProject }: ProjectsPageProps) {
 
   // Project CRUD
   const handleCreateProject = async () => {
-    try {
-      // Merge tags into metadata
-      const metadata = {
-        ...form.metadata,
-        ...(form.tags.length > 0 ? { tags: form.tags } : {}),
-      };
-      await api.projects.create({
-        name: form.name,
-        description: form.description || undefined,
-        project_type_id: form.project_type_id || undefined,
-        metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
-      });
-      resetForm();
-      setCreateDialogOpen(false);
-      loadData();
-    } catch (error) {
-      console.error('Failed to create project:', error);
-    }
+    const metadata = {
+      ...form.metadata,
+      ...(form.tags.length > 0 ? { tags: form.tags } : {}),
+    };
+    await createProject.mutateAsync({
+      name: form.name,
+      description: form.description || undefined,
+      project_type_id: form.project_type_id || undefined,
+      metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
+    });
+    resetForm();
+    setCreateDialogOpen(false);
+    // No need to call loadData() - React Query handles invalidation
   };
 
   const handleUpdateProject = async () => {
     if (!selectedProject) return;
-    try {
-      // Merge tags into metadata
-      const metadata = {
-        ...form.metadata,
-        tags: form.tags.length > 0 ? form.tags : undefined,
-      };
-      await api.projects.update(selectedProject.id, {
+    const metadata = {
+      ...form.metadata,
+      tags: form.tags.length > 0 ? form.tags : undefined,
+    };
+    await updateProject.mutateAsync({
+      id: selectedProject.id,
+      data: {
         name: form.name,
         description: form.description || undefined,
         project_type_id: form.project_type_id || null,
         metadata,
-      });
-      setEditDialogOpen(false);
-      setSelectedProject(null);
-      resetForm();
-      loadData();
-    } catch (error) {
-      console.error('Failed to update project:', error);
-    }
+      },
+    });
+    setEditDialogOpen(false);
+    setSelectedProject(null);
+    resetForm();
   };
 
   const handleDeleteProject = async (deleteFiles: boolean) => {
     if (!selectedProject) return;
-    try {
-      await api.projects.delete(selectedProject.id, { deleteFiles });
-      setDeleteDialogOpen(false);
-      setDeleteFilesChoice(null);
-      setSelectedProject(null);
-      loadData();
-    } catch (error) {
-      console.error('Failed to delete project:', error);
-    }
+    await deleteProject.mutateAsync({
+      id: selectedProject.id,
+      deleteFiles,
+    });
+    setDeleteDialogOpen(false);
+    setDeleteFilesChoice(null);
+    setSelectedProject(null);
   };
 
   const openEditDialog = (project: Project) => {
@@ -195,7 +185,9 @@ export function ProjectsPage({ onNavigateToProject }: ProjectsPageProps) {
         metadata_schema: typeForm.metadata_schema,
       });
       resetTypeForm();
-      loadData();
+      // Manually refetch project types
+      const typesRes = await api.projectTypes.list();
+      setProjectTypes(typesRes.items);
     } catch (error) {
       console.error('Failed to create type:', error);
     }
@@ -212,7 +204,9 @@ export function ProjectsPage({ onNavigateToProject }: ProjectsPageProps) {
       setTypeEditDialogOpen(false);
       setEditingType(null);
       resetTypeForm();
-      loadData();
+      // Manually refetch project types
+      const typesRes = await api.projectTypes.list();
+      setProjectTypes(typesRes.items);
     } catch (error) {
       console.error('Failed to update type:', error);
     }
@@ -224,7 +218,9 @@ export function ProjectsPage({ onNavigateToProject }: ProjectsPageProps) {
       await api.projectTypes.delete(editingType.id);
       setTypeDeleteDialogOpen(false);
       setEditingType(null);
-      loadData();
+      // Manually refetch project types
+      const typesRes = await api.projectTypes.list();
+      setProjectTypes(typesRes.items);
     } catch (error) {
       console.error('Failed to delete type:', error);
     }
