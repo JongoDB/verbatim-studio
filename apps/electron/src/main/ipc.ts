@@ -76,6 +76,18 @@ export function registerIpcHandlers(): void {
 
   // Update handlers
   ipcMain.on('update:start', (_event, { downloadUrl, version }) => {
+    // Validate URL
+    try {
+      new URL(downloadUrl);
+    } catch {
+      console.error('[IPC] Invalid download URL:', downloadUrl);
+      return;
+    }
+    // Validate version
+    if (!version || typeof version !== 'string') {
+      console.error('[IPC] Invalid version:', version);
+      return;
+    }
     startUpdate(downloadUrl, version);
   });
 
@@ -84,6 +96,10 @@ export function registerIpcHandlers(): void {
   });
 
   ipcMain.on('update:whats-new-seen', (_event, version) => {
+    if (!version || typeof version !== 'string') {
+      console.error('[IPC] Invalid version for whats-new-seen:', version);
+      return;
+    }
     markWhatsNewSeen(version);
   });
 
@@ -92,6 +108,10 @@ export function registerIpcHandlers(): void {
   });
 
   ipcMain.handle('update:setAutoUpdate', (_event, enabled: boolean) => {
+    if (typeof enabled !== 'boolean') {
+      console.error('[IPC] Invalid enabled value:', enabled);
+      return;
+    }
     setAutoUpdateEnabled(enabled);
   });
 }
