@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
-import { api, type Conversation, type ConversationDetail } from '@/lib/api';
+import { useCallback } from 'react';
+import { api, type ConversationDetail } from '@/lib/api';
+import { useConversations, useDeleteConversation } from '@/hooks';
 import { formatDate } from '@/lib/utils';
 import type { ChatMessage } from '@/components/ai/ChatMessages';
 
@@ -9,26 +10,11 @@ interface ChatsPageProps {
 }
 
 export function ChatsPage({ onLoadConversation, onOpenChat }: ChatsPageProps) {
-  const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const { data: conversationsData, isLoading: loading, error: fetchError, refetch } = useConversations();
+  const conversations = conversationsData?.items ?? [];
+  const error = fetchError?.message;
 
-  const fetchConversations = useCallback(async () => {
-    try {
-      const data = await api.conversations.list();
-      setConversations(data.items);
-      setError(null);
-    } catch {
-      setError('Failed to load conversations');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchConversations();
-  }, [fetchConversations]);
+  const deleteConversation = useDeleteConversation();
 
   const handleContinue = useCallback(async (conversationId: string) => {
     try {
@@ -47,17 +33,8 @@ export function ChatsPage({ onLoadConversation, onOpenChat }: ChatsPageProps) {
 
   const handleDelete = useCallback(async (conversationId: string) => {
     if (!confirm('Delete this conversation? This cannot be undone.')) return;
-
-    setDeletingId(conversationId);
-    try {
-      await api.conversations.delete(conversationId);
-      setConversations(prev => prev.filter(c => c.id !== conversationId));
-    } catch {
-      alert('Failed to delete conversation');
-    } finally {
-      setDeletingId(null);
-    }
-  }, []);
+    deleteConversation.mutate(conversationId);
+  }, [deleteConversation]);
 
   if (loading) {
     return (
@@ -72,7 +49,7 @@ export function ChatsPage({ onLoadConversation, onOpenChat }: ChatsPageProps) {
       <div className="text-center py-12">
         <p className="text-red-500">{error}</p>
         <button
-          onClick={fetchConversations}
+          onClick={() => refetch()}
           className="mt-4 px-4 py-2 text-sm font-medium text-blue-600 hover:text-blue-800"
         >
           Try again
@@ -158,11 +135,11 @@ export function ChatsPage({ onLoadConversation, onOpenChat }: ChatsPageProps) {
                   </button>
                   <button
                     onClick={() => handleDelete(conversation.id)}
-                    disabled={deletingId === conversation.id}
+                    disabled={deleteConversation.isPending && deleteConversation.variables === conversation.id}
                     className="p-1.5 text-gray-400 hover:text-red-500 dark:hover:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors disabled:opacity-50"
                     aria-label="Delete conversation"
                   >
-                    {deletingId === conversation.id ? (
+                    {deleteConversation.isPending && deleteConversation.variables === conversation.id ? (
                       <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
