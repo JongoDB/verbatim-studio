@@ -124,9 +124,6 @@ export function OAuthConnectButton({
     try {
       const response = await api.oauth.start({ provider });
 
-      // Store state for polling
-      setPollState(response.state);
-
       // Open auth URL in new window
       const authWindow = window.open(
         response.auth_url,
@@ -136,10 +133,15 @@ export function OAuthConnectButton({
 
       // Check if window was blocked
       if (!authWindow) {
+        // Cancel OAuth to release backend resources (callback server, state)
+        await api.oauth.cancel(response.state);
         setIsConnecting(false);
         onError?.('Pop-up blocked. Please allow pop-ups and try again.');
         return;
       }
+
+      // Only start polling AFTER confirming window opened successfully
+      setPollState(response.state);
 
       // Monitor window close
       const checkClosed = setInterval(() => {

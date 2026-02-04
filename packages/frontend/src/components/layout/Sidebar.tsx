@@ -230,7 +230,7 @@ export function Sidebar({ currentTab, onNavigate, theme, onCycleTheme, version, 
         </div>
 
         {/* Middle: Navigation items */}
-        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+        <nav className={`flex-1 px-3 py-4 space-y-1 ${collapsed ? 'md:overflow-visible overflow-y-auto' : 'overflow-y-auto'}`}>
           {NAV_ITEMS.map((item) => {
             const isActive = currentTab === item.key;
             return (
