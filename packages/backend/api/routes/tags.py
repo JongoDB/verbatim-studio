@@ -11,6 +11,7 @@ from sqlalchemy.orm import selectinload
 
 from persistence import get_db
 from persistence.models import Recording, RecordingTag, Tag
+from api.routes.sync import broadcast
 
 logger = logging.getLogger(__name__)
 
@@ -157,6 +158,11 @@ async def assign_tag_to_recording(
         return MessageResponse(message="Tag already assigned")
 
     db.add(RecordingTag(recording_id=recording_id, tag_id=request.tag_id))
+    await db.commit()
+
+    # Broadcast so frontend updates immediately
+    await broadcast("recordings", "updated", recording_id)
+
     return MessageResponse(message="Tag assigned successfully")
 
 
@@ -185,6 +191,11 @@ async def remove_tag_from_recording(
         )
 
     await db.delete(link)
+    await db.commit()
+
+    # Broadcast so frontend updates immediately
+    await broadcast("recordings", "updated", recording_id)
+
     return MessageResponse(message="Tag removed successfully")
 
 

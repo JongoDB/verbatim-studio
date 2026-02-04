@@ -29,29 +29,33 @@ function handleInvalidation(
 ) {
   console.log(`[DataSync] Invalidating ${resource} (${action})${id ? ` id=${id}` : ''}`);
 
+  // Use refetchType: 'active' to force immediate refetch of active queries
+  // This overrides staleTime and ensures UI updates immediately
+  const refetchOptions = { refetchType: 'active' as const };
+
   switch (resource) {
     case 'recordings':
-      queryClient.invalidateQueries({ queryKey: queryKeys.recordings.all });
-      queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.stats });
-      queryClient.invalidateQueries({ queryKey: queryKeys.jobs.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.recordings.all, ...refetchOptions });
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.stats, ...refetchOptions });
+      queryClient.invalidateQueries({ queryKey: queryKeys.jobs.all, ...refetchOptions });
       break;
 
     case 'projects':
-      queryClient.invalidateQueries({ queryKey: queryKeys.projects.all });
-      queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.stats });
+      queryClient.invalidateQueries({ queryKey: queryKeys.projects.all, ...refetchOptions });
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.stats, ...refetchOptions });
       break;
 
     case 'conversations':
-      queryClient.invalidateQueries({ queryKey: queryKeys.conversations.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.conversations.all, ...refetchOptions });
       break;
 
     case 'search_history':
-      queryClient.invalidateQueries({ queryKey: queryKeys.search.history });
+      queryClient.invalidateQueries({ queryKey: queryKeys.search.history, ...refetchOptions });
       break;
 
     case 'documents':
-      queryClient.invalidateQueries({ queryKey: queryKeys.documents.all });
-      queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.stats });
+      queryClient.invalidateQueries({ queryKey: queryKeys.documents.all, ...refetchOptions });
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.stats, ...refetchOptions });
       break;
 
     default:

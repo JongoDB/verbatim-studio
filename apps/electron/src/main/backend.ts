@@ -66,12 +66,18 @@ class BackendManager extends EventEmitter {
     const currentPath = process.env.PATH || '/usr/bin:/bin';
     const extendedPath = [...additionalPaths, currentPath].join(':');
 
+    // Use user data directory for database to persist across updates
+    // The app bundle gets replaced on update, so storing db there causes data loss
+    const userDataDir = app.getPath('userData');
+    const databasePath = path.join(userDataDir, 'verbatim.db');
+
     const env: NodeJS.ProcessEnv = {
       ...process.env,
       PATH: extendedPath,
       VERBATIM_ELECTRON: '1',
       VERBATIM_PORT: String(this._port),
-      VERBATIM_DATA_DIR: app.getPath('userData'),
+      VERBATIM_DATA_DIR: userDataDir,
+      VERBATIM_DATABASE_URL: `sqlite+aiosqlite:///${databasePath}`,
     };
 
     this.process = spawn(

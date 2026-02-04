@@ -191,9 +191,19 @@ export function UpdatePrompt({
             </div>
 
             {/* Percentage */}
-            <p className="text-sm text-muted-foreground text-center">
+            <p className="text-sm text-muted-foreground text-center mb-4">
               {Math.round(downloadPercent)}%
             </p>
+
+            {/* Instructions */}
+            <div className="bg-muted/50 rounded-lg p-3 space-y-1">
+              <p className="text-xs text-muted-foreground text-center">
+                Please do not close the app while the update is downloading.
+              </p>
+              <p className="text-xs text-muted-foreground text-center">
+                The app will automatically restart when the update is ready.
+              </p>
+            </div>
           </div>
         </div>
       </div>,

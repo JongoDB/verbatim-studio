@@ -93,7 +93,7 @@ function loadSavedViewMode(): ViewMode {
   } catch {
     // ignore
   }
-  return 'grid';
+  return 'list'; // List view is the default for better information density
 }
 
 export function RecordingsPage({ onViewTranscript }: RecordingsPageProps) {
