@@ -788,6 +788,7 @@ async def bulk_assign_recordings(
         recording.project_id = body.project_id
 
     await db.commit()
+    await broadcast("recordings", "updated")
     return MessageResponse(message=f"Updated {len(recordings)} recording(s)")
 
 
