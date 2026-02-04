@@ -431,3 +431,15 @@ class ConversationMessage(Base):
     created_at: Mapped[datetime] = mapped_column(default=func.now())
 
     conversation: Mapped["Conversation"] = relationship(back_populates="messages")
+
+
+class SearchHistory(Base):
+    """Search history entry for tracking user searches."""
+
+    __tablename__ = "search_history"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    query: Mapped[str] = mapped_column(String(500), nullable=False, index=True)
+    result_count: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(default=func.now(), onupdate=func.now(), index=True)

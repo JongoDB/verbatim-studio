@@ -4,9 +4,9 @@ import logging
 from datetime import datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import func, or_, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -18,6 +18,7 @@ from persistence.models import (
     DocumentEmbedding,
     Note,
     Recording,
+    SearchHistory,
     Segment,
     SegmentEmbedding,
     Transcript,
@@ -499,6 +500,7 @@ async def global_search(
     q: Annotated[str, Query(min_length=1, description="Search query")],
     limit: Annotated[int, Query(ge=1, le=50, description="Maximum results")] = 20,
     semantic: Annotated[bool, Query(description="Include semantic search results")] = True,
+    save_history: Annotated[bool, Query(description="Save to search history")] = True,
 ) -> GlobalSearchResponse:
     """Search across recordings, segments, documents, notes, and conversations.
 
@@ -511,6 +513,7 @@ async def global_search(
         q: Search query string.
         limit: Maximum number of results.
         semantic: Whether to include semantic search results.
+        save_history: Whether to save this search to history.
 
     Returns:
         Combined search results.
@@ -811,6 +814,13 @@ async def global_search(
         except Exception as e:
             logger.warning("Semantic search failed: %s", e)
 
+    # Save to search history if enabled
+    if save_history and q.strip():
+        try:
+            await _save_search_history(db, q.strip(), len(results))
+        except Exception as e:
+            logger.warning("Failed to save search history: %s", e)
+
     return GlobalSearchResponse(
         query=q,
         results=results,
@@ -888,3 +898,159 @@ async def rebuild_search_index(
         documents_queued=documents_queued,
         message=f"Queued {transcripts_queued} transcript and {documents_queued} document embedding jobs.",
     )
+
+
+# Search history models and endpoints
+
+
+class SearchHistoryEntry(BaseModel):
+    """A search history entry."""
+
+    id: str
+    query: str
+    result_count: int
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class SearchHistoryListResponse(BaseModel):
+    """List of search history entries."""
+
+    items: list[SearchHistoryEntry]
+    total: int
+
+
+class MessageResponse(BaseModel):
+    """Simple message response."""
+
+    message: str
+    id: str | None = None
+
+
+@router.get("/history", response_model=SearchHistoryListResponse)
+async def get_search_history(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    limit: Annotated[int, Query(ge=1, le=50, description="Max entries")] = 20,
+) -> SearchHistoryListResponse:
+    """Get recent search history.
+
+    Returns most recent searches, ordered by last searched time.
+
+    Args:
+        db: Database session.
+        limit: Maximum number of entries to return.
+
+    Returns:
+        List of search history entries.
+    """
+    query = (
+        select(SearchHistory)
+        .order_by(SearchHistory.updated_at.desc())
+        .limit(limit)
+    )
+    result = await db.execute(query)
+    items = result.scalars().all()
+
+    count_query = select(func.count()).select_from(SearchHistory)
+    total = await db.scalar(count_query) or 0
+
+    return SearchHistoryListResponse(
+        items=[SearchHistoryEntry.model_validate(item) for item in items],
+        total=total,
+    )
+
+
+@router.delete("/history", response_model=MessageResponse)
+async def clear_search_history(
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> MessageResponse:
+    """Clear all search history.
+
+    Args:
+        db: Database session.
+
+    Returns:
+        Confirmation message.
+    """
+    await db.execute(delete(SearchHistory))
+    await db.commit()
+    return MessageResponse(message="Search history cleared")
+
+
+@router.delete("/history/{entry_id}", response_model=MessageResponse)
+async def delete_search_history_entry(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    entry_id: str,
+) -> MessageResponse:
+    """Delete a single search history entry.
+
+    Args:
+        db: Database session.
+        entry_id: ID of the entry to delete.
+
+    Returns:
+        Confirmation message.
+    """
+    result = await db.execute(
+        delete(SearchHistory).where(SearchHistory.id == entry_id)
+    )
+    if result.rowcount == 0:
+        raise HTTPException(status_code=404, detail="Entry not found")
+    await db.commit()
+    return MessageResponse(message="Entry deleted", id=entry_id)
+
+
+async def _save_search_history(db: AsyncSession, query: str, result_count: int) -> None:
+    """Save or update search history entry.
+
+    Deduplicates by query (case-insensitive). If the query exists, updates
+    the timestamp and result count. If new, creates entry and enforces
+    50-entry limit by deleting oldest entries.
+
+    Args:
+        db: Database session.
+        query: The search query.
+        result_count: Number of results returned.
+    """
+    # Check for existing entry with same query (case-insensitive)
+    existing_query = select(SearchHistory).where(
+        func.lower(SearchHistory.query) == query.lower()
+    )
+    result = await db.execute(existing_query)
+    existing = result.scalar_one_or_none()
+
+    if existing:
+        # Update existing entry (moves it to top via updated_at)
+        existing.result_count = result_count
+        # Force update of updated_at by setting it explicitly
+        existing.updated_at = func.now()
+    else:
+        # Create new entry
+        new_entry = SearchHistory(
+            query=query,
+            result_count=result_count,
+        )
+        db.add(new_entry)
+
+        # Enforce limit of 50 entries (FIFO eviction)
+        count_query = select(func.count()).select_from(SearchHistory)
+        total = await db.scalar(count_query) or 0
+
+        if total >= 50:
+            # Delete oldest entries to make room
+            oldest_query = (
+                select(SearchHistory.id)
+                .order_by(SearchHistory.updated_at.asc())
+                .limit(total - 49)
+            )
+            oldest_result = await db.execute(oldest_query)
+            oldest_ids = [row[0] for row in oldest_result.all()]
+            if oldest_ids:
+                await db.execute(
+                    delete(SearchHistory).where(SearchHistory.id.in_(oldest_ids))
+                )
+
+    await db.commit()

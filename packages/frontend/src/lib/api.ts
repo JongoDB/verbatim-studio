@@ -384,6 +384,19 @@ export interface GlobalSearchResponse {
   total: number;
 }
 
+export interface SearchHistoryEntry {
+  id: string;
+  query: string;
+  result_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SearchHistoryListResponse {
+  items: SearchHistoryEntry[];
+  total: number;
+}
+
 export interface DocumentSearchResult {
   document_id: string;
   document_title: string;
@@ -1541,10 +1554,11 @@ class ApiClient {
       return this.request<SearchResponse>(`/api/search/segments?${params.toString()}`);
     },
 
-    global: (query: string, options?: { limit?: number; semantic?: boolean }) => {
+    global: (query: string, options?: { limit?: number; semantic?: boolean; saveHistory?: boolean }) => {
       const params = new URLSearchParams({ q: query });
       if (options?.limit) params.set('limit', options.limit.toString());
       if (options?.semantic !== undefined) params.set('semantic', options.semantic.toString());
+      if (options?.saveHistory !== undefined) params.set('save_history', options.saveHistory.toString());
       return this.request<GlobalSearchResponse>(`/api/search/global?${params.toString()}`);
     },
 
@@ -1553,6 +1567,15 @@ class ApiClient {
       if (projectId) params.set('project_id', projectId);
       return this.request<DocumentSearchResponse>(`/api/search/documents?${params.toString()}`);
     },
+
+    history: (limit = 20) =>
+      this.request<SearchHistoryListResponse>(`/api/search/history?limit=${limit}`),
+
+    clearHistory: () =>
+      this.request<MessageResponse>('/api/search/history', { method: 'DELETE' }),
+
+    deleteHistoryEntry: (entryId: string) =>
+      this.request<MessageResponse>(`/api/search/history/${entryId}`, { method: 'DELETE' }),
   };
 
   // Stats

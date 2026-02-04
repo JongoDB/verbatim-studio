@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api, type GlobalSearchResult } from '@/lib/api';
+import { SearchHistory } from '@/components/search/SearchHistory';
 
 interface SearchPageProps {
   onResultClick: (result: GlobalSearchResult) => void;
@@ -71,6 +72,11 @@ export function SearchPage({ onResultClick, initialQuery = '' }: SearchPageProps
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     performSearch(query);
+  };
+
+  const handleHistorySelect = (selectedQuery: string) => {
+    setQuery(selectedQuery);
+    performSearch(selectedQuery);
   };
 
   // Filter results
@@ -229,8 +235,9 @@ export function SearchPage({ onResultClick, initialQuery = '' }: SearchPageProps
       {/* Results */}
       {hasSearched && (
         <div className="space-y-4">
-          {/* Results summary */}
+          {/* Results summary with compact history dropdown */}
           <div className="flex items-center justify-between">
+            <SearchHistory onSelectQuery={handleHistorySelect} compact />
             <p className="text-sm text-gray-500 dark:text-gray-400">
               {filteredResults.length === 0 ? (
                 'No results found'
@@ -407,15 +414,21 @@ export function SearchPage({ onResultClick, initialQuery = '' }: SearchPageProps
 
       {/* Initial state */}
       {!hasSearched && (
-        <div className="text-center py-12">
-          <svg className="mx-auto h-16 w-16 text-gray-300 dark:text-gray-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
-          </svg>
-          <h3 className="mt-4 text-lg font-medium text-gray-900 dark:text-gray-100">Search your transcripts</h3>
-          <p className="mt-2 text-sm text-gray-500 dark:text-gray-400 max-w-md mx-auto">
-            Enter keywords to find matching recordings and transcript segments.
-            Semantic search finds related content even without exact keyword matches.
-          </p>
+        <div className="space-y-8">
+          {/* Search history */}
+          <SearchHistory onSelectQuery={handleHistorySelect} />
+
+          {/* Empty state message */}
+          <div className="text-center py-12">
+            <svg className="mx-auto h-16 w-16 text-gray-300 dark:text-gray-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+            </svg>
+            <h3 className="mt-4 text-lg font-medium text-gray-900 dark:text-gray-100">Search your transcripts</h3>
+            <p className="mt-2 text-sm text-gray-500 dark:text-gray-400 max-w-md mx-auto">
+              Enter keywords to find matching recordings and transcript segments.
+              Semantic search finds related content even without exact keyword matches.
+            </p>
+          </div>
         </div>
       )}
     </div>

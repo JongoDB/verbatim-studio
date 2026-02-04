@@ -689,6 +689,10 @@ async def reset_database(request: ResetDatabaseRequest) -> ResetDatabaseResponse
             result = await db.execute(text("DELETE FROM jobs"))
             deleted_counts["jobs"] = result.rowcount
 
+            # 11. Search history
+            result = await db.execute(text("DELETE FROM search_history"))
+            deleted_counts["search_history"] = result.rowcount
+
             await db.commit()
 
             # Run VACUUM to reclaim space (must be outside transaction)
