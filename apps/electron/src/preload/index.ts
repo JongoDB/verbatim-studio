@@ -36,32 +36,38 @@ try {
   onUpdateAvailable: (
     callback: (data: { version: string; downloadUrl: string }) => void
   ) => {
-    ipcRenderer.on('update-available', (_event, data) => callback(data));
-    return () => ipcRenderer.removeAllListeners('update-available');
+    const handler = (_event: Electron.IpcRendererEvent, data: { version: string; downloadUrl: string }) => callback(data);
+    ipcRenderer.on('update-available', handler);
+    return () => ipcRenderer.off('update-available', handler);
   },
   onUpdateNotAvailable: (callback: () => void) => {
-    ipcRenderer.on('update-not-available', () => callback());
-    return () => ipcRenderer.removeAllListeners('update-not-available');
+    const handler = () => callback();
+    ipcRenderer.on('update-not-available', handler);
+    return () => ipcRenderer.off('update-not-available', handler);
   },
   onUpdateDownloading: (callback: (data: { percent: number }) => void) => {
-    ipcRenderer.on('update-downloading', (_event, data) => callback(data));
-    return () => ipcRenderer.removeAllListeners('update-downloading');
+    const handler = (_event: Electron.IpcRendererEvent, data: { percent: number }) => callback(data);
+    ipcRenderer.on('update-downloading', handler);
+    return () => ipcRenderer.off('update-downloading', handler);
   },
   onUpdateReady: (callback: (data: { version: string }) => void) => {
-    ipcRenderer.on('update-ready', (_event, data) => callback(data));
-    return () => ipcRenderer.removeAllListeners('update-ready');
+    const handler = (_event: Electron.IpcRendererEvent, data: { version: string }) => callback(data);
+    ipcRenderer.on('update-ready', handler);
+    return () => ipcRenderer.off('update-ready', handler);
   },
   onUpdateError: (
     callback: (data: { message: string; fallbackUrl?: string }) => void
   ) => {
-    ipcRenderer.on('update-error', (_event, data) => callback(data));
-    return () => ipcRenderer.removeAllListeners('update-error');
+    const handler = (_event: Electron.IpcRendererEvent, data: { message: string; fallbackUrl?: string }) => callback(data);
+    ipcRenderer.on('update-error', handler);
+    return () => ipcRenderer.off('update-error', handler);
   },
   onShowWhatsNew: (
     callback: (data: { releases: Array<{ version: string; notes: string }> }) => void
   ) => {
-    ipcRenderer.on('show-whats-new', (_event, data) => callback(data));
-    return () => ipcRenderer.removeAllListeners('show-whats-new');
+    const handler = (_event: Electron.IpcRendererEvent, data: { releases: Array<{ version: string; notes: string }> }) => callback(data);
+    ipcRenderer.on('show-whats-new', handler);
+    return () => ipcRenderer.off('show-whats-new', handler);
   },
 
   // Update actions
