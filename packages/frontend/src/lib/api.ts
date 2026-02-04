@@ -743,6 +743,34 @@ export interface WhisperModelDownloadEvent {
   total_bytes?: number;
 }
 
+// Diarization Model Types (Pyannote)
+export interface DiarizationModel {
+  id: string;
+  label: string;
+  description: string;
+  repo: string;
+  size_bytes: number;
+  required: boolean;
+  downloaded: boolean;
+  size_on_disk: number | null;
+}
+
+export interface DiarizationModelListResponse {
+  models: DiarizationModel[];
+  all_downloaded: boolean;
+  hf_token_set: boolean;
+}
+
+export interface DiarizationModelDownloadEvent {
+  status: 'starting' | 'progress' | 'complete' | 'error';
+  model_id?: string;
+  path?: string;
+  error?: string;
+  message?: string;
+  downloaded_bytes?: number;
+  total_bytes?: number;
+}
+
 // Archive Types
 export interface ArchiveInfo {
   version: string;
@@ -1928,6 +1956,76 @@ class ApiClient {
     deleteModel: (modelId: string) =>
       this.request<{ success: boolean; message: string; model_id: string }>(
         `/api/whisper/models/${modelId}`,
+        { method: 'DELETE' }
+      ),
+  };
+
+  // Diarization (Pyannote Models)
+  diarization = {
+    listModels: () => this.request<DiarizationModelListResponse>('/api/diarization/models'),
+
+    downloadModel: (modelId: string, onEvent: (event: DiarizationModelDownloadEvent) => void): { abort: () => void } => {
+      const abortController = new AbortController();
+
+      fetch(`${this.baseUrl}/api/diarization/models/${modelId}/download`, {
+        method: 'POST',
+        signal: abortController.signal,
+      }).then(async (response) => {
+        if (!response.ok) {
+          // Try to get error message from response
+          let errorMsg = `HTTP ${response.status}`;
+          try {
+            const errorData = await response.json();
+            if (errorData.detail) {
+              errorMsg = errorData.detail;
+            }
+          } catch {
+            // Ignore JSON parse errors
+          }
+          onEvent({ status: 'error', error: errorMsg });
+          return;
+        }
+
+        const reader = response.body?.getReader();
+        if (!reader) {
+          onEvent({ status: 'error', error: 'No response body' });
+          return;
+        }
+
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const event = JSON.parse(line.slice(6)) as DiarizationModelDownloadEvent;
+                onEvent(event);
+              } catch {
+                // skip malformed lines
+              }
+            }
+          }
+        }
+      }).catch((err) => {
+        if (err.name !== 'AbortError') {
+          onEvent({ status: 'error', error: err.message });
+        }
+      });
+
+      return { abort: () => abortController.abort() };
+    },
+
+    deleteModel: (modelId: string) =>
+      this.request<{ success: boolean; message: string; model_id: string }>(
+        `/api/diarization/models/${modelId}`,
         { method: 'DELETE' }
       ),
   };
