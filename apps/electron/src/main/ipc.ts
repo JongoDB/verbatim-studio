@@ -1,5 +1,7 @@
 import { ipcMain, app, BrowserWindow, dialog } from 'electron';
 import { backendManager } from './backend';
+import { checkForUpdates, startUpdate, markWhatsNewSeen } from './updater';
+import { getAutoUpdateEnabled, setAutoUpdateEnabled } from './update-store';
 
 export function registerIpcHandlers(): void {
   // App info
@@ -70,5 +72,26 @@ export function registerIpcHandlers(): void {
   ipcMain.on('window:close', (event) => {
     const window = BrowserWindow.fromWebContents(event.sender);
     window?.close();
+  });
+
+  // Update handlers
+  ipcMain.on('update:start', (_event, { downloadUrl, version }) => {
+    startUpdate(downloadUrl, version);
+  });
+
+  ipcMain.on('update:check', () => {
+    checkForUpdates(true); // manual = true
+  });
+
+  ipcMain.on('update:whats-new-seen', (_event, version) => {
+    markWhatsNewSeen(version);
+  });
+
+  ipcMain.handle('update:getSettings', () => {
+    return { autoUpdateEnabled: getAutoUpdateEnabled() };
+  });
+
+  ipcMain.handle('update:setAutoUpdate', (_event, enabled: boolean) => {
+    setAutoUpdateEnabled(enabled);
   });
 }
