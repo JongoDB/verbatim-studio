@@ -39,6 +39,7 @@ interface GitHubAsset {
 
 // Module state
 let mainWindow: BrowserWindow | null = null;
+let isCheckingForUpdates = false;
 
 /**
  * Parses a version string like "0.26.22" into a comparable number.
@@ -63,6 +64,8 @@ function parseVersion(version: string): number {
  */
 function fetchGitHubReleases(): Promise<GitHubRelease[]> {
   return new Promise((resolve, reject) => {
+    const MAX_RESPONSE_SIZE = 5 * 1024 * 1024; // 5MB
+
     const options = {
       hostname: 'api.github.com',
       path: `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases`,
@@ -78,6 +81,10 @@ function fetchGitHubReleases(): Promise<GitHubRelease[]> {
 
       res.on('data', (chunk) => {
         data += chunk;
+        if (data.length > MAX_RESPONSE_SIZE) {
+          req.destroy();
+          reject(new Error('Response too large'));
+        }
       });
 
       res.on('end', () => {
@@ -93,6 +100,11 @@ function fetchGitHubReleases(): Promise<GitHubRelease[]> {
           reject(new Error(`Failed to parse GitHub response: ${err}`));
         }
       });
+    });
+
+    req.setTimeout(30000, () => {
+      req.destroy();
+      reject(new Error('Request timed out'));
     });
 
     req.on('error', reject);
@@ -164,6 +176,11 @@ function downloadFile(
       });
     });
 
+    req.setTimeout(30000, () => {
+      req.destroy();
+      reject(new Error('Request timed out'));
+    });
+
     req.on('error', reject);
     req.end();
   });
@@ -217,9 +234,15 @@ export function initAutoUpdater(window: BrowserWindow): void {
  * @param manual - Whether this was triggered manually by the user
  */
 export async function checkForUpdates(manual = false): Promise<void> {
-  console.log('[Updater] Checking for updates...');
+  if (isCheckingForUpdates) {
+    console.log('[Updater] Check already in progress, skipping');
+    return;
+  }
+  isCheckingForUpdates = true;
 
   try {
+    console.log('[Updater] Checking for updates...');
+
     const releases = await fetchGitHubReleases();
 
     if (!releases || releases.length === 0) {
@@ -284,6 +307,8 @@ export async function checkForUpdates(manual = false): Promise<void> {
         message: err instanceof Error ? err.message : 'Unknown error',
       });
     }
+  } finally {
+    isCheckingForUpdates = false;
   }
 }
 
