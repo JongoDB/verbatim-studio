@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from api.routes.sync import broadcast
 from persistence import get_db
 from persistence.models import Conversation, ConversationMessage
 
@@ -204,6 +205,8 @@ async def create_conversation(
     result = await db.execute(query)
     conv = result.scalar_one()
 
+    await broadcast("conversations", "created", str(conv.id))
+
     return ConversationDetailResponse(
         id=conv.id,
         title=conv.title,
@@ -246,6 +249,8 @@ async def update_conversation(
     result = await db.execute(query)
     conv = result.scalar_one()
 
+    await broadcast("conversations", "updated", conversation_id)
+
     return ConversationDetailResponse(
         id=conv.id,
         title=conv.title,
@@ -274,6 +279,7 @@ async def delete_conversation(
         raise HTTPException(status_code=404, detail="Conversation not found")
 
     await db.delete(conv)
+    await broadcast("conversations", "deleted", conversation_id)
     return {"deleted": True}
 
 
@@ -296,6 +302,8 @@ async def add_message(
     db.add(msg)
     await db.flush()
     await db.refresh(msg)
+
+    await broadcast("conversations", "updated", conversation_id)
 
     return MessageResponse(
         id=msg.id,
