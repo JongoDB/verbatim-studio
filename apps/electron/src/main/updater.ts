@@ -222,8 +222,9 @@ function downloadFile(
       });
     });
 
-    // 5 minute timeout for large DMG downloads (connection/inactivity timeout, not total download time)
-    req.setTimeout(300000, () => {
+    // 15 minute timeout for large DMG downloads on slower connections
+    // This is a connection/inactivity timeout, not total download time
+    req.setTimeout(900000, () => {
       req.destroy();
       reject(new Error('Download timed out - please check your internet connection'));
     });
