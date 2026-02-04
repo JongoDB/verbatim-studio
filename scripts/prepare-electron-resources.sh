@@ -40,9 +40,24 @@ if [ ! -d "$PYTHON_DIR" ]; then
   exit 1
 fi
 
-# Clean and create resources directory
+# Clean and create resources directory (preserve whisper-models if they exist)
+WHISPER_MODELS_DIR="$RESOURCES_DIR/whisper-models"
+WHISPER_MODELS_TEMP=""
+if [ -d "$WHISPER_MODELS_DIR" ]; then
+  echo "Preserving whisper-models directory..."
+  WHISPER_MODELS_TEMP=$(mktemp -d)
+  mv "$WHISPER_MODELS_DIR" "$WHISPER_MODELS_TEMP/"
+fi
+
 rm -rf "$RESOURCES_DIR"
 mkdir -p "$RESOURCES_DIR"
+
+# Restore whisper-models if they were preserved
+if [ -n "$WHISPER_MODELS_TEMP" ] && [ -d "$WHISPER_MODELS_TEMP/whisper-models" ]; then
+  mv "$WHISPER_MODELS_TEMP/whisper-models" "$RESOURCES_DIR/"
+  rm -rf "$WHISPER_MODELS_TEMP"
+  echo "Whisper models restored."
+fi
 
 # Copy Python
 echo "Copying Python..."
