@@ -1,86 +1,446 @@
-import { autoUpdater } from 'electron-updater';
-import { app, dialog, BrowserWindow } from 'electron';
+import { app, BrowserWindow } from 'electron';
+import { execFile, spawn } from 'child_process';
+import { promisify } from 'util';
+import { createWriteStream } from 'fs';
+import { mkdir, rm } from 'fs/promises';
+import path from 'path';
+import https from 'https';
+import {
+  getAutoUpdateEnabled,
+  getLastUpdateCheck,
+  setLastUpdateCheck,
+  getLastSeenVersion,
+  setLastSeenVersion,
+} from './update-store';
+import { writeUpdaterScript, parseVolumePath, UPDATE_DIR } from './update-script';
 
-export function initAutoUpdater(mainWindow: BrowserWindow): void {
+const execFileAsync = promisify(execFile);
+
+// Constants
+const GITHUB_OWNER = 'JongoDB';
+const GITHUB_REPO = 'verbatim-studio';
+const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
+const APP_NAME = 'Verbatim Studio';
+
+// Interfaces
+interface GitHubRelease {
+  tag_name: string;
+  name: string;
+  body: string;
+  published_at: string;
+  assets: GitHubAsset[];
+}
+
+interface GitHubAsset {
+  name: string;
+  browser_download_url: string;
+  size: number;
+}
+
+// Module state
+let mainWindow: BrowserWindow | null = null;
+
+/**
+ * Parses a version string like "0.26.22" into a comparable number.
+ * Supports up to 3 segments, each up to 999.
+ */
+function parseVersion(version: string): number {
+  // Remove 'v' prefix if present
+  const cleaned = version.replace(/^v/, '');
+  const parts = cleaned.split('.').map((p) => parseInt(p, 10) || 0);
+
+  // Pad to 3 parts
+  while (parts.length < 3) {
+    parts.push(0);
+  }
+
+  // Combine: major * 1000000 + minor * 1000 + patch
+  return parts[0] * 1000000 + parts[1] * 1000 + parts[2];
+}
+
+/**
+ * Fetches releases from GitHub API.
+ */
+function fetchGitHubReleases(): Promise<GitHubRelease[]> {
+  return new Promise((resolve, reject) => {
+    const options = {
+      hostname: 'api.github.com',
+      path: `/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases`,
+      method: 'GET',
+      headers: {
+        'User-Agent': `${APP_NAME}/${app.getVersion()}`,
+        Accept: 'application/vnd.github.v3+json',
+      },
+    };
+
+    const req = https.request(options, (res) => {
+      let data = '';
+
+      res.on('data', (chunk) => {
+        data += chunk;
+      });
+
+      res.on('end', () => {
+        if (res.statusCode !== 200) {
+          reject(new Error(`GitHub API returned status ${res.statusCode}: ${data}`));
+          return;
+        }
+
+        try {
+          const releases = JSON.parse(data) as GitHubRelease[];
+          resolve(releases);
+        } catch (err) {
+          reject(new Error(`Failed to parse GitHub response: ${err}`));
+        }
+      });
+    });
+
+    req.on('error', reject);
+    req.end();
+  });
+}
+
+/**
+ * Downloads a file from a URL with progress reporting.
+ * Handles HTTP redirects (301, 302, 307, 308).
+ */
+function downloadFile(
+  url: string,
+  destPath: string,
+  onProgress?: (percent: number) => void
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const urlObj = new URL(url);
+
+    const options = {
+      hostname: urlObj.hostname,
+      path: urlObj.pathname + urlObj.search,
+      method: 'GET',
+      headers: {
+        'User-Agent': `${APP_NAME}/${app.getVersion()}`,
+      },
+    };
+
+    const req = https.request(options, (res) => {
+      // Handle redirects
+      if (res.statusCode && [301, 302, 307, 308].includes(res.statusCode)) {
+        const redirectUrl = res.headers.location;
+        if (redirectUrl) {
+          downloadFile(redirectUrl, destPath, onProgress).then(resolve).catch(reject);
+          return;
+        }
+        reject(new Error('Redirect without location header'));
+        return;
+      }
+
+      if (res.statusCode !== 200) {
+        reject(new Error(`Download failed with status ${res.statusCode}`));
+        return;
+      }
+
+      const totalSize = parseInt(res.headers['content-length'] || '0', 10);
+      let downloadedSize = 0;
+
+      const fileStream = createWriteStream(destPath);
+
+      res.on('data', (chunk) => {
+        downloadedSize += chunk.length;
+        if (totalSize > 0 && onProgress) {
+          const percent = (downloadedSize / totalSize) * 100;
+          onProgress(percent);
+        }
+      });
+
+      res.pipe(fileStream);
+
+      fileStream.on('finish', () => {
+        fileStream.close();
+        resolve();
+      });
+
+      fileStream.on('error', (err) => {
+        fileStream.close();
+        reject(err);
+      });
+    });
+
+    req.on('error', reject);
+    req.end();
+  });
+}
+
+/**
+ * Initializes the auto-updater system.
+ */
+export function initAutoUpdater(window: BrowserWindow): void {
+  mainWindow = window;
+
   // Don't check for updates in development
   if (!app.isPackaged) {
     console.log('[Updater] Skipping updates in development mode');
     return;
   }
 
-  // Configure updater
-  autoUpdater.autoDownload = false;
-  autoUpdater.autoInstallOnAppQuit = true;
+  // Check what's new on startup
+  checkWhatsNew().catch((err) => {
+    console.error('[Updater] Error checking what\'s new:', err);
+  });
 
-  // Check for updates on startup (after a short delay)
+  // Check for updates after a short delay
   setTimeout(() => {
-    autoUpdater.checkForUpdates().catch((err) => {
-      console.error('[Updater] Error checking for updates:', err);
-    });
-  }, 3000);
-
-  // Update available
-  autoUpdater.on('update-available', (info) => {
-    console.log('[Updater] Update available:', info.version);
-
-    dialog
-      .showMessageBox(mainWindow, {
-        type: 'info',
-        title: 'Update Available',
-        message: `A new version (${info.version}) is available.`,
-        detail: 'Would you like to download it now?',
-        buttons: ['Download', 'Later'],
-        defaultId: 0,
-      })
-      .then((result) => {
-        if (result.response === 0) {
-          autoUpdater.downloadUpdate();
-        }
+    if (getAutoUpdateEnabled()) {
+      checkForUpdates(false).catch((err) => {
+        console.error('[Updater] Error checking for updates:', err);
       });
-  });
+    }
+  }, 5000);
 
-  // No update available
-  autoUpdater.on('update-not-available', () => {
-    console.log('[Updater] No updates available');
-  });
+  // Set up periodic check (every hour, but only if 24h has passed)
+  setInterval(() => {
+    if (!getAutoUpdateEnabled()) {
+      return;
+    }
 
-  // Download progress
-  autoUpdater.on('download-progress', (progress) => {
-    console.log(`[Updater] Download progress: ${progress.percent.toFixed(1)}%`);
-    mainWindow.webContents.send('update-download-progress', progress.percent);
-  });
+    const lastCheck = getLastUpdateCheck();
+    const now = Date.now();
 
-  // Update downloaded
-  autoUpdater.on('update-downloaded', (info) => {
-    console.log('[Updater] Update downloaded:', info.version);
-
-    dialog
-      .showMessageBox(mainWindow, {
-        type: 'info',
-        title: 'Update Ready',
-        message: 'Update downloaded. Restart to apply?',
-        buttons: ['Restart Now', 'Later'],
-        defaultId: 0,
-      })
-      .then((result) => {
-        if (result.response === 0) {
-          autoUpdater.quitAndInstall();
-        }
+    if (now - lastCheck >= CHECK_INTERVAL_MS) {
+      checkForUpdates(false).catch((err) => {
+        console.error('[Updater] Periodic update check error:', err);
       });
-  });
-
-  // Error handling
-  autoUpdater.on('error', (err) => {
-    console.error('[Updater] Error:', err);
-  });
+    }
+  }, 60 * 60 * 1000); // Check every hour
 }
 
-export function checkForUpdates(): void {
-  if (app.isPackaged) {
-    autoUpdater.checkForUpdates().catch((err) => {
-      console.error('[Updater] Error checking for updates:', err);
+/**
+ * Checks for available updates from GitHub.
+ * @param manual - Whether this was triggered manually by the user
+ */
+export async function checkForUpdates(manual = false): Promise<void> {
+  console.log('[Updater] Checking for updates...');
+
+  try {
+    const releases = await fetchGitHubReleases();
+
+    if (!releases || releases.length === 0) {
+      if (manual && mainWindow) {
+        mainWindow.webContents.send('update-not-available');
+      }
+      return;
+    }
+
+    const latestRelease = releases[0];
+    const latestVersion = latestRelease.tag_name.replace(/^v/, '');
+    const currentVersion = app.getVersion();
+
+    console.log(`[Updater] Current: ${currentVersion}, Latest: ${latestVersion}`);
+
+    const latestNum = parseVersion(latestVersion);
+    const currentNum = parseVersion(currentVersion);
+
+    if (latestNum <= currentNum) {
+      console.log('[Updater] No update available');
+      if (manual && mainWindow) {
+        mainWindow.webContents.send('update-not-available');
+      }
+      setLastUpdateCheck(Date.now());
+      return;
+    }
+
+    // Find the correct DMG asset for this architecture
+    const arch = process.arch === 'arm64' ? 'arm64' : 'x64';
+    const dmgAsset = latestRelease.assets.find((asset) => {
+      const name = asset.name.toLowerCase();
+      return name.endsWith('.dmg') && name.includes(arch);
     });
-  } else {
-    console.log('[Updater] Updates not available in development mode');
+
+    if (!dmgAsset) {
+      console.error('[Updater] No DMG asset found for architecture:', arch);
+      if (mainWindow) {
+        mainWindow.webContents.send('update-error', {
+          message: `No download available for your Mac (${arch})`,
+        });
+      }
+      return;
+    }
+
+    console.log('[Updater] Update available:', latestVersion, dmgAsset.name);
+
+    if (mainWindow) {
+      mainWindow.webContents.send('update-available', {
+        version: latestVersion,
+        releaseNotes: latestRelease.body,
+        releaseName: latestRelease.name,
+        downloadUrl: dmgAsset.browser_download_url,
+        downloadSize: dmgAsset.size,
+      });
+    }
+
+    setLastUpdateCheck(Date.now());
+  } catch (err) {
+    console.error('[Updater] Error checking for updates:', err);
+    if (mainWindow) {
+      mainWindow.webContents.send('update-error', {
+        message: err instanceof Error ? err.message : 'Unknown error',
+      });
+    }
   }
+}
+
+/**
+ * Downloads and installs an update.
+ * @param downloadUrl - The URL to download the DMG from
+ * @param version - The version being installed
+ */
+export async function startUpdate(downloadUrl: string, version: string): Promise<void> {
+  console.log(`[Updater] Starting update to ${version}`);
+
+  const fallbackUrl = `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/releases/tag/v${version}`;
+
+  try {
+    // Create temp directory
+    await mkdir(UPDATE_DIR, { recursive: true });
+
+    const dmgPath = path.join(UPDATE_DIR, `update-${version}.dmg`);
+
+    // Download the DMG with progress reporting
+    console.log('[Updater] Downloading DMG...');
+    await downloadFile(downloadUrl, dmgPath, (percent) => {
+      if (mainWindow) {
+        mainWindow.webContents.send('update-downloading', { percent });
+      }
+    });
+
+    console.log('[Updater] Download complete, removing quarantine...');
+
+    // Remove quarantine attribute
+    try {
+      await execFileAsync('xattr', ['-c', dmgPath]);
+    } catch (err) {
+      console.warn('[Updater] Failed to remove quarantine (non-fatal):', err);
+    }
+
+    // Mount the DMG
+    console.log('[Updater] Mounting DMG...');
+    const { stdout: mountOutput } = await execFileAsync('hdiutil', [
+      'attach',
+      '-nobrowse',
+      dmgPath,
+    ]);
+
+    // Parse the volume path
+    const volumePath = parseVolumePath(mountOutput);
+    console.log('[Updater] Mounted at:', volumePath);
+
+    // Write the updater script
+    console.log('[Updater] Writing updater script...');
+    const scriptPath = await writeUpdaterScript(volumePath, APP_NAME);
+
+    // Notify the UI that the update is ready
+    if (mainWindow) {
+      mainWindow.webContents.send('update-ready', { version, scriptPath });
+    }
+
+    // Spawn the updater script detached
+    console.log('[Updater] Spawning updater script...');
+    const child = spawn(scriptPath, [], {
+      detached: true,
+      stdio: 'ignore',
+    });
+    child.unref();
+
+    // Quit the app after a short delay to allow the script to start
+    setTimeout(() => {
+      console.log('[Updater] Quitting app for update...');
+      app.quit();
+    }, 500);
+  } catch (err) {
+    console.error('[Updater] Update failed:', err);
+
+    // Cleanup on error
+    try {
+      await rm(UPDATE_DIR, { recursive: true, force: true });
+    } catch {
+      // Ignore cleanup errors
+    }
+
+    if (mainWindow) {
+      mainWindow.webContents.send('update-error', {
+        message: err instanceof Error ? err.message : 'Update failed',
+        fallbackUrl,
+      });
+    }
+  }
+}
+
+/**
+ * Checks if there are new features to show the user since their last seen version.
+ */
+export async function checkWhatsNew(): Promise<void> {
+  const currentVersion = app.getVersion();
+  const lastSeenVersion = getLastSeenVersion();
+
+  console.log(`[Updater] Checking what's new: current=${currentVersion}, lastSeen=${lastSeenVersion}`);
+
+  // First run - just set the version and return
+  if (!lastSeenVersion) {
+    console.log('[Updater] First run, setting last seen version');
+    setLastSeenVersion(currentVersion);
+    return;
+  }
+
+  // Versions match - nothing new to show
+  if (lastSeenVersion === currentVersion) {
+    console.log('[Updater] Versions match, nothing new');
+    return;
+  }
+
+  // Fetch release notes for versions between lastSeen and current
+  try {
+    const releases = await fetchReleaseNotes(lastSeenVersion, currentVersion);
+
+    if (releases.length > 0 && mainWindow) {
+      mainWindow.webContents.send('show-whats-new', { releases });
+    }
+  } catch (err) {
+    console.error('[Updater] Error fetching release notes:', err);
+  }
+}
+
+/**
+ * Fetches release notes for versions between fromVersion (exclusive) and toVersion (inclusive).
+ */
+export async function fetchReleaseNotes(
+  fromVersion: string,
+  toVersion: string
+): Promise<Array<{ version: string; notes: string }>> {
+  console.log(`[Updater] Fetching release notes from ${fromVersion} to ${toVersion}`);
+
+  const releases = await fetchGitHubReleases();
+  const fromNum = parseVersion(fromVersion);
+  const toNum = parseVersion(toVersion);
+
+  const relevantReleases = releases
+    .filter((release) => {
+      const version = release.tag_name.replace(/^v/, '');
+      const versionNum = parseVersion(version);
+      // Include versions > fromVersion and <= toVersion
+      return versionNum > fromNum && versionNum <= toNum;
+    })
+    .map((release) => ({
+      version: release.tag_name.replace(/^v/, ''),
+      notes: release.body || '',
+    }))
+    .sort((a, b) => parseVersion(b.version) - parseVersion(a.version)); // Newest first
+
+  console.log(`[Updater] Found ${relevantReleases.length} relevant releases`);
+  return relevantReleases;
+}
+
+/**
+ * Marks the what's new dialog as seen for the given version.
+ */
+export function markWhatsNewSeen(version: string): void {
+  console.log(`[Updater] Marking what's new seen for version ${version}`);
+  setLastSeenVersion(version);
 }
