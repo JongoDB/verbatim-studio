@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { DataSyncProvider } from '@/hooks/useDataSync';
 import { api, isElectron, type ApiInfo, type HealthStatus, type GlobalSearchResult, type SystemInfo } from '@/lib/api';
 import { RecordingsPage } from '@/pages/recordings/RecordingsPage';
 import { ProjectsPage } from '@/pages/projects/ProjectsPage';
@@ -488,148 +489,150 @@ export function App() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <div className="min-h-screen bg-background flex">
-        {/* macOS Title Bar (draggable region for window movement) */}
-        <TitleBar />
+      <DataSyncProvider>
+        <div className="min-h-screen bg-background flex">
+          {/* macOS Title Bar (draggable region for window movement) */}
+          <TitleBar />
 
-        {/* Sidebar */}
-        <Sidebar
-          currentTab={currentTab}
-          onNavigate={(tab) => {
-            if (tab === 'dashboard') handleNavigateToDashboard();
-            else if (tab === 'recordings') handleNavigateToRecordings();
-            else if (tab === 'projects') handleNavigateToProjects();
-            else if (tab === 'live') handleNavigateToLive();
-            else if (tab === 'search') handleNavigateToSearch();
-            else if (tab === 'documents') handleNavigateToDocuments();
-            else if (tab === 'chats') handleNavigateToChats();
-            else if (tab === 'browser') handleNavigateToBrowser();
-            else if (tab === 'settings') handleNavigateToSettings();
-          }}
-          theme={theme}
-          onCycleTheme={cycleTheme}
-          version={systemInfo?.app_version || APP_VERSION}
-          health={health}
-          collapsed={sidebarCollapsed}
-          onCollapsedChange={setSidebarCollapsed}
-          isTourActive={isTourActive}
-        />
+          {/* Sidebar */}
+          <Sidebar
+            currentTab={currentTab}
+            onNavigate={(tab) => {
+              if (tab === 'dashboard') handleNavigateToDashboard();
+              else if (tab === 'recordings') handleNavigateToRecordings();
+              else if (tab === 'projects') handleNavigateToProjects();
+              else if (tab === 'live') handleNavigateToLive();
+              else if (tab === 'search') handleNavigateToSearch();
+              else if (tab === 'documents') handleNavigateToDocuments();
+              else if (tab === 'chats') handleNavigateToChats();
+              else if (tab === 'browser') handleNavigateToBrowser();
+              else if (tab === 'settings') handleNavigateToSettings();
+            }}
+            theme={theme}
+            onCycleTheme={cycleTheme}
+            version={systemInfo?.app_version || APP_VERSION}
+            health={health}
+            collapsed={sidebarCollapsed}
+            onCollapsedChange={setSidebarCollapsed}
+            isTourActive={isTourActive}
+          />
 
-        {/* Content Area - offset by sidebar width on desktop */}
-        <div className={`flex-1 flex flex-col min-h-screen overflow-hidden transition-[margin] duration-300 ${sidebarCollapsed ? 'md:ml-16' : 'md:ml-60'} ${needsTitleBarPadding ? 'pt-9' : ''}`}>
-          {/* Content header with search */}
-          <header className="h-14 border-b border-border bg-card flex items-center px-4 md:px-6 gap-4 shrink-0">
-            <div className="w-8 md:hidden" />
-            <div className="flex-1 max-w-md">
-              <SearchBox onResultClick={handleSearchResult} />
-            </div>
-          </header>
+          {/* Content Area - offset by sidebar width on desktop */}
+          <div className={`flex-1 flex flex-col min-h-screen overflow-hidden transition-[margin] duration-300 ${sidebarCollapsed ? 'md:ml-16' : 'md:ml-60'} ${needsTitleBarPadding ? 'pt-9' : ''}`}>
+            {/* Content header with search */}
+            <header className="h-14 border-b border-border bg-card flex items-center px-4 md:px-6 gap-4 shrink-0">
+              <div className="w-8 md:hidden" />
+              <div className="flex-1 max-w-md">
+                <SearchBox onResultClick={handleSearchResult} />
+              </div>
+            </header>
 
-          {/* Main Content */}
-          <main className="flex-1 overflow-y-auto">
-            <div className="container mx-auto px-4 py-8">
-              {navigation.type === 'dashboard' && (
-                <Dashboard
-                  onNavigateToRecordings={handleNavigateToRecordings}
-                  onNavigateToProjects={handleNavigateToProjects}
-                  onViewRecording={handleViewTranscript}
-                  onStartTour={handleStartTour}
-                />
-              )}
-              {navigation.type === 'recordings' && (
-                <RecordingsPage onViewTranscript={handleViewTranscript} />
-              )}
-              {navigation.type === 'projects' && (
-                <ProjectsPage onNavigateToProject={handleNavigateToProjectDetail} />
-              )}
-              {navigation.type === 'project-detail' && (
-                <ProjectDetailPage
-                  projectId={navigation.projectId}
-                  onBack={handleNavigateToProjects}
-                  onViewTranscript={handleViewTranscript}
-                  onNavigateToAnalytics={() => handleNavigateToProjectAnalytics(navigation.projectId)}
-                />
-              )}
-              {navigation.type === 'project-analytics' && (
-                <ProjectAnalyticsPage
-                  projectId={navigation.projectId}
-                  onBack={() => handleNavigateToProjectDetail(navigation.projectId)}
-                />
-              )}
-              {navigation.type === 'live' && (
-                <LiveTranscriptionPage
-                  onNavigateToRecordings={handleNavigateToRecordings}
-                  onViewRecording={handleViewTranscript}
-                />
-              )}
-              {navigation.type === 'search' && (
-                <SearchPage onResultClick={handleSearchResult} />
-              )}
-              {navigation.type === 'documents' && (
-                <DocumentsPage onViewDocument={handleViewDocument} />
-              )}
-              {navigation.type === 'document-viewer' && (
-                <DocumentViewerPage
-                  documentId={navigation.documentId}
-                  onBack={handleNavigateToDocuments}
-                />
-              )}
-              {navigation.type === 'browser' && (
-                <FileBrowserPage
-                  initialFolderId={navigation.folderId}
-                  onViewRecording={(id) => setNavigation({ type: 'transcript', recordingId: id })}
-                  onViewDocument={(id) => setNavigation({ type: 'document-viewer', documentId: id })}
-                />
-              )}
-              {navigation.type === 'chats' && (
-                <ChatsPage
-                  onLoadConversation={handleLoadConversation}
-                  onOpenChat={handleOpenChat}
-                />
-              )}
-              {navigation.type === 'transcript' && (
-                <TranscriptPage
-                  recordingId={navigation.recordingId}
-                  onBack={handleBackToRecordings}
-                  initialSeekTime={navigation.initialSeekTime}
-                />
-              )}
-              {navigation.type === 'settings' && (
-                <SettingsPage theme={theme} onThemeChange={setTheme} />
-              )}
-            </div>
-          </main>
+            {/* Main Content */}
+            <main className="flex-1 overflow-y-auto">
+              <div className="container mx-auto px-4 py-8">
+                {navigation.type === 'dashboard' && (
+                  <Dashboard
+                    onNavigateToRecordings={handleNavigateToRecordings}
+                    onNavigateToProjects={handleNavigateToProjects}
+                    onViewRecording={handleViewTranscript}
+                    onStartTour={handleStartTour}
+                  />
+                )}
+                {navigation.type === 'recordings' && (
+                  <RecordingsPage onViewTranscript={handleViewTranscript} />
+                )}
+                {navigation.type === 'projects' && (
+                  <ProjectsPage onNavigateToProject={handleNavigateToProjectDetail} />
+                )}
+                {navigation.type === 'project-detail' && (
+                  <ProjectDetailPage
+                    projectId={navigation.projectId}
+                    onBack={handleNavigateToProjects}
+                    onViewTranscript={handleViewTranscript}
+                    onNavigateToAnalytics={() => handleNavigateToProjectAnalytics(navigation.projectId)}
+                  />
+                )}
+                {navigation.type === 'project-analytics' && (
+                  <ProjectAnalyticsPage
+                    projectId={navigation.projectId}
+                    onBack={() => handleNavigateToProjectDetail(navigation.projectId)}
+                  />
+                )}
+                {navigation.type === 'live' && (
+                  <LiveTranscriptionPage
+                    onNavigateToRecordings={handleNavigateToRecordings}
+                    onViewRecording={handleViewTranscript}
+                  />
+                )}
+                {navigation.type === 'search' && (
+                  <SearchPage onResultClick={handleSearchResult} />
+                )}
+                {navigation.type === 'documents' && (
+                  <DocumentsPage onViewDocument={handleViewDocument} />
+                )}
+                {navigation.type === 'document-viewer' && (
+                  <DocumentViewerPage
+                    documentId={navigation.documentId}
+                    onBack={handleNavigateToDocuments}
+                  />
+                )}
+                {navigation.type === 'browser' && (
+                  <FileBrowserPage
+                    initialFolderId={navigation.folderId}
+                    onViewRecording={(id) => setNavigation({ type: 'transcript', recordingId: id })}
+                    onViewDocument={(id) => setNavigation({ type: 'document-viewer', documentId: id })}
+                  />
+                )}
+                {navigation.type === 'chats' && (
+                  <ChatsPage
+                    onLoadConversation={handleLoadConversation}
+                    onOpenChat={handleOpenChat}
+                  />
+                )}
+                {navigation.type === 'transcript' && (
+                  <TranscriptPage
+                    recordingId={navigation.recordingId}
+                    onBack={handleBackToRecordings}
+                    initialSeekTime={navigation.initialSeekTime}
+                  />
+                )}
+                {navigation.type === 'settings' && (
+                  <SettingsPage theme={theme} onThemeChange={setTheme} />
+                )}
+              </div>
+            </main>
+          </div>
+
+          {/* Chat Assistant */}
+          <ChatFAB onClick={handleOpenChat} isOpen={isChatOpen} />
+          <ChatPanel
+            isOpen={isChatOpen}
+            onClose={() => setIsChatOpen(false)}
+            messages={chatMessages}
+            setMessages={setChatMessages}
+            attached={chatAttachments}
+            setAttached={setChatAttachments}
+            onNavigateToChats={handleNavigateToChats}
+          />
+
+          {/* Onboarding Tour */}
+          <WelcomeModal
+            isOpen={showWelcomeModal && !isConnecting && !error}
+            onStartTour={handleStartTour}
+            onSkip={handleWelcomeSkip}
+          />
+          <OnboardingTour
+            isActive={isTourActive}
+            onComplete={handleTourComplete}
+            onSkip={handleTourSkip}
+            onNavigate={handleTourNavigate}
+          />
+          <TourToast
+            isVisible={showTourToast}
+            onDismiss={() => setShowTourToast(false)}
+          />
         </div>
-
-        {/* Chat Assistant */}
-        <ChatFAB onClick={handleOpenChat} isOpen={isChatOpen} />
-        <ChatPanel
-          isOpen={isChatOpen}
-          onClose={() => setIsChatOpen(false)}
-          messages={chatMessages}
-          setMessages={setChatMessages}
-          attached={chatAttachments}
-          setAttached={setChatAttachments}
-          onNavigateToChats={handleNavigateToChats}
-        />
-
-        {/* Onboarding Tour */}
-        <WelcomeModal
-          isOpen={showWelcomeModal && !isConnecting && !error}
-          onStartTour={handleStartTour}
-          onSkip={handleWelcomeSkip}
-        />
-        <OnboardingTour
-          isActive={isTourActive}
-          onComplete={handleTourComplete}
-          onSkip={handleTourSkip}
-          onNavigate={handleTourNavigate}
-        />
-        <TourToast
-          isVisible={showTourToast}
-          onDismiss={() => setShowTourToast(false)}
-        />
-      </div>
+      </DataSyncProvider>
     </QueryClientProvider>
   );
 }
