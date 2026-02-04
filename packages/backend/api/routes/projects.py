@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.routes.sync import broadcast
 from persistence.database import get_db
 from persistence.models import Document, Project, ProjectType, Recording
 from services.storage import storage_service
@@ -171,6 +172,7 @@ async def create_project(
     )
     db.add(project)
     await db.commit()
+    await broadcast("projects", "created", str(project.id))
 
     # Create project folder on disk
     try:
@@ -299,6 +301,7 @@ async def update_project(
         project.metadata_ = data.metadata
 
     await db.commit()
+    await broadcast("projects", "updated", project_id)
 
     # Refresh with relationships
     result = await db.execute(
@@ -376,6 +379,7 @@ async def delete_project(
         # Delete project
         await db.delete(project)
         await db.commit()
+        await broadcast("projects", "deleted", project_id)
 
         # Delete project folder with any remaining contents
         try:
@@ -414,6 +418,7 @@ async def delete_project(
         # Delete project
         await db.delete(project)
         await db.commit()
+        await broadcast("projects", "deleted", project_id)
 
         # Delete project folder (should be empty now)
         try:
