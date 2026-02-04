@@ -20,6 +20,7 @@ from persistence.models import Job, Project, Recording, RecordingTag, RecordingT
 from services.jobs import job_queue
 from services.storage import storage_service, get_storage_adapter, get_active_storage_location
 from storage.factory import get_adapter
+from api.routes.sync import broadcast
 
 logger = logging.getLogger(__name__)
 
@@ -586,6 +587,7 @@ async def upload_recording(
                 recording.title = filename
 
         await db.commit()
+        await broadcast("recordings", "created", str(recording.id))
     except Exception:
         await db.rollback()
         # Log the actual error for debugging, but return generic message to client
@@ -680,6 +682,7 @@ async def update_recording(
         recording.metadata_ = {**current, **body.metadata}
 
     await db.commit()
+    await broadcast("recordings", "updated", recording_id)
 
     # Refresh with template relationship
     result = await db.execute(
@@ -731,6 +734,7 @@ async def bulk_delete_recordings(
         await db.delete(recording)
 
     await db.commit()
+    await broadcast("recordings", "deleted")
     return MessageResponse(message=f"Deleted {len(recordings)} recording(s)")
 
 
@@ -1036,6 +1040,7 @@ async def delete_recording(
     # Delete the database record
     await db.delete(recording)
     await db.commit()
+    await broadcast("recordings", "deleted", recording_id)
 
     return MessageResponse(
         message="Recording deleted successfully",
@@ -1085,6 +1090,7 @@ async def transcribe_recording(
         payload["language"] = language
 
     job_id = await job_queue.enqueue("transcribe", payload)
+    await broadcast("recordings", "status_changed", recording_id)
 
     logger.info("Enqueued transcription job %s for recording %s", job_id, recording_id)
 
@@ -1142,6 +1148,7 @@ async def cancel_recording(
         # No active job found — set recording to cancelled directly
         recording.status = "cancelled"
         await db.commit()
+        await broadcast("recordings", "status_changed", recording_id)
         return MessageResponse(message="Recording cancelled (no active job found)", id=recording_id)
 
     was_queued = job.status == "queued"
@@ -1157,6 +1164,7 @@ async def cancel_recording(
     if was_queued:
         recording.status = "cancelled"
         await db.commit()
+        await broadcast("recordings", "status_changed", recording_id)
 
     # For running jobs, the cooperative cancellation in _run_job will update recording status
 
@@ -1221,6 +1229,7 @@ async def retry_recording(
 
     # Enqueue new job
     job_id = await job_queue.enqueue("transcribe", payload)
+    await broadcast("recordings", "status_changed", recording_id)
 
     logger.info("Retry enqueued job %s for recording %s", job_id, recording_id)
 
