@@ -81,25 +81,21 @@ print(f'Downloaded to: {local_dir}')
 "
 
     # Move from temp cache to output directory
-    local temp_model_dir="$temp_cache/hub/models--${repo//\//-}"
+    # HuggingFace uses double dashes: models--org--repo
+    local temp_model_dir="$temp_cache/hub/models--${repo//\//'--'}"
+    echo "Looking for model at: $temp_model_dir"
+
     if [ -d "$temp_model_dir" ]; then
         mkdir -p "$(dirname "$dest_dir")"
         mv "$temp_model_dir" "$dest_dir"
         echo "Moved to: $dest_dir"
     else
-        # Try alternate path format
-        local temp_model_dir2="$temp_cache/hub/models--$(echo $repo | tr '/' '--')"
-        if [ -d "$temp_model_dir2" ]; then
-            mkdir -p "$(dirname "$dest_dir")"
-            mv "$temp_model_dir2" "$dest_dir"
-            echo "Moved to: $dest_dir"
-        else
-            echo "ERROR: Could not find downloaded model in temp cache"
-            echo "Temp cache contents:"
-            find "$temp_cache" -type d
-            rm -rf "$temp_cache"
-            return 1
-        fi
+        echo "ERROR: Could not find downloaded model at expected path"
+        echo "Expected: $temp_model_dir"
+        echo "Temp cache contents:"
+        find "$temp_cache" -type d
+        rm -rf "$temp_cache"
+        return 1
     fi
 
     # Cleanup temp cache
