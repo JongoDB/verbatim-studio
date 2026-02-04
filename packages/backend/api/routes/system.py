@@ -585,3 +585,145 @@ async def install_ml_dependencies():
             _ml_install_in_progress = False
 
     return StreamingResponse(install_stream(), media_type="text/event-stream")
+
+
+class ResetDatabaseRequest(BaseModel):
+    """Request body for database reset."""
+
+    delete_media: bool = False
+
+
+class ResetDatabaseResponse(BaseModel):
+    """Response from database reset."""
+
+    success: bool
+    deleted: dict[str, int]
+    message: str
+
+
+@router.post("/reset-database", response_model=ResetDatabaseResponse)
+async def reset_database(request: ResetDatabaseRequest) -> ResetDatabaseResponse:
+    """Reset the database by deleting all user data.
+
+    This is a destructive operation that cannot be undone.
+    Preserves system configuration (storage_locations, settings, templates).
+
+    If delete_media is True, also deletes all files in the media directory.
+    """
+    from persistence.models import (
+        Conversation,
+        ConversationMessage,
+        Document,
+        DocumentEmbedding,
+        Job,
+        Note,
+        Project,
+        ProjectRecording,
+        Recording,
+        RecordingTag,
+        Segment,
+        SegmentComment,
+        SegmentEmbedding,
+        SegmentHighlight,
+        Speaker,
+        Tag,
+        Transcript,
+    )
+
+    deleted_counts: dict[str, int] = {}
+
+    try:
+        async with async_session() as db:
+            # Delete in dependency order (children first to respect foreign keys)
+            # 1. Embeddings
+            result = await db.execute(text("DELETE FROM segment_embeddings"))
+            deleted_counts["segment_embeddings"] = result.rowcount
+            result = await db.execute(text("DELETE FROM document_embeddings"))
+            deleted_counts["document_embeddings"] = result.rowcount
+
+            # 2. Segment children
+            result = await db.execute(text("DELETE FROM segment_comments"))
+            deleted_counts["segment_comments"] = result.rowcount
+            result = await db.execute(text("DELETE FROM segment_highlights"))
+            deleted_counts["segment_highlights"] = result.rowcount
+
+            # 3. Notes
+            result = await db.execute(text("DELETE FROM notes"))
+            deleted_counts["notes"] = result.rowcount
+
+            # 4. Segments and speakers
+            result = await db.execute(text("DELETE FROM segments"))
+            deleted_counts["segments"] = result.rowcount
+            result = await db.execute(text("DELETE FROM speakers"))
+            deleted_counts["speakers"] = result.rowcount
+
+            # 5. Transcripts
+            result = await db.execute(text("DELETE FROM transcripts"))
+            deleted_counts["transcripts"] = result.rowcount
+
+            # 6. Junction tables
+            result = await db.execute(text("DELETE FROM recording_tags"))
+            deleted_counts["recording_tags"] = result.rowcount
+            result = await db.execute(text("DELETE FROM project_recordings"))
+            deleted_counts["project_recordings"] = result.rowcount
+
+            # 7. Conversation messages then conversations
+            result = await db.execute(text("DELETE FROM conversation_messages"))
+            deleted_counts["conversation_messages"] = result.rowcount
+            result = await db.execute(text("DELETE FROM conversations"))
+            deleted_counts["conversations"] = result.rowcount
+
+            # 8. Main content tables
+            result = await db.execute(text("DELETE FROM recordings"))
+            deleted_counts["recordings"] = result.rowcount
+            result = await db.execute(text("DELETE FROM documents"))
+            deleted_counts["documents"] = result.rowcount
+
+            # 9. Organization tables
+            result = await db.execute(text("DELETE FROM projects"))
+            deleted_counts["projects"] = result.rowcount
+            result = await db.execute(text("DELETE FROM tags"))
+            deleted_counts["tags"] = result.rowcount
+
+            # 10. Jobs queue
+            result = await db.execute(text("DELETE FROM jobs"))
+            deleted_counts["jobs"] = result.rowcount
+
+            await db.commit()
+
+            # Run VACUUM to reclaim space (must be outside transaction)
+            await db.execute(text("VACUUM"))
+
+        # Delete media files if requested
+        media_deleted = 0
+        if request.delete_media:
+            media_dir = Path(settings.MEDIA_DIR)
+            if media_dir.exists():
+                for item in media_dir.iterdir():
+                    try:
+                        if item.is_file():
+                            item.unlink()
+                            media_deleted += 1
+                        elif item.is_dir():
+                            shutil.rmtree(item)
+                            media_deleted += 1
+                    except Exception as e:
+                        logger.warning("Failed to delete %s: %s", item, e)
+            deleted_counts["media_files"] = media_deleted
+
+        total_deleted = sum(deleted_counts.values())
+        logger.info("Database reset complete. Deleted: %s", deleted_counts)
+
+        return ResetDatabaseResponse(
+            success=True,
+            deleted=deleted_counts,
+            message=f"Successfully deleted {total_deleted} items. Database has been reset.",
+        )
+
+    except Exception as e:
+        logger.exception("Database reset failed")
+        return ResetDatabaseResponse(
+            success=False,
+            deleted=deleted_counts,
+            message=f"Reset failed: {str(e)}",
+        )

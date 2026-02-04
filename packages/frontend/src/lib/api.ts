@@ -985,6 +985,12 @@ export interface MLInstallEvent {
   message: string;
 }
 
+export interface ResetDatabaseResponse {
+  success: boolean;
+  deleted: Record<string, number>;
+  message: string;
+}
+
 // Storage Locations
 export type StorageType = 'local' | 'network' | 'cloud';
 export type StorageSubtype =
@@ -2148,6 +2154,11 @@ class ApiClient {
         }
       }
     },
+    resetDatabase: (deleteMedia: boolean) =>
+      this.request<ResetDatabaseResponse>('/api/system/reset-database', {
+        method: 'POST',
+        body: JSON.stringify({ delete_media: deleteMedia }),
+      }),
   };
 
   // Storage Locations

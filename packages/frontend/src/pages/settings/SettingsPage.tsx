@@ -145,6 +145,13 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
 
+  // Reset database state
+  const [showResetDialog, setShowResetDialog] = useState(false);
+  const [resetConfirmText, setResetConfirmText] = useState('');
+  const [deleteMediaToo, setDeleteMediaToo] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
+  const [resetResult, setResetResult] = useState<{ success: boolean; message: string; deleted?: Record<string, number> } | null>(null);
+
   const defaultLanguage = settings.defaultLanguage || '';
   const defaultPlaybackSpeed = settings.defaultPlaybackSpeed || 1;
   const autoTranscribe = settings.autoTranscribe ?? false;
@@ -3095,6 +3102,32 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
                 </div>
               </div>
             </div>
+
+            {/* Danger Zone */}
+            <div className="border-t border-red-200 dark:border-red-900/50 pt-4 mt-2">
+              <h3 className="text-sm font-medium text-red-600 dark:text-red-400 mb-3">Danger Zone</h3>
+              <div className="p-4 border border-red-200 dark:border-red-800/50 rounded-lg bg-red-50 dark:bg-red-900/10">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1">
+                    <h4 className="font-medium text-gray-900 dark:text-gray-100">Reset Database</h4>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                      Delete all recordings, transcripts, projects, and conversations. This cannot be undone.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setShowResetDialog(true);
+                      setResetConfirmText('');
+                      setDeleteMediaToo(false);
+                      setResetResult(null);
+                    }}
+                    className="shrink-0 px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 transition-colors"
+                  >
+                    Reset Database
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
         </>
@@ -3193,6 +3226,143 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
                 <button
                   onClick={handleCancelMigration}
                   className="px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 text-sm"
+                >
+                  Close
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Reset Database Dialog */}
+      {showResetDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
+            {!resetResult ? (
+              <>
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-10 h-10 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
+                    <svg className="w-5 h-5 text-red-600 dark:text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                  </div>
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                    Reset Database
+                  </h3>
+                </div>
+
+                <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                  This will permanently delete all your data:
+                </p>
+
+                <ul className="text-sm text-gray-500 dark:text-gray-400 mb-4 space-y-1 list-disc list-inside">
+                  <li>{systemInfo?.content_counts.recordings || 0} recordings</li>
+                  <li>{systemInfo?.content_counts.transcripts || 0} transcripts</li>
+                  <li>All projects, tags, and conversations</li>
+                  <li>All search embeddings</li>
+                </ul>
+
+                <label className="flex items-center gap-2 mb-4 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={deleteMediaToo}
+                    onChange={(e) => setDeleteMediaToo(e.target.checked)}
+                    className="rounded border-gray-300 dark:border-gray-600"
+                  />
+                  <span className="text-gray-700 dark:text-gray-300">
+                    Also delete media files ({systemInfo?.storage_breakdown.media_count || 0} files)
+                  </span>
+                </label>
+
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Type <span className="font-mono text-red-600 dark:text-red-400">RESET</span> to confirm
+                  </label>
+                  <input
+                    type="text"
+                    value={resetConfirmText}
+                    onChange={(e) => setResetConfirmText(e.target.value)}
+                    placeholder="RESET"
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm"
+                  />
+                </div>
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={async () => {
+                      setIsResetting(true);
+                      try {
+                        const result = await api.system.resetDatabase(deleteMediaToo);
+                        setResetResult({
+                          success: result.success,
+                          message: result.message,
+                          deleted: result.deleted,
+                        });
+                        if (result.success) {
+                          // Refresh system info
+                          api.system.info().then(setSystemInfo).catch(console.error);
+                        }
+                      } catch (err) {
+                        setResetResult({
+                          success: false,
+                          message: err instanceof Error ? err.message : 'Reset failed',
+                        });
+                      } finally {
+                        setIsResetting(false);
+                      }
+                    }}
+                    disabled={resetConfirmText !== 'RESET' || isResetting}
+                    className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium transition-colors"
+                  >
+                    {isResetting ? 'Resetting...' : 'Reset Database'}
+                  </button>
+                  <button
+                    onClick={() => setShowResetDialog(false)}
+                    disabled={isResetting}
+                    className="px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 text-sm font-medium"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="text-center">
+                {resetResult.success ? (
+                  <>
+                    <div className="w-12 h-12 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center mx-auto mb-4">
+                      <svg className="w-6 h-6 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                    </div>
+                    <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
+                      Database Reset Complete
+                    </h3>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+                      {resetResult.message}
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <div className="w-12 h-12 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center mx-auto mb-4">
+                      <svg className="w-6 h-6 text-red-600 dark:text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </div>
+                    <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
+                      Reset Failed
+                    </h3>
+                    <p className="text-sm text-red-600 dark:text-red-400 mb-4">
+                      {resetResult.message}
+                    </p>
+                  </>
+                )}
+                <button
+                  onClick={() => {
+                    setShowResetDialog(false);
+                    setResetResult(null);
+                  }}
+                  className="px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 text-sm font-medium"
                 >
                   Close
                 </button>
