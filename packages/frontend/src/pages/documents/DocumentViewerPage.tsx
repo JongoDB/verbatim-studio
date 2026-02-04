@@ -4,7 +4,7 @@ import remarkGfm from 'remark-gfm';
 import { renderAsync } from 'docx-preview';
 import ExcelJS from 'exceljs';
 import { MessageSquare } from 'lucide-react';
-import { api, type Document } from '@/lib/api';
+import { api, type Document, type OCRStatusResponse } from '@/lib/api';
 import { NotesPanel, PDFViewer } from '@/components/documents';
 
 interface DocumentViewerPageProps {
@@ -46,6 +46,12 @@ export function DocumentViewerPage({ documentId, onBack }: DocumentViewerPagePro
   const [pendingAnchor, setPendingAnchor] = useState<{ type: 'selection'; data: { text: string; page: number } } | null>(null);
   const [highlightText, setHighlightText] = useState<string | null>(null);
   const docxContainerRef = useRef<HTMLDivElement>(null);
+  const [ocrStatus, setOcrStatus] = useState<OCRStatusResponse | null>(null);
+
+  // Fetch OCR status on mount
+  useEffect(() => {
+    api.ocr.status().then(setOcrStatus).catch(() => setOcrStatus(null));
+  }, []);
 
   // Handle text selection in PDF to create a note
   const handlePdfSelectionNote = useCallback((selection: { text: string; page: number }) => {
@@ -96,8 +102,8 @@ export function DocumentViewerPage({ documentId, onBack }: DocumentViewerPagePro
     }
   };
 
-  // Check if OCR is available for this document
-  const canRunOcr = document &&
+  // Check if document supports OCR (type and not already processed with OCR)
+  const documentSupportsOcr = document &&
     document.status === 'completed' &&
     (document.mime_type.startsWith('image/') || document.mime_type === 'application/pdf') &&
     document.metadata?.ocr_engine !== 'qwen2-vl-ocr';
@@ -409,11 +415,16 @@ export function DocumentViewerPage({ documentId, onBack }: DocumentViewerPagePro
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {canRunOcr && (
+          {documentSupportsOcr && (
             <button
               onClick={handleRunOcr}
-              disabled={ocrRunning}
-              className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 rounded-lg transition-colors"
+              disabled={ocrRunning || !ocrStatus?.available}
+              title={!ocrStatus?.available ? 'Download OCR model in Settings → AI to enable OCR' : undefined}
+              className={`inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
+                ocrStatus?.available
+                  ? 'text-white bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400'
+                  : 'text-gray-500 bg-gray-200 dark:bg-gray-700 dark:text-gray-400 cursor-not-allowed'
+              }`}
             >
               {ocrRunning ? (
                 <>

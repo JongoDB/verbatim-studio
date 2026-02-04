@@ -8,6 +8,7 @@ interface ChatFABProps {
 
 export function ChatFAB({ onClick, isOpen }: ChatFABProps) {
   const [aiAvailable, setAiAvailable] = useState<boolean | null>(null);
+  const [showTooltip, setShowTooltip] = useState(false);
 
   const checkAiStatus = useCallback(() => {
     api.ai.status()
@@ -42,18 +43,30 @@ export function ChatFAB({ onClick, isOpen }: ChatFABProps) {
   if (isOpen) return null; // Hide FAB when panel is open
 
   return (
-    <button
-      data-tour="assistant"
-      onClick={onClick}
-      className={`fixed bottom-6 right-6 z-40 w-14 h-14 rounded-full shadow-lg flex items-center justify-center transition-all duration-200 ${
-        aiAvailable
-          ? 'bg-gradient-to-br from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 hover:scale-105 hover:shadow-xl'
-          : 'bg-gray-400 cursor-not-allowed'
-      }`}
-      disabled={aiAvailable !== true}
-      aria-label={aiAvailable ? 'Open Verbatim Assistant' : 'AI not available'}
-      title={aiAvailable ? 'Verbatim Assistant' : 'AI not available'}
+    <div
+      className="fixed bottom-6 right-6 z-40"
+      onMouseEnter={() => !aiAvailable && setShowTooltip(true)}
+      onMouseLeave={() => setShowTooltip(false)}
     >
+      {/* Tooltip when AI unavailable */}
+      {showTooltip && !aiAvailable && (
+        <div className="absolute bottom-full right-0 mb-2 w-64 px-3 py-2 text-sm bg-gray-900 dark:bg-gray-700 text-white rounded-lg shadow-lg pointer-events-none">
+          <div className="font-medium mb-1">AI Assistant Unavailable</div>
+          <div className="text-gray-300 text-xs">Download an AI model in Settings → AI to use the assistant</div>
+          <div className="absolute bottom-0 right-6 translate-y-1/2 rotate-45 w-2 h-2 bg-gray-900 dark:bg-gray-700"></div>
+        </div>
+      )}
+      <button
+        data-tour="assistant"
+        onClick={onClick}
+        className={`w-14 h-14 rounded-full shadow-lg flex items-center justify-center transition-all duration-200 ${
+          aiAvailable
+            ? 'bg-gradient-to-br from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 hover:scale-105 hover:shadow-xl'
+            : 'bg-gray-400 cursor-not-allowed'
+        }`}
+        disabled={aiAvailable !== true}
+        aria-label={aiAvailable ? 'Open Verbatim Assistant' : 'AI not available - download model in Settings'}
+      >
       {/* Chat bubble with sparkle */}
       <svg
         className="w-7 h-7 text-white"
@@ -79,5 +92,6 @@ export function ChatFAB({ onClick, isOpen }: ChatFABProps) {
         />
       </svg>
     </button>
+    </div>
   );
 }

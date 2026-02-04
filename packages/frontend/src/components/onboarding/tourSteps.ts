@@ -83,6 +83,14 @@ export const TOUR_STEPS: TourStep[] = [
     navigateTo: 'settings#ai',
   },
   {
+    id: 'ai-dependencies',
+    target: '[data-tour="settings-ai"]',
+    title: 'AI Model Downloads',
+    description: 'Download the AI assistant model here to enable chat features. For speaker identification, add a HuggingFace token in Transcription settings. For OCR, download the vision model.',
+    position: 'bottom',
+    navigateTo: 'settings#ai',
+  },
+  {
     id: 'settings-system',
     target: '[data-tour="settings-system"]',
     title: 'System Settings',

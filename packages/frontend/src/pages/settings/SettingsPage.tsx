@@ -1068,17 +1068,24 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
             <div className="flex items-center justify-between py-2">
               <div>
                 <div className="text-sm font-medium text-gray-900 dark:text-gray-100">Speaker Diarization</div>
-                <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Identify and label different speakers in the transcript</div>
+                <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                  {txSettings.hf_token_set
+                    ? 'Identify and label different speakers in the transcript'
+                    : 'Requires HuggingFace token (see below)'}
+                </div>
               </div>
-              <label className="relative inline-flex items-center cursor-pointer">
+              <label
+                className={`relative inline-flex items-center ${txSettings.hf_token_set ? 'cursor-pointer' : 'cursor-not-allowed'}`}
+                title={!txSettings.hf_token_set ? 'Add HuggingFace token below to enable speaker diarization' : undefined}
+              >
                 <input
                   type="checkbox"
                   checked={txSettings.diarize}
                   onChange={(e) => updateTxSetting('diarize', e.target.checked)}
-                  disabled={txSaving}
+                  disabled={txSaving || !txSettings.hf_token_set}
                   className="sr-only peer"
                 />
-                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-500 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600" />
+                <div className={`w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-500 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600 ${!txSettings.hf_token_set ? 'opacity-50' : ''}`} />
               </label>
             </div>
 

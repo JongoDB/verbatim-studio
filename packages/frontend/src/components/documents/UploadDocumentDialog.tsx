@@ -1,5 +1,5 @@
-import { useState, useCallback, useRef } from 'react';
-import { api, type Project } from '@/lib/api';
+import { useState, useCallback, useRef, useEffect } from 'react';
+import { api, type Project, type OCRStatusResponse } from '@/lib/api';
 
 interface UploadDocumentDialogProps {
   open: boolean;
@@ -35,6 +35,14 @@ export function UploadDocumentDialog({
   const [progress, setProgress] = useState<Record<string, number>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [ocrStatus, setOcrStatus] = useState<OCRStatusResponse | null>(null);
+
+  // Fetch OCR status when dialog opens
+  useEffect(() => {
+    if (open) {
+      api.ocr.status().then(setOcrStatus).catch(() => setOcrStatus(null));
+    }
+  }, [open]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -180,17 +188,23 @@ export function UploadDocumentDialog({
               Enable OCR
             </div>
             <p className="text-xs text-gray-500 dark:text-gray-400">
-              Extract text from images and scanned PDFs using AI vision
+              {ocrStatus?.available
+                ? 'Extract text from images and scanned PDFs using AI vision'
+                : 'Download OCR model in Settings → AI to enable'}
             </p>
           </div>
-          <label className="relative inline-flex items-center cursor-pointer">
+          <label
+            className={`relative inline-flex items-center ${ocrStatus?.available ? 'cursor-pointer' : 'cursor-not-allowed'}`}
+            title={!ocrStatus?.available ? 'Download OCR model in Settings → AI to enable OCR' : undefined}
+          >
             <input
               type="checkbox"
               checked={enableOcr}
               onChange={(e) => setEnableOcr(e.target.checked)}
+              disabled={!ocrStatus?.available}
               className="sr-only peer"
             />
-            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-500 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600" />
+            <div className={`w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-500 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600 ${!ocrStatus?.available ? 'opacity-50' : ''}`} />
           </label>
         </div>
 
