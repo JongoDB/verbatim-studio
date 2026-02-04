@@ -257,7 +257,7 @@ export function Sidebar({ currentTab, onNavigate, theme, onCycleTheme, version, 
                 )}
                 {/* Tooltip when collapsed (desktop only) */}
                 {collapsed && (
-                  <span className="hidden md:block absolute left-full ml-2 px-2 py-1 rounded-md bg-gray-900 text-gray-100 dark:bg-gray-100 dark:text-gray-900 text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-200 z-50">
+                  <span className="hidden md:block absolute left-full ml-2 px-2 py-1 rounded-md bg-gray-900 text-gray-100 dark:bg-gray-100 dark:text-gray-900 text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-100 z-50">
                     {item.label}
                   </span>
                 )}
@@ -285,7 +285,7 @@ export function Sidebar({ currentTab, onNavigate, theme, onCycleTheme, version, 
               Settings
             </span>
             {collapsed && (
-              <span className="hidden md:block absolute left-full ml-2 px-2 py-1 rounded-md bg-gray-900 text-gray-100 dark:bg-gray-100 dark:text-gray-900 text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-200 z-50">
+              <span className="hidden md:block absolute left-full ml-2 px-2 py-1 rounded-md bg-gray-900 text-gray-100 dark:bg-gray-100 dark:text-gray-900 text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-100 z-50">
                 Settings
               </span>
             )}
@@ -320,7 +320,7 @@ export function Sidebar({ currentTab, onNavigate, theme, onCycleTheme, version, 
               {theme}
             </span>
             {collapsed && (
-              <span className="hidden md:block absolute left-full ml-2 px-2 py-1 rounded-md bg-gray-900 text-gray-100 dark:bg-gray-100 dark:text-gray-900 text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-200 z-50">
+              <span className="hidden md:block absolute left-full ml-2 px-2 py-1 rounded-md bg-gray-900 text-gray-100 dark:bg-gray-100 dark:text-gray-900 text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-100 z-50">
                 Theme: {theme}
               </span>
             )}

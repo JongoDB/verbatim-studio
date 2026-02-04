@@ -56,6 +56,19 @@ export function ChatMessages({ messages, isStreaming, streamingContent }: ChatMe
           </div>
         </div>
       ))}
+      {/* Thinking indicator - shows while waiting for response */}
+      {isStreaming && !streamingContent && (
+        <div className="flex justify-start" aria-label="Max is thinking">
+          <div className="rounded-lg px-4 py-3 bg-gray-100 dark:bg-gray-700" aria-live="polite">
+            <div className="flex items-center gap-1">
+              <span className="w-2 h-2 bg-gray-400 dark:bg-gray-500 rounded-full animate-bounce [animation-delay:-0.3s]" />
+              <span className="w-2 h-2 bg-gray-400 dark:bg-gray-500 rounded-full animate-bounce [animation-delay:-0.15s]" />
+              <span className="w-2 h-2 bg-gray-400 dark:bg-gray-500 rounded-full animate-bounce" />
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Streaming content - shows while receiving response */}
       {isStreaming && streamingContent && (
         <div className="flex justify-start" aria-label="Max is typing">
           <div className="max-w-[80%] rounded-lg px-4 py-2 break-words bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100" aria-live="polite">
