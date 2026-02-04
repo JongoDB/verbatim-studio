@@ -81,8 +81,9 @@ print(f'Downloaded to: {local_dir}')
 "
 
     # Move from temp cache to output directory
-    # HuggingFace uses double dashes: models--org--repo
-    local temp_model_dir="$temp_cache/hub/models--${repo//\//'--'}"
+    # HuggingFace uses double dashes: models--org--repo (/ becomes --)
+    local repo_dashed=$(echo "$repo" | sed 's/\//--/g')
+    local temp_model_dir="$temp_cache/hub/models--$repo_dashed"
     echo "Looking for model at: $temp_model_dir"
 
     if [ -d "$temp_model_dir" ]; then
