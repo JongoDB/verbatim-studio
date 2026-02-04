@@ -43,7 +43,7 @@ Verbatim Studio eliminates this risk entirely. All transcription and AI processi
 
 ### Built for Everyone
 
-Not handling classified data? Verbatim Studio is still the smart choice:
+Verbatim Studio works just as well for everyday use:
 
 - **Project managers** documenting meetings and standups
 - **Content creators** transcribing interviews and podcasts
