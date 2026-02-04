@@ -119,9 +119,17 @@ function fetchGitHubReleases(): Promise<GitHubRelease[]> {
 function downloadFile(
   url: string,
   destPath: string,
-  onProgress?: (percent: number) => void
+  onProgress?: (percent: number) => void,
+  redirectDepth = 0,
+  maxSize = 500 * 1024 * 1024 // 500MB
 ): Promise<void> {
   return new Promise((resolve, reject) => {
+    // Check redirect depth
+    if (redirectDepth > 5) {
+      reject(new Error('Too many redirects'));
+      return;
+    }
+
     const urlObj = new URL(url);
 
     const options = {
@@ -133,30 +141,53 @@ function downloadFile(
       },
     };
 
+    const fileStream = createWriteStream(destPath);
+
     const req = https.request(options, (res) => {
       // Handle redirects
       if (res.statusCode && [301, 302, 307, 308].includes(res.statusCode)) {
         const redirectUrl = res.headers.location;
         if (redirectUrl) {
-          downloadFile(redirectUrl, destPath, onProgress).then(resolve).catch(reject);
+          fileStream.close();
+          downloadFile(redirectUrl, destPath, onProgress, redirectDepth + 1, maxSize)
+            .then(resolve)
+            .catch(reject);
           return;
         }
+        fileStream.close();
         reject(new Error('Redirect without location header'));
         return;
       }
 
       if (res.statusCode !== 200) {
+        fileStream.close();
         reject(new Error(`Download failed with status ${res.statusCode}`));
         return;
       }
 
       const totalSize = parseInt(res.headers['content-length'] || '0', 10);
+
+      // Check size limit
+      if (totalSize > maxSize) {
+        req.destroy();
+        fileStream.close();
+        reject(new Error(`File too large: ${totalSize} bytes (max ${maxSize})`));
+        return;
+      }
+
       let downloadedSize = 0;
 
-      const fileStream = createWriteStream(destPath);
-
-      res.on('data', (chunk) => {
+      res.on('data', (chunk: Buffer) => {
         downloadedSize += chunk.length;
+
+        // Runtime size check
+        if (downloadedSize > maxSize) {
+          req.destroy();
+          fileStream.close();
+          reject(new Error('Download exceeded size limit'));
+          return;
+        }
+
         if (totalSize > 0 && onProgress) {
           const percent = (downloadedSize / totalSize) * 100;
           onProgress(percent);
@@ -170,8 +201,13 @@ function downloadFile(
         resolve();
       });
 
-      fileStream.on('error', (err) => {
+      fileStream.on('error', async (err) => {
         fileStream.close();
+        try {
+          await rm(destPath, { force: true });
+        } catch {
+          // Ignore cleanup errors
+        }
         reject(err);
       });
     });
@@ -205,7 +241,7 @@ export function initAutoUpdater(window: BrowserWindow): void {
 
   // Check for updates after a short delay
   setTimeout(() => {
-    if (getAutoUpdateEnabled()) {
+    if (getAutoUpdateEnabled() && mainWindow && !mainWindow.isDestroyed()) {
       checkForUpdates(false).catch((err) => {
         console.error('[Updater] Error checking for updates:', err);
       });
