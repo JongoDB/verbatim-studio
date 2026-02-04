@@ -10,21 +10,12 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 // Model definitions - which models are bundled and where they go
+// Note: Only whisper-base is bundled. Pyannote models require HF auth and are downloaded on first use.
 const BUNDLED_MODELS = [
   {
     name: 'whisper-base-mlx',
-    source: 'whisper-models/huggingface/models--mlx-community--whisper-base-mlx',
+    source: 'whisper-models/huggingface/hub/models--mlx-community--whisper-base-mlx',
     destination: 'huggingface/hub/models--mlx-community--whisper-base-mlx',
-  },
-  {
-    name: 'pyannote-segmentation-3.0',
-    source: 'whisper-models/torch/pyannote/models--pyannote--segmentation-3.0',
-    destination: 'torch/pyannote/models--pyannote--segmentation-3.0',
-  },
-  {
-    name: 'pyannote-wespeaker-voxceleb-resnet34-LM',
-    source: 'whisper-models/torch/pyannote/models--pyannote--wespeaker-voxceleb-resnet34-LM',
-    destination: 'torch/pyannote/models--pyannote--wespeaker-voxceleb-resnet34-LM',
   },
 ];
 

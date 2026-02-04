@@ -105,14 +105,12 @@ print(f'Downloaded to: {local_dir}')
     echo "Done: $repo"
 }
 
-# Download Whisper Base (MLX format)
+# Download Whisper Base (MLX format) - public model, no auth required
 download_hf_model "mlx-community/whisper-base-mlx" "models--mlx-community--whisper-base-mlx" "huggingface"
 
-# Download Pyannote segmentation model
-download_hf_model "pyannote/segmentation-3.0" "models--pyannote--segmentation-3.0" "torch"
-
-# Download Pyannote speaker embedding model
-download_hf_model "pyannote/wespeaker-voxceleb-resnet34-LM" "models--pyannote--wespeaker-voxceleb-resnet34-LM" "torch"
+# Note: Pyannote models (segmentation-3.0, wespeaker-voxceleb-resnet34-LM) are gated models
+# that require HuggingFace authentication and license acceptance. They are not bundled.
+# Users will download them on first use with their HF token.
 
 echo ""
 echo "=== Model Preparation Complete ==="
