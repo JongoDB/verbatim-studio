@@ -13,6 +13,14 @@ export const UPDATE_DIR = '/tmp/verbatim-update';
  * 5. Cleans up (unmounts DMG, removes temp files)
  */
 export function generateUpdaterScript(volumePath: string, appName: string): string {
+  // Validate inputs to prevent command injection
+  if (!appName || !/^[a-zA-Z0-9\s\-_.]+$/.test(appName)) {
+    throw new Error(`Invalid app name: ${appName}`);
+  }
+  if (!volumePath || !/^\/Volumes\/[a-zA-Z0-9\s\-_.\/]+$/.test(volumePath)) {
+    throw new Error(`Invalid volume path: ${volumePath}`);
+  }
+
   const appPath = `/Applications/${appName}.app`;
   const sourceAppPath = `${volumePath}/${appName}.app`;
   const maxWaitSeconds = 30;
@@ -69,6 +77,11 @@ echo "$APP_NAME has quit. Proceeding with update..."
 # Verify source app exists
 if [ ! -d "$SOURCE_APP" ]; then
   fail "Update source not found at $SOURCE_APP"
+fi
+
+# Validate app path ends with .app
+if [[ "$APP_PATH" != *.app ]]; then
+  fail "Invalid app path - must end with .app"
 fi
 
 # Remove old app
@@ -133,7 +146,7 @@ export async function writeUpdaterScript(volumePath: string, appName: string): P
  * @returns The extracted volume path
  * @throws Error if volume path cannot be found
  */
-export async function parseVolumePath(hdiutilOutput: string): Promise<string> {
+export function parseVolumePath(hdiutilOutput: string): string {
   // Split into lines and process each
   const lines = hdiutilOutput.trim().split('\n');
 
