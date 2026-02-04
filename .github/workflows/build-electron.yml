@@ -167,6 +167,23 @@ jobs:
           fi
           echo "=== All versions verified ✓ ==="
 
+      # Cache whisper models to avoid re-downloading every build (~250MB)
+      - name: Cache Whisper models
+        uses: actions/cache@v4
+        id: whisper-cache
+        with:
+          path: build/resources/whisper-models
+          key: whisper-models-v1-${{ hashFiles('scripts/prepare-whisper-models.sh') }}
+
+      - name: Prepare Whisper models for bundling
+        if: steps.whisper-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          echo "Downloading Whisper models for offline transcription..."
+          ./scripts/prepare-whisper-models.sh
+        env:
+          HF_HUB_DISABLE_PROGRESS_BARS: 1
+
       - name: Prepare Electron resources
         shell: bash
         run: ./scripts/prepare-electron-resources.sh
