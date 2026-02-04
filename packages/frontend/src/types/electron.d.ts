@@ -17,6 +17,25 @@ interface ElectronAPI {
     filters?: { name: string; extensions: string[] }[];
     multiple?: boolean;
   }) => Promise<string | string[] | null>;
+
+  // Update methods
+  onUpdateAvailable: (
+    callback: (data: { version: string; downloadUrl: string }) => void
+  ) => () => void;
+  onUpdateNotAvailable: (callback: () => void) => () => void;
+  onUpdateDownloading: (callback: (data: { percent: number }) => void) => () => void;
+  onUpdateReady: (callback: (data: { version: string }) => void) => () => void;
+  onUpdateError: (
+    callback: (data: { message: string; fallbackUrl?: string }) => void
+  ) => () => void;
+  onShowWhatsNew: (
+    callback: (data: { releases: Array<{ version: string; notes: string }> }) => void
+  ) => () => void;
+  startUpdate: (downloadUrl: string, version: string) => void;
+  checkForUpdates: () => void;
+  whatsNewSeen: (version: string) => void;
+  getUpdateSettings: () => Promise<{ autoUpdateEnabled: boolean }>;
+  setAutoUpdate: (enabled: boolean) => Promise<void>;
 }
 
 declare global {
