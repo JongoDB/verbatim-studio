@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { api, type SearchHistoryEntry } from '@/lib/api';
+import { useSearchHistory, useClearSearchHistory, useDeleteSearchHistoryEntry } from '@/hooks';
 
 interface SearchHistoryProps {
   onSelectQuery: (query: string) => void;
@@ -22,14 +22,13 @@ function formatTimeAgo(dateStr: string): string {
 }
 
 export function SearchHistory({ onSelectQuery, compact = false }: SearchHistoryProps) {
-  const [history, setHistory] = useState<SearchHistoryEntry[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
   const [isExpanded, setIsExpanded] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    loadHistory();
-  }, []);
+  const { data: historyData, isLoading } = useSearchHistory(10);
+  const history = historyData?.items ?? [];
+  const clearHistory = useClearSearchHistory();
+  const deleteEntry = useDeleteSearchHistoryEntry();
 
   // Close dropdown on click outside
   useEffect(() => {
@@ -44,34 +43,13 @@ export function SearchHistory({ onSelectQuery, compact = false }: SearchHistoryP
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [compact, isExpanded]);
 
-  const loadHistory = async () => {
-    try {
-      const response = await api.search.history(10);
-      setHistory(response.items);
-    } catch (error) {
-      console.error('Failed to load search history:', error);
-    } finally {
-      setIsLoading(false);
-    }
+  const handleClear = () => {
+    clearHistory.mutate();
   };
 
-  const handleClear = async () => {
-    try {
-      await api.search.clearHistory();
-      setHistory([]);
-    } catch (error) {
-      console.error('Failed to clear history:', error);
-    }
-  };
-
-  const handleDelete = async (entryId: string, e: React.MouseEvent) => {
+  const handleDelete = (entryId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    try {
-      await api.search.deleteHistoryEntry(entryId);
-      setHistory((prev) => prev.filter((h) => h.id !== entryId));
-    } catch (error) {
-      console.error('Failed to delete entry:', error);
-    }
+    deleteEntry.mutate(entryId);
   };
 
   const handleSelect = (query: string) => {
