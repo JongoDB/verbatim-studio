@@ -86,42 +86,6 @@ def _extract_duration(content: bytes, filename: str) -> float | None:
     return None
 
 
-async def _extract_audio_from_video(video_path: Path) -> Path | None:
-    """Extract audio track from a video file using ffmpeg.
-
-    Uses asyncio.create_subprocess_exec (no shell) for safety.
-    Returns the path to the extracted WAV file, or None if extraction fails.
-    """
-    audio_path = video_path.parent / "audio.wav"
-    ffmpeg_path = _get_ffmpeg_path()
-    try:
-        process = await asyncio.create_subprocess_exec(
-            ffmpeg_path, "-i", str(video_path),
-            "-vn",             # no video
-            "-acodec", "pcm_s16le",  # 16-bit PCM
-            "-ar", "16000",    # 16kHz (WhisperX optimal)
-            "-ac", "1",        # mono
-            "-y",              # overwrite
-            str(audio_path),
-            stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        _, stderr = await process.communicate()
-        if process.returncode == 0 and audio_path.exists():
-            logger.info("Extracted audio from %s -> %s", video_path.name, audio_path.name)
-            return audio_path
-        logger.warning("ffmpeg failed (exit %d): %s", process.returncode, stderr.decode()[:500])
-    except FileNotFoundError:
-        logger.warning("ffmpeg not found — video audio extraction unavailable")
-    except Exception:
-        logger.exception("Failed to extract audio from %s", video_path.name)
-    return None
-
-
-def _get_extracted_audio_path(recording_path: str) -> Path | None:
-    """Get the extracted audio.wav path for a recording, if it exists."""
-    audio_path = Path(recording_path).parent / "audio.wav"
-    return audio_path if audio_path.exists() else None
 
 # Allowed MIME types for audio/video uploads
 ALLOWED_MIME_TYPES = {
@@ -612,12 +576,6 @@ async def upload_recording(
         if isinstance(file_path, Path):
             recording.file_name = file_path.name  # Update to actual filename (may have collision suffix)
             recording.title = file_path.stem  # Update title to match actual filename (handles collision suffix)
-
-            # Extract audio from video files for playback and transcription (local only)
-            if _is_video(content_type):
-                extracted = await _extract_audio_from_video(file_path)
-                if extracted is None:
-                    logger.warning("Could not extract audio from video %s — ffmpeg may not be installed", safe_filename)
         else:
             # Cloud storage returns relative path string
             filename = file_path.split("/")[-1]
@@ -1033,15 +991,6 @@ async def stream_audio(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Audio file not found on disk",
-        )
-
-    # For video files, serve the extracted audio track instead
-    extracted_audio = _get_extracted_audio_path(recording.file_path)
-    if extracted_audio is not None:
-        return FileResponse(
-            path=extracted_audio,
-            media_type="audio/wav",
-            filename=f"{Path(recording.file_name).stem}.wav",
         )
 
     # Use stored mime_type or default to audio/mpeg

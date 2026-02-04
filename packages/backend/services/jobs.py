@@ -410,11 +410,6 @@ async def handle_transcription(
         if audio_path is None:
             audio_path = recording.file_path
 
-        # Use extracted audio for video files if available
-        extracted_audio = Path(audio_path).parent / "audio.wav"
-        if extracted_audio.exists():
-            audio_path = str(extracted_audio)
-
     try:
         # Run transcription with streaming progress
         options = TranscriptionOptions(
