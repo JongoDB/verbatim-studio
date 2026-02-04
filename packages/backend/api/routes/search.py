@@ -10,6 +10,7 @@ from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from api.routes.sync import broadcast
 from persistence import get_db
 from persistence.models import (
     Conversation,
@@ -818,6 +819,7 @@ async def global_search(
     if save_history and q.strip():
         try:
             await _save_search_history(db, q.strip(), len(results))
+            await broadcast("search_history", "created")
         except Exception as e:
             logger.warning("Failed to save search history: %s", e)
 
@@ -977,6 +979,7 @@ async def clear_search_history(
     """
     await db.execute(delete(SearchHistory))
     await db.commit()
+    await broadcast("search_history", "deleted")
     return MessageResponse(message="Search history cleared")
 
 
@@ -1000,6 +1003,7 @@ async def delete_search_history_entry(
     if result.rowcount == 0:
         raise HTTPException(status_code=404, detail="Entry not found")
     await db.commit()
+    await broadcast("search_history", "deleted", entry_id)
     return MessageResponse(message="Entry deleted", id=entry_id)
 
 
