@@ -121,7 +121,7 @@ function downloadFile(
   destPath: string,
   onProgress?: (percent: number) => void,
   redirectDepth = 0,
-  maxSize = 500 * 1024 * 1024 // 500MB
+  maxSize = 1024 * 1024 * 1024 // 1GB
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     // Check redirect depth
