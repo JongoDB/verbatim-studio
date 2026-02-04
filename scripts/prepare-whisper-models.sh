@@ -17,6 +17,22 @@ OUTPUT_DIR="$PROJECT_ROOT/build/resources/whisper-models"
 echo "=== Preparing Whisper Models for Bundling ==="
 echo "Output directory: $OUTPUT_DIR"
 
+# Find the Python binary - prefer bundled Python if available
+if [ -f "$PROJECT_ROOT/build/python-standalone/python-macos-arm64/bin/python3" ]; then
+    PYTHON_BIN="$PROJECT_ROOT/build/python-standalone/python-macos-arm64/bin/python3"
+    SITE_PACKAGES="$PROJECT_ROOT/build/python-standalone/python-macos-arm64/lib/python3.12/site-packages"
+    export PYTHONPATH="$SITE_PACKAGES:$PYTHONPATH"
+    echo "Using bundled Python: $PYTHON_BIN"
+else
+    PYTHON_BIN="python3"
+    echo "Using system Python: $PYTHON_BIN"
+    # Ensure huggingface_hub is installed
+    "$PYTHON_BIN" -c "import huggingface_hub" 2>/dev/null || {
+        echo "Installing huggingface_hub..."
+        "$PYTHON_BIN" -m pip install --quiet huggingface_hub
+    }
+fi
+
 # Create output directories
 mkdir -p "$OUTPUT_DIR/huggingface/hub"
 mkdir -p "$OUTPUT_DIR/torch/pyannote"
@@ -48,7 +64,7 @@ download_hf_model() {
     local temp_cache=$(mktemp -d)
 
     # Download using huggingface_hub
-    HF_HOME="$temp_cache" python3 -c "
+    HF_HOME="$temp_cache" "$PYTHON_BIN" -c "
 from huggingface_hub import snapshot_download
 import os
 
