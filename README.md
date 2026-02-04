@@ -8,7 +8,7 @@
 </h1>
 
 <p align="center">
-  <strong>Privacy-first transcription for sensitive workflows</strong>
+  <strong>Your data. Your device. Your rules.</strong>
 </p>
 
 <p align="center">
@@ -23,62 +23,84 @@
 <p align="center">
   <img src="https://img.shields.io/github/v/tag/JongoDB/verbatim-studio?label=version&color=blue" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License">
-  <img src="https://img.shields.io/badge/python-3.12+-yellow.svg" alt="Python">
-  <img src="https://img.shields.io/badge/node-20+-green.svg" alt="Node">
+  <img src="https://img.shields.io/badge/platform-macOS-lightgrey.svg" alt="Platform">
 </p>
 
 ---
 
 ## Why Verbatim Studio?
 
-Organizations handling confidential information—law firms, medical practices, government agencies, research institutions—face a critical challenge: **cloud transcription services require sending sensitive audio to third-party servers.**
+Organizations handling confidential information—law firms, medical practices, government agencies, research institutions—face a critical challenge: **cloud transcription services require sending sensitive data to third-party servers.**
 
-Verbatim Studio eliminates this risk entirely. All transcription and AI processing happens locally on your machine. Your recordings never leave your control.
+Verbatim Studio eliminates this risk entirely. All transcription and AI processing happens locally on your machine. Your files never leave your control.
 
 ### Built for Compliance
 
-- **HIPAA-ready**: Patient interviews and medical dictation stay on-premises
-- **Legal privilege**: Attorney-client communications remain confidential
-- **Government security**: Classified briefings never touch external networks
-- **Research ethics**: IRB-protected interviews maintain participant privacy
+- **HIPAA-ready** — Patient interviews and medical dictation stay on-premises
+- **Legal privilege** — Attorney-client communications remain confidential
+- **Government security** — Classified briefings never touch external networks
+- **Research ethics** — IRB-protected interviews maintain participant privacy
+
+### Built for Everyone
+
+Not handling classified data? Verbatim Studio is still the smart choice:
+
+- **Project managers** documenting meetings and standups
+- **Content creators** transcribing interviews and podcasts
+- **Students and academics** processing lectures and research
+- **Anyone** who wants accurate transcription without privacy trade-offs or subscription fees
 
 ---
 
 ## Features
 
-### Core Transcription
+### Transcription That Actually Works
 
-- **Local AI Transcription** — WhisperX and MLX Whisper engines with automatic speaker diarization
-- **Live Transcription** — Real-time speech-to-text from microphone input
-- **Multi-language Support** — 12+ languages with auto-detection
-- **Video Support** — MP4, WebM, MOV, MKV with automatic audio extraction
+- **Whisper-powered accuracy** — The same AI that powers the best cloud services, running locally on your Mac
+- **Multi-language support** — Transcribe in 12+ languages with automatic detection
+- **Automatic speaker identification** — Know who said what without manual tagging
+- **Live transcription** — Real-time speech-to-text from your microphone
+- **Video support** — Drop in MP4, MOV, WebM, or MKV files and get transcripts automatically
 
 <p align="center">
   <img src="docs/screenshots/live-transcription.png" alt="Live Transcription" width="80%">
 </p>
 
-### AI-Powered Analysis
+### Max: Your AI Research Assistant
 
-- **Max AI Assistant** — Chat with your transcripts, ask questions, generate summaries
-- **Semantic Search** — Find content by meaning, not just keywords
-- **Local LLM** — All AI runs on-device via llama.cpp (no API keys required)
+Max isn't just a chatbot—it's a research tool that actually understands your content:
+
+- **Query across your entire library** — Ask questions that span multiple files and documents
+- **Persistent conversations** — Pick up where you left off with saved chat history
+- **Document-aware** — Upload PDFs, images, and notes for Max to reference
+- **Platform guidance** — Not sure how to do something? Just ask Max
+
+All powered by IBM Granite, running 100% locally. No API keys. No usage limits. No data leaving your machine.
 
 <p align="center">
-  <img src="docs/screenshots/ai-assistant.png" alt="AI Assistant" width="80%">
+  <img src="docs/screenshots/ai-assistant.png" alt="Max AI Assistant" width="80%">
 </p>
 
-### Organization & Export
+### Professional Editing Tools
 
-- **Project Management** — Organize recordings into projects with real folders on your filesystem
-- **Document Management** — Upload PDFs, images, and notes with OCR text extraction
-- **Export Options** — TXT, SRT, VTT, JSON, and full backup archives
-- **Cloud Storage** — Optional sync with Google Drive, OneDrive, and Dropbox
+- **Clickable timestamps** — Jump to any moment instantly
+- **Highlights and bookmarks** — Mark important segments for quick reference
+- **In-transcript search** — Find exactly what you're looking for with highlighted navigation
+- **Keyboard-first workflow** — Control playback without leaving your keyboard
+- **Inline annotations** — Add notes directly to your documents and transcripts
 
-### Professional Interface
+### Find Anything, Instantly
 
-- **Dark/Light Mode** — Full theme support with system preference detection
-- **Keyboard Shortcuts** — Professional editing workflow with customizable shortcuts
-- **Responsive Design** — Works on desktop and tablet devices
+- **Semantic search** — Find content by meaning, not just exact keywords
+- **Search everything** — Files, transcripts, documents, notes, and chat history in one place
+- **Smart results** — See context snippets so you know exactly what you're clicking into
+
+### Organize Your Way
+
+- **Real folders** — Projects map to actual directories on your filesystem
+- **Bulk operations** — Select multiple files and act on them at once
+- **Flexible storage** — Keep files local, on network drives, or synced with Google Drive, OneDrive, and Dropbox
+- **Full exports** — TXT, SRT, VTT, JSON, or complete backup archives
 
 <p align="center">
   <img src="docs/screenshots/settings.png" alt="Settings" width="80%">
@@ -88,22 +110,22 @@ Verbatim Studio eliminates this risk entirely. All transcription and AI processi
 
 ## Installation
 
-### Desktop App (Recommended)
+### Desktop App
 
-Download the latest release for your platform:
+Download for your platform:
 
-| Platform | Download | Notes |
-|----------|----------|-------|
-| **macOS (Apple Silicon)** | [Download .dmg](https://github.com/JongoDB/verbatim-studio/releases) | M1/M2/M3/M4 optimized with MLX Whisper |
-| **macOS (Intel)** | [Download .dmg](https://github.com/JongoDB/verbatim-studio/releases) | x64 with WhisperX |
-| **Windows** | [Download .exe](https://github.com/JongoDB/verbatim-studio/releases) | Windows 10/11 x64 |
-| **Linux** | [Download .AppImage](https://github.com/JongoDB/verbatim-studio/releases) | Ubuntu 20.04+, Debian, Fedora |
+| Platform | Download | Status |
+|----------|----------|--------|
+| **macOS (Apple Silicon)** | [Download .dmg](https://github.com/JongoDB/verbatim-studio/releases) | M1/M2/M3/M4 optimized |
+| **macOS (Intel)** | — | Coming soon |
+| **Windows** | — | Coming soon |
+| **Linux** | — | Coming soon |
 
-The desktop app is self-contained—no Python, Node.js, or other dependencies required. Just download, install, and run.
+The app is self-contained—no Python, Node.js, or other dependencies required. Just download, install, and run.
 
 ### First Launch
 
-On first launch, Verbatim Studio will download the required AI models (~3-5 GB total). This happens once and models are cached locally.
+On first launch, Verbatim Studio will guide you through downloading the AI models you need. Choose what fits your workflow—transcription only, or the full suite with Max and semantic search.
 
 <details>
 <summary><strong>macOS: "App is damaged" or "unidentified developer" warning</strong></summary>
@@ -132,16 +154,6 @@ Files downloaded via `curl` bypass macOS quarantine, so you won't see security w
 </details>
 
 <details>
-<summary><strong>Windows: SmartScreen warning</strong></summary>
-
-The app is not yet code-signed. When you see the SmartScreen warning:
-
-1. Click **More info**
-2. Click **Run anyway**
-
-</details>
-
-<details>
 <summary><strong>Development Setup (Build from Source)</strong></summary>
 
 #### Prerequisites
@@ -164,7 +176,7 @@ pnpm install
 # Set up Python environment
 cd packages/backend
 python -m venv .venv
-source .venv/bin/activate  # or `.venv\Scripts\activate` on Windows
+source .venv/bin/activate
 pip install -e ".[dev]"
 cd ../..
 ```
@@ -172,10 +184,10 @@ cd ../..
 #### Run Development Servers
 
 ```bash
-# Option 1: Run both frontend and backend
+# Run both frontend and backend
 pnpm dev
 
-# Option 2: Run separately
+# Or run separately
 # Terminal 1 - Backend
 cd packages/backend && source .venv/bin/activate
 python -m uvicorn api.main:app --reload --port 8000
@@ -186,28 +198,21 @@ cd packages/frontend && pnpm dev
 
 Open [http://localhost:5173](http://localhost:5173) in your browser.
 
-#### Platform Notes
-
-**macOS (Apple Silicon)**: Uses MLX Whisper for optimized transcription on M1/M2/M3/M4 chips.
-
-**macOS (Intel) / Linux / Windows**: Uses WhisperX with PyTorch. CUDA support available for NVIDIA GPUs.
-
 </details>
 
 ---
 
 ## Quick Start
 
-1. **Upload or Record** — Click **Upload Audio/Video** or **Record Audio** on the dashboard
-2. **Transcribe** — Processing happens locally on your machine
-3. **Review** — Edit speaker names, add highlights, leave comments
-4. **Export** — Download as TXT, SRT, VTT, or JSON
+1. **Upload or record** — Drag in audio/video files or start a live transcription
+2. **Let the AI work** — Transcription happens locally, typically faster than real-time on Apple Silicon
+3. **Review and refine** — Edit speaker names, highlight key moments, add notes
+4. **Ask Max** — Query your content, generate summaries, or get help using the platform
+5. **Export** — Download as TXT, SRT, VTT, or JSON
 
 ---
 
 ## Architecture
-
-Verbatim Studio uses a clean adapter-based architecture:
 
 <pre align="center">
 ┌─────────────────────────────────────────────────────────────┐
@@ -241,41 +246,66 @@ Verbatim Studio uses a clean adapter-based architecture:
 
 ## Roadmap
 
-### Current Release (v0.23.x) — Basic Tier
+### Current Release (v0.26.x)
 
-- [x] Local AI transcription with speaker diarization
+**Core Platform**
+- [x] Native macOS desktop app (Apple Silicon optimized)
+- [x] Local AI transcription with speaker identification
 - [x] Live transcription from microphone
-- [x] AI assistant (Max) for transcript analysis
+- [x] Video file support with automatic audio extraction
+
+**AI Assistant (Max)**
+- [x] Multi-document conversations with chat history
 - [x] Semantic search across all content
-- [x] Project organization with filesystem folders
-- [x] Document management with OCR
-- [x] Cloud storage integration (Google Drive, OneDrive, Dropbox)
+- [x] Platform guidance and help
+
+**Editing & Organization**
+- [x] Clickable timestamps and playback keyboard shortcuts
+- [x] Segment highlights and bookmarks
+- [x] In-transcript search with navigation
+- [x] Inline document annotations
+- [x] Project-based organization with real filesystem folders
+- [x] Bulk operations
+
+**Storage & Export**
+- [x] Local, network, and cloud storage options
+- [x] Google Drive, OneDrive, Dropbox integration
 - [x] Export to TXT, SRT, VTT, JSON
-- [x] Dark mode and keyboard shortcuts
 
 ### In Development
 
-- [ ] **Desktop App** — Native Electron application for macOS, Windows, Linux
-- [ ] **External AI Services** — Connect to Ollama, OpenAI, or self-hosted LLM/WhisperX
-- [ ] **S3 Object Storage** — Store media in AWS S3, MinIO, or compatible services
-- [ ] **Network Storage** — Mount SMB/NFS shares for centralized media access
+- [ ] Automatic update notifications with release notes
+- [ ] External LLM connections (Ollama, OpenAI, self-hosted)
+- [ ] Windows and Linux desktop apps
+- [ ] macOS Intel support
 
-### Enterprise Tier (Future)
+### Enterprise Tier (Planned)
 
-- [ ] User authentication with RBAC
+- [ ] Multi-user with role-based access control
+- [ ] Meeting bots for Teams, Google Meet, and Zoom
 - [ ] PostgreSQL database support
-- [ ] Meeting bots for Teams, Meet, and Zoom
-- [ ] Team collaboration with shared projects
+- [ ] Administration dashboard
 - [ ] Audit logging and compliance reports
-- [ ] Admin dashboard for service management
-
-See the full [ROADMAP.md](docs/ROADMAP.md) for detailed planning.
+- [ ] Secure mobile access to self-hosted servers
 
 ---
 
 ## Configuration
 
-Most settings are available through the **Settings** page in the app. For advanced configuration:
+Most settings are available through the **Settings** page in the app.
+
+### AI Models
+
+On first use, Verbatim Studio downloads the AI models you select:
+
+| Model | Size | Purpose |
+|-------|------|---------|
+| Whisper (base) | ~150 MB | Transcription (configurable up to large-v3) |
+| pyannote | ~200 MB | Speaker identification |
+| nomic-embed-text | ~550 MB | Semantic search |
+| IBM Granite 3.3 | ~5 GB | Max AI assistant (2B lite version also available) |
+
+Models are cached locally and only download once.
 
 <details>
 <summary><strong>Environment Variables (Developers)</strong></summary>
@@ -284,12 +314,12 @@ Create a `.env` file in `packages/backend/`:
 
 ```bash
 # Core settings
-VERBATIM_MODE=basic                 # 'basic' or 'enterprise'
+VERBATIM_MODE=basic
 VERBATIM_DATA_DIR=~/.verbatim-studio
 
 # Transcription
-VERBATIM_WHISPERX_MODEL=base        # tiny, base, small, medium, large-v3
-VERBATIM_WHISPERX_DEVICE=auto       # auto, cpu, cuda, mps
+VERBATIM_WHISPERX_MODEL=base
+VERBATIM_WHISPERX_DEVICE=auto
 
 # OAuth (optional - for cloud storage)
 VERBATIM_GOOGLE_CLIENT_ID=your-client-id
@@ -298,24 +328,11 @@ VERBATIM_GOOGLE_CLIENT_SECRET=your-secret
 
 </details>
 
-### AI Models
-
-On first use, Verbatim Studio downloads required AI models:
-
-| Model | Size | Purpose |
-|-------|------|---------|
-| Whisper (base) | ~150 MB | Transcription (configurable up to large-v3) |
-| pyannote speaker diarization | ~200 MB | Speaker identification |
-| nomic-embed-text-v1.5 | ~550 MB | Semantic search embeddings |
-| IBM Granite 3.3 8B | ~5 GB | AI assistant (optional, 2B lite version available) |
-
-Models are cached in `~/.cache/huggingface/` and only download once.
-
 ---
 
 ## Contributing
 
-Contributions are welcome. See the [Development Setup](#development-setup-build-from-source) section above to get started.
+Contributions are welcome. See the [Development Setup](#development-setup-build-from-source) section to get started.
 
 ### Building the Desktop App
 
@@ -341,11 +358,6 @@ cd packages/frontend && pnpm test
 # Type checking
 cd packages/frontend && pnpm typecheck
 ```
-
-### Code Style
-
-- **Frontend**: ESLint + Prettier
-- **Backend**: Black + isort + mypy
 
 ---
 
