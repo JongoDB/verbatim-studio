@@ -85,13 +85,23 @@ class MlxWhisperTranscriptionEngine(ITranscriptionEngine):
         )
 
         # Run transcription in thread to avoid blocking event loop
-        result = await asyncio.to_thread(
-            mlx_whisper.transcribe,
-            str(path),
-            path_or_hf_repo=self._model_repo,
-            word_timestamps=options.word_timestamps,
-            language=options.language,
-        )
+        try:
+            result = await asyncio.to_thread(
+                mlx_whisper.transcribe,
+                str(path),
+                path_or_hf_repo=self._model_repo,
+                word_timestamps=options.word_timestamps,
+                language=options.language,
+            )
+        except Exception as e:
+            error_msg = str(e)
+            # Check for HuggingFace Hub "snapshot folder" error - means model not downloaded
+            if "snapshot folder" in error_msg.lower() or "locate the files on the hub" in error_msg.lower():
+                raise RuntimeError(
+                    f"Transcription model '{self._model_size}' is not downloaded. "
+                    f"Please download it from Settings → Transcription Models, or check your internet connection."
+                ) from e
+            raise
 
         detected_language = result.get("language", options.language or "en")
         logger.info("Transcription complete. Language: %s", detected_language)

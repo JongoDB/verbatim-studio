@@ -42,6 +42,16 @@ let mainWindow: BrowserWindow | null = null;
 let isCheckingForUpdates = false;
 
 /**
+ * Safely sends an IPC message to the main window.
+ * Checks that the window exists and hasn't been destroyed.
+ */
+function safeSend(channel: string, ...args: unknown[]): void {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send(channel, ...args);
+  }
+}
+
+/**
  * Parses a version string like "0.26.22" into a comparable number.
  * Supports up to 3 segments, each up to 999.
  */
@@ -212,9 +222,10 @@ function downloadFile(
       });
     });
 
-    req.setTimeout(30000, () => {
+    // 5 minute timeout for large DMG downloads (connection/inactivity timeout, not total download time)
+    req.setTimeout(300000, () => {
       req.destroy();
-      reject(new Error('Request timed out'));
+      reject(new Error('Download timed out - please check your internet connection'));
     });
 
     req.on('error', reject);
@@ -282,8 +293,8 @@ export async function checkForUpdates(manual = false): Promise<void> {
     const releases = await fetchGitHubReleases();
 
     if (!releases || releases.length === 0) {
-      if (manual && mainWindow) {
-        mainWindow.webContents.send('update-not-available');
+      if (manual) {
+        safeSend('update-not-available');
       }
       return;
     }
@@ -299,8 +310,8 @@ export async function checkForUpdates(manual = false): Promise<void> {
 
     if (latestNum <= currentNum) {
       console.log('[Updater] No update available');
-      if (manual && mainWindow) {
-        mainWindow.webContents.send('update-not-available');
+      if (manual) {
+        safeSend('update-not-available');
       }
       setLastUpdateCheck(Date.now());
       return;
@@ -315,34 +326,28 @@ export async function checkForUpdates(manual = false): Promise<void> {
 
     if (!dmgAsset) {
       console.error('[Updater] No DMG asset found for architecture:', arch);
-      if (mainWindow) {
-        mainWindow.webContents.send('update-error', {
-          message: `No download available for your Mac (${arch})`,
-        });
-      }
+      safeSend('update-error', {
+        message: `No download available for your Mac (${arch})`,
+      });
       return;
     }
 
     console.log('[Updater] Update available:', latestVersion, dmgAsset.name);
 
-    if (mainWindow) {
-      mainWindow.webContents.send('update-available', {
-        version: latestVersion,
-        releaseNotes: latestRelease.body,
-        releaseName: latestRelease.name,
-        downloadUrl: dmgAsset.browser_download_url,
-        downloadSize: dmgAsset.size,
-      });
-    }
+    safeSend('update-available', {
+      version: latestVersion,
+      releaseNotes: latestRelease.body,
+      releaseName: latestRelease.name,
+      downloadUrl: dmgAsset.browser_download_url,
+      downloadSize: dmgAsset.size,
+    });
 
     setLastUpdateCheck(Date.now());
   } catch (err) {
     console.error('[Updater] Error checking for updates:', err);
-    if (mainWindow) {
-      mainWindow.webContents.send('update-error', {
-        message: err instanceof Error ? err.message : 'Unknown error',
-      });
-    }
+    safeSend('update-error', {
+      message: err instanceof Error ? err.message : 'Unknown error',
+    });
   } finally {
     isCheckingForUpdates = false;
   }
@@ -367,9 +372,7 @@ export async function startUpdate(downloadUrl: string, version: string): Promise
     // Download the DMG with progress reporting
     console.log('[Updater] Downloading DMG...');
     await downloadFile(downloadUrl, dmgPath, (percent) => {
-      if (mainWindow) {
-        mainWindow.webContents.send('update-downloading', { percent });
-      }
+      safeSend('update-downloading', { percent });
     });
 
     console.log('[Updater] Download complete, removing quarantine...');
@@ -398,9 +401,7 @@ export async function startUpdate(downloadUrl: string, version: string): Promise
     const scriptPath = await writeUpdaterScript(volumePath, APP_NAME);
 
     // Notify the UI that the update is ready
-    if (mainWindow) {
-      mainWindow.webContents.send('update-ready', { version, scriptPath });
-    }
+    safeSend('update-ready', { version, scriptPath });
 
     // Spawn the updater script detached
     console.log('[Updater] Spawning updater script...');
@@ -425,12 +426,10 @@ export async function startUpdate(downloadUrl: string, version: string): Promise
       // Ignore cleanup errors
     }
 
-    if (mainWindow) {
-      mainWindow.webContents.send('update-error', {
-        message: err instanceof Error ? err.message : 'Update failed',
-        fallbackUrl,
-      });
-    }
+    safeSend('update-error', {
+      message: err instanceof Error ? err.message : 'Update failed',
+      fallbackUrl,
+    });
   }
 }
 
@@ -460,8 +459,8 @@ export async function checkWhatsNew(): Promise<void> {
   try {
     const releases = await fetchReleaseNotes(lastSeenVersion, currentVersion);
 
-    if (releases.length > 0 && mainWindow) {
-      mainWindow.webContents.send('show-whats-new', { releases });
+    if (releases.length > 0) {
+      safeSend('show-whats-new', { releases });
     }
   } catch (err) {
     console.error('[Updater] Error fetching release notes:', err);

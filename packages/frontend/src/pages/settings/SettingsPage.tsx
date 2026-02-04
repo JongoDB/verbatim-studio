@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { api, type ArchiveInfo, type TranscriptionSettings, type AIModel, type AIModelDownloadEvent, type OCRModel, type OCRModelDownloadEvent, type SystemInfo, type MLStatus, type StorageLocation, type MigrationStatus, type SyncResult, type StorageType, type StorageSubtype, type StorageLocationConfig, type OAuthStatusResponse } from '@/lib/api';
+import { api, type ArchiveInfo, type TranscriptionSettings, type AIModel, type AIModelDownloadEvent, type OCRModel, type OCRModelDownloadEvent, type WhisperModel, type WhisperModelDownloadEvent, type SystemInfo, type MLStatus, type StorageLocation, type MigrationStatus, type SyncResult, type StorageType, type StorageSubtype, type StorageLocationConfig, type OAuthStatusResponse } from '@/lib/api';
 import { StorageTypeSelector } from '@/components/storage/StorageTypeSelector';
 import { StorageSubtypeSelector } from '@/components/storage/StorageSubtypeSelector';
 import { StorageConfigForm } from '@/components/storage/StorageConfigForm';
@@ -112,6 +112,13 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
   const [ocrError, setOcrError] = useState<string | null>(null);
   const ocrDownloadAbortRef = useRef<{ abort: () => void } | null>(null);
 
+  // Whisper model state
+  const [whisperModels, setWhisperModels] = useState<WhisperModel[]>([]);
+  const [whisperDownloading, setWhisperDownloading] = useState<string | null>(null);
+  const [whisperDownloadMessage, setWhisperDownloadMessage] = useState<string | null>(null);
+  const [whisperError, setWhisperError] = useState<string | null>(null);
+  const whisperDownloadAbortRef = useRef<{ abort: () => void } | null>(null);
+
   // System info state
   const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
 
@@ -174,6 +181,7 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
     api.config.getTranscription().then(setTxSettings).catch(console.error);
     api.ai.listModels().then((r) => setAiModels(r.models)).catch(console.error);
     api.ocr.listModels().then((r) => setOcrModels(r.models)).catch(console.error);
+    api.whisper.listModels().then((r) => setWhisperModels(r.models)).catch(console.error);
     api.system.info().then(setSystemInfo).catch(console.error);
     api.system.mlStatus().then(setMlStatus).catch(console.error);
     loadStorageLocations();
@@ -445,6 +453,53 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
       setOcrError(err instanceof Error ? err.message : 'Delete failed');
     }
   }, [refreshOcrModels]);
+
+  // Whisper model handlers
+  const refreshWhisperModels = useCallback(() => {
+    api.whisper.listModels().then((r) => setWhisperModels(r.models)).catch(console.error);
+  }, []);
+
+  const handleDownloadWhisperModel = useCallback((modelId: string) => {
+    setWhisperDownloading(modelId);
+    setWhisperDownloadMessage('Starting download...');
+    setWhisperError(null);
+
+    const handle = api.whisper.downloadModel(modelId, (event: WhisperModelDownloadEvent) => {
+      if (event.status === 'starting') {
+        setWhisperDownloadMessage('Connecting to HuggingFace...');
+      } else if (event.status === 'progress') {
+        setWhisperDownloadMessage(event.message || 'Downloading...');
+      } else if (event.status === 'complete') {
+        setWhisperDownloading(null);
+        setWhisperDownloadMessage(null);
+        refreshWhisperModels();
+      } else if (event.status === 'error') {
+        setWhisperError(event.error || 'Download failed');
+        setWhisperDownloading(null);
+        setWhisperDownloadMessage(null);
+      }
+    });
+
+    whisperDownloadAbortRef.current = handle;
+  }, [refreshWhisperModels]);
+
+  const handleActivateWhisperModel = useCallback(async (modelId: string) => {
+    try {
+      await api.whisper.activateModel(modelId);
+      refreshWhisperModels();
+    } catch (err) {
+      setWhisperError(err instanceof Error ? err.message : 'Activation failed');
+    }
+  }, [refreshWhisperModels]);
+
+  const handleDeleteWhisperModel = useCallback(async (modelId: string) => {
+    try {
+      await api.whisper.deleteModel(modelId);
+      refreshWhisperModels();
+    } catch (err) {
+      setWhisperError(err instanceof Error ? err.message : 'Delete failed');
+    }
+  }, [refreshWhisperModels]);
 
   // Storage location handlers
   const resetAddLocationForm = useCallback(() => {
@@ -1230,6 +1285,143 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
           </div>
         </div>
       )}
+
+      {/* Transcription Models Section */}
+      <div className="mt-6 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+        <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Transcription Models</h2>
+            {whisperModels.some((m) => m.active) ? (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300">
+                <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                Ready ({whisperModels.find((m) => m.active)?.label})
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400">
+                <span className="w-1.5 h-1.5 rounded-full bg-gray-400" />
+                No model ready
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div className="px-5 py-4 space-y-4">
+          {whisperError && (
+            <div className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-sm text-red-600 dark:text-red-400">
+              {whisperError}
+              <button onClick={() => setWhisperError(null)} className="ml-2 underline">Dismiss</button>
+            </div>
+          )}
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Available Models</label>
+            <div className="space-y-3">
+              {whisperModels.map((model) => (
+                <div
+                  key={model.id}
+                  className={`p-4 rounded-lg border transition-all ${
+                    model.active
+                      ? 'border-green-300 dark:border-green-700 bg-green-50/50 dark:bg-green-900/10'
+                      : 'border-gray-200 dark:border-gray-600'
+                  }`}
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{model.label}</span>
+                        {model.bundled && (
+                          <span className="px-1.5 py-0.5 text-xs rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">
+                            Bundled
+                          </span>
+                        )}
+                        {model.is_default && !model.bundled && (
+                          <span className="px-1.5 py-0.5 text-xs rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">
+                            Recommended
+                          </span>
+                        )}
+                        {model.active && (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs rounded bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300">
+                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                            </svg>
+                            Active
+                          </span>
+                        )}
+                      </div>
+                      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{model.description}</p>
+                      <p className="mt-0.5 text-xs text-gray-400 dark:text-gray-500">{formatBytes(model.size_bytes)}</p>
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-wrap sm:shrink-0">
+                      {!model.downloaded && whisperDownloading !== model.id && (
+                        <button
+                          onClick={() => handleDownloadWhisperModel(model.id)}
+                          className="px-3 py-1.5 text-xs font-medium rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+                        >
+                          Download
+                        </button>
+                      )}
+
+                      {model.downloaded && !model.active && whisperDownloading !== model.id && (
+                        <button
+                          onClick={() => handleActivateWhisperModel(model.id)}
+                          className="px-3 py-1.5 text-xs font-medium rounded-lg bg-success text-success-foreground hover:bg-success/90 transition-colors"
+                        >
+                          Activate
+                        </button>
+                      )}
+
+                      {model.downloaded && !model.bundled && whisperDownloading !== model.id && (
+                        <button
+                          onClick={() => handleDeleteWhisperModel(model.id)}
+                          className="px-3 py-1.5 text-xs font-medium rounded-lg border border-destructive/50 text-destructive hover:bg-destructive/10 transition-colors"
+                        >
+                          Delete
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Download progress indicator */}
+                    {whisperDownloading === model.id && (
+                      <div className="mt-3 w-full">
+                        <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
+                          <span className="flex items-center gap-2">
+                            <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                            </svg>
+                            {whisperDownloadMessage || 'Downloading...'}
+                          </span>
+                          <button
+                            onClick={() => {
+                              whisperDownloadAbortRef.current?.abort();
+                              setWhisperDownloading(null);
+                              setWhisperDownloadMessage(null);
+                            }}
+                            className="px-2 py-0.5 text-xs font-medium rounded bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+
+              {whisperModels.length === 0 && (
+                <p className="text-sm text-gray-500 dark:text-gray-400 py-2">
+                  Loading model catalog...
+                </p>
+              )}
+            </div>
+          </div>
+
+          <p className="text-xs text-gray-500 dark:text-gray-400 border-t border-gray-200 dark:border-gray-700 pt-3">
+            Whisper Base is bundled with the app for offline use. Download larger models for improved accuracy on difficult audio.
+          </p>
+        </div>
+      </div>
 
       {/* External and/or Self-Hosted ASR Services Section (Enterprise) */}
       <div className="mt-6 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 opacity-60 cursor-not-allowed">

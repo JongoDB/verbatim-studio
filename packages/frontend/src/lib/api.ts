@@ -714,6 +714,35 @@ export interface OCRModelDownloadEvent {
   percent?: number;
 }
 
+// Whisper Model Types
+export interface WhisperModel {
+  id: string;
+  label: string;
+  description: string;
+  repo: string;
+  size_bytes: number;
+  is_default: boolean;
+  bundled: boolean;
+  downloaded: boolean;
+  active: boolean;
+  size_on_disk: number | null;
+}
+
+export interface WhisperModelListResponse {
+  models: WhisperModel[];
+  active_model: string | null;
+}
+
+export interface WhisperModelDownloadEvent {
+  status: 'starting' | 'progress' | 'complete' | 'error';
+  model_id?: string;
+  path?: string;
+  error?: string;
+  message?: string;
+  downloaded_bytes?: number;
+  total_bytes?: number;
+}
+
 // Archive Types
 export interface ArchiveInfo {
   version: string;
@@ -1834,6 +1863,72 @@ class ApiClient {
       this.request<{ status: string; model_id: string; was_downloading: boolean }>(
         `/api/ocr/models/${modelId}/cancel`,
         { method: 'POST' }
+      ),
+  };
+
+  // Whisper (Transcription Models)
+  whisper = {
+    listModels: () => this.request<WhisperModelListResponse>('/api/whisper/models'),
+
+    downloadModel: (modelId: string, onEvent: (event: WhisperModelDownloadEvent) => void): { abort: () => void } => {
+      const abortController = new AbortController();
+
+      fetch(`${this.baseUrl}/api/whisper/models/${modelId}/download`, {
+        method: 'POST',
+        signal: abortController.signal,
+      }).then(async (response) => {
+        if (!response.ok) {
+          onEvent({ status: 'error', error: `HTTP ${response.status}` });
+          return;
+        }
+
+        const reader = response.body?.getReader();
+        if (!reader) {
+          onEvent({ status: 'error', error: 'No response body' });
+          return;
+        }
+
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const event = JSON.parse(line.slice(6)) as WhisperModelDownloadEvent;
+                onEvent(event);
+              } catch {
+                // skip malformed lines
+              }
+            }
+          }
+        }
+      }).catch((err) => {
+        if (err.name !== 'AbortError') {
+          onEvent({ status: 'error', error: err.message });
+        }
+      });
+
+      return { abort: () => abortController.abort() };
+    },
+
+    activateModel: (modelId: string) =>
+      this.request<{ success: boolean; message: string; model_id: string }>(
+        `/api/whisper/models/${modelId}/activate`,
+        { method: 'POST' }
+      ),
+
+    deleteModel: (modelId: string) =>
+      this.request<{ success: boolean; message: string; model_id: string }>(
+        `/api/whisper/models/${modelId}`,
+        { method: 'DELETE' }
       ),
   };
 

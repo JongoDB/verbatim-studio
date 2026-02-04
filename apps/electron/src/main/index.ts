@@ -3,6 +3,7 @@ import { createMainWindow } from './windows';
 import { backendManager } from './backend';
 import { registerIpcHandlers } from './ipc';
 import { initAutoUpdater } from './updater';
+import { bootstrapBundledModels } from './bootstrap-models';
 
 // Single instance lock
 const gotTheLock = app.requestSingleInstanceLock();
@@ -18,6 +19,9 @@ async function bootstrap(): Promise<void> {
 
     // Register IPC handlers
     registerIpcHandlers();
+
+    // Bootstrap bundled models (copy from resources to cache if needed)
+    await bootstrapBundledModels();
 
     // Start backend (both development and production)
     console.log('[Main] Starting backend...');

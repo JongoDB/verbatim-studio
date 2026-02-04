@@ -68,6 +68,13 @@
         "filter": [
           "**/*"
         ]
+      },
+      {
+        "from": "../../build/resources/whisper-models",
+        "to": "whisper-models",
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "mac": {
