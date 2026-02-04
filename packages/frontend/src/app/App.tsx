@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { api, isElectron, type ApiInfo, type HealthStatus, type GlobalSearchResult, type SystemInfo } from '@/lib/api';
 import { RecordingsPage } from '@/pages/recordings/RecordingsPage';
 import { ProjectsPage } from '@/pages/projects/ProjectsPage';
@@ -117,6 +118,17 @@ function getEffectiveDarkMode(theme: Theme): boolean {
   }
   return theme === 'dark';
 }
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 30_000,        // Data considered fresh for 30s
+      gcTime: 5 * 60_000,       // Cache garbage collected after 5 min
+      refetchOnWindowFocus: true,
+      retry: 1,
+    },
+  },
+});
 
 export function App() {
   const [apiInfo, setApiInfo] = useState<ApiInfo | null>(null);
@@ -411,207 +423,213 @@ export function App() {
   // Show loading state while connecting
   if (isConnecting) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center space-y-4">
-          <svg
-            className="h-12 w-12 animate-spin text-primary mx-auto"
-            xmlns="http://www.w3.org/2000/svg"
-            fill="none"
-            viewBox="0 0 24 24"
-          >
-            <circle
-              className="opacity-25"
-              cx="12"
-              cy="12"
-              r="10"
-              stroke="currentColor"
-              strokeWidth="4"
-            />
-            <path
-              className="opacity-75"
-              fill="currentColor"
-              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-            />
-          </svg>
-          <p className="text-muted-foreground">Connecting to backend...</p>
+      <QueryClientProvider client={queryClient}>
+        <div className="min-h-screen bg-background flex items-center justify-center">
+          <div className="text-center space-y-4">
+            <svg
+              className="h-12 w-12 animate-spin text-primary mx-auto"
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+            >
+              <circle
+                className="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                strokeWidth="4"
+              />
+              <path
+                className="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+              />
+            </svg>
+            <p className="text-muted-foreground">Connecting to backend...</p>
+          </div>
         </div>
-      </div>
+      </QueryClientProvider>
     );
   }
 
   // Show error state if connection failed
   if (error && !apiInfo) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center space-y-4 max-w-md p-6">
-          <div className="rounded-full bg-destructive/10 p-4 w-16 h-16 mx-auto flex items-center justify-center">
-            <svg
-              className="h-8 w-8 text-destructive"
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-              />
-            </svg>
+      <QueryClientProvider client={queryClient}>
+        <div className="min-h-screen bg-background flex items-center justify-center">
+          <div className="text-center space-y-4 max-w-md p-6">
+            <div className="rounded-full bg-destructive/10 p-4 w-16 h-16 mx-auto flex items-center justify-center">
+              <svg
+                className="h-8 w-8 text-destructive"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                />
+              </svg>
+            </div>
+            <h1 className="text-xl font-semibold text-foreground">Connection Error</h1>
+            <p className="text-muted-foreground">{error}</p>
+            <p className="text-sm text-muted-foreground">
+              Make sure the backend is running on port 8000
+            </p>
           </div>
-          <h1 className="text-xl font-semibold text-foreground">Connection Error</h1>
-          <p className="text-muted-foreground">{error}</p>
-          <p className="text-sm text-muted-foreground">
-            Make sure the backend is running on port 8000
-          </p>
         </div>
-      </div>
+      </QueryClientProvider>
     );
   }
 
   return (
-    <div className="min-h-screen bg-background flex">
-      {/* macOS Title Bar (draggable region for window movement) */}
-      <TitleBar />
+    <QueryClientProvider client={queryClient}>
+      <div className="min-h-screen bg-background flex">
+        {/* macOS Title Bar (draggable region for window movement) */}
+        <TitleBar />
 
-      {/* Sidebar */}
-      <Sidebar
-        currentTab={currentTab}
-        onNavigate={(tab) => {
-          if (tab === 'dashboard') handleNavigateToDashboard();
-          else if (tab === 'recordings') handleNavigateToRecordings();
-          else if (tab === 'projects') handleNavigateToProjects();
-          else if (tab === 'live') handleNavigateToLive();
-          else if (tab === 'search') handleNavigateToSearch();
-          else if (tab === 'documents') handleNavigateToDocuments();
-          else if (tab === 'chats') handleNavigateToChats();
-          else if (tab === 'browser') handleNavigateToBrowser();
-          else if (tab === 'settings') handleNavigateToSettings();
-        }}
-        theme={theme}
-        onCycleTheme={cycleTheme}
-        version={systemInfo?.app_version || APP_VERSION}
-        health={health}
-        collapsed={sidebarCollapsed}
-        onCollapsedChange={setSidebarCollapsed}
-        isTourActive={isTourActive}
-      />
+        {/* Sidebar */}
+        <Sidebar
+          currentTab={currentTab}
+          onNavigate={(tab) => {
+            if (tab === 'dashboard') handleNavigateToDashboard();
+            else if (tab === 'recordings') handleNavigateToRecordings();
+            else if (tab === 'projects') handleNavigateToProjects();
+            else if (tab === 'live') handleNavigateToLive();
+            else if (tab === 'search') handleNavigateToSearch();
+            else if (tab === 'documents') handleNavigateToDocuments();
+            else if (tab === 'chats') handleNavigateToChats();
+            else if (tab === 'browser') handleNavigateToBrowser();
+            else if (tab === 'settings') handleNavigateToSettings();
+          }}
+          theme={theme}
+          onCycleTheme={cycleTheme}
+          version={systemInfo?.app_version || APP_VERSION}
+          health={health}
+          collapsed={sidebarCollapsed}
+          onCollapsedChange={setSidebarCollapsed}
+          isTourActive={isTourActive}
+        />
 
-      {/* Content Area - offset by sidebar width on desktop */}
-      <div className={`flex-1 flex flex-col min-h-screen overflow-hidden transition-[margin] duration-300 ${sidebarCollapsed ? 'md:ml-16' : 'md:ml-60'} ${needsTitleBarPadding ? 'pt-9' : ''}`}>
-        {/* Content header with search */}
-        <header className="h-14 border-b border-border bg-card flex items-center px-4 md:px-6 gap-4 shrink-0">
-          <div className="w-8 md:hidden" />
-          <div className="flex-1 max-w-md">
-            <SearchBox onResultClick={handleSearchResult} />
-          </div>
-        </header>
+        {/* Content Area - offset by sidebar width on desktop */}
+        <div className={`flex-1 flex flex-col min-h-screen overflow-hidden transition-[margin] duration-300 ${sidebarCollapsed ? 'md:ml-16' : 'md:ml-60'} ${needsTitleBarPadding ? 'pt-9' : ''}`}>
+          {/* Content header with search */}
+          <header className="h-14 border-b border-border bg-card flex items-center px-4 md:px-6 gap-4 shrink-0">
+            <div className="w-8 md:hidden" />
+            <div className="flex-1 max-w-md">
+              <SearchBox onResultClick={handleSearchResult} />
+            </div>
+          </header>
 
-        {/* Main Content */}
-        <main className="flex-1 overflow-y-auto">
-          <div className="container mx-auto px-4 py-8">
-            {navigation.type === 'dashboard' && (
-              <Dashboard
-                onNavigateToRecordings={handleNavigateToRecordings}
-                onNavigateToProjects={handleNavigateToProjects}
-                onViewRecording={handleViewTranscript}
-                onStartTour={handleStartTour}
-              />
-            )}
-            {navigation.type === 'recordings' && (
-              <RecordingsPage onViewTranscript={handleViewTranscript} />
-            )}
-            {navigation.type === 'projects' && (
-              <ProjectsPage onNavigateToProject={handleNavigateToProjectDetail} />
-            )}
-            {navigation.type === 'project-detail' && (
-              <ProjectDetailPage
-                projectId={navigation.projectId}
-                onBack={handleNavigateToProjects}
-                onViewTranscript={handleViewTranscript}
-                onNavigateToAnalytics={() => handleNavigateToProjectAnalytics(navigation.projectId)}
-              />
-            )}
-            {navigation.type === 'project-analytics' && (
-              <ProjectAnalyticsPage
-                projectId={navigation.projectId}
-                onBack={() => handleNavigateToProjectDetail(navigation.projectId)}
-              />
-            )}
-            {navigation.type === 'live' && (
-              <LiveTranscriptionPage
-                onNavigateToRecordings={handleNavigateToRecordings}
-                onViewRecording={handleViewTranscript}
-              />
-            )}
-            {navigation.type === 'search' && (
-              <SearchPage onResultClick={handleSearchResult} />
-            )}
-            {navigation.type === 'documents' && (
-              <DocumentsPage onViewDocument={handleViewDocument} />
-            )}
-            {navigation.type === 'document-viewer' && (
-              <DocumentViewerPage
-                documentId={navigation.documentId}
-                onBack={handleNavigateToDocuments}
-              />
-            )}
-            {navigation.type === 'browser' && (
-              <FileBrowserPage
-                initialFolderId={navigation.folderId}
-                onViewRecording={(id) => setNavigation({ type: 'transcript', recordingId: id })}
-                onViewDocument={(id) => setNavigation({ type: 'document-viewer', documentId: id })}
-              />
-            )}
-            {navigation.type === 'chats' && (
-              <ChatsPage
-                onLoadConversation={handleLoadConversation}
-                onOpenChat={handleOpenChat}
-              />
-            )}
-            {navigation.type === 'transcript' && (
-              <TranscriptPage
-                recordingId={navigation.recordingId}
-                onBack={handleBackToRecordings}
-                initialSeekTime={navigation.initialSeekTime}
-              />
-            )}
-            {navigation.type === 'settings' && (
-              <SettingsPage theme={theme} onThemeChange={setTheme} />
-            )}
-          </div>
-        </main>
+          {/* Main Content */}
+          <main className="flex-1 overflow-y-auto">
+            <div className="container mx-auto px-4 py-8">
+              {navigation.type === 'dashboard' && (
+                <Dashboard
+                  onNavigateToRecordings={handleNavigateToRecordings}
+                  onNavigateToProjects={handleNavigateToProjects}
+                  onViewRecording={handleViewTranscript}
+                  onStartTour={handleStartTour}
+                />
+              )}
+              {navigation.type === 'recordings' && (
+                <RecordingsPage onViewTranscript={handleViewTranscript} />
+              )}
+              {navigation.type === 'projects' && (
+                <ProjectsPage onNavigateToProject={handleNavigateToProjectDetail} />
+              )}
+              {navigation.type === 'project-detail' && (
+                <ProjectDetailPage
+                  projectId={navigation.projectId}
+                  onBack={handleNavigateToProjects}
+                  onViewTranscript={handleViewTranscript}
+                  onNavigateToAnalytics={() => handleNavigateToProjectAnalytics(navigation.projectId)}
+                />
+              )}
+              {navigation.type === 'project-analytics' && (
+                <ProjectAnalyticsPage
+                  projectId={navigation.projectId}
+                  onBack={() => handleNavigateToProjectDetail(navigation.projectId)}
+                />
+              )}
+              {navigation.type === 'live' && (
+                <LiveTranscriptionPage
+                  onNavigateToRecordings={handleNavigateToRecordings}
+                  onViewRecording={handleViewTranscript}
+                />
+              )}
+              {navigation.type === 'search' && (
+                <SearchPage onResultClick={handleSearchResult} />
+              )}
+              {navigation.type === 'documents' && (
+                <DocumentsPage onViewDocument={handleViewDocument} />
+              )}
+              {navigation.type === 'document-viewer' && (
+                <DocumentViewerPage
+                  documentId={navigation.documentId}
+                  onBack={handleNavigateToDocuments}
+                />
+              )}
+              {navigation.type === 'browser' && (
+                <FileBrowserPage
+                  initialFolderId={navigation.folderId}
+                  onViewRecording={(id) => setNavigation({ type: 'transcript', recordingId: id })}
+                  onViewDocument={(id) => setNavigation({ type: 'document-viewer', documentId: id })}
+                />
+              )}
+              {navigation.type === 'chats' && (
+                <ChatsPage
+                  onLoadConversation={handleLoadConversation}
+                  onOpenChat={handleOpenChat}
+                />
+              )}
+              {navigation.type === 'transcript' && (
+                <TranscriptPage
+                  recordingId={navigation.recordingId}
+                  onBack={handleBackToRecordings}
+                  initialSeekTime={navigation.initialSeekTime}
+                />
+              )}
+              {navigation.type === 'settings' && (
+                <SettingsPage theme={theme} onThemeChange={setTheme} />
+              )}
+            </div>
+          </main>
+        </div>
+
+        {/* Chat Assistant */}
+        <ChatFAB onClick={handleOpenChat} isOpen={isChatOpen} />
+        <ChatPanel
+          isOpen={isChatOpen}
+          onClose={() => setIsChatOpen(false)}
+          messages={chatMessages}
+          setMessages={setChatMessages}
+          attached={chatAttachments}
+          setAttached={setChatAttachments}
+          onNavigateToChats={handleNavigateToChats}
+        />
+
+        {/* Onboarding Tour */}
+        <WelcomeModal
+          isOpen={showWelcomeModal && !isConnecting && !error}
+          onStartTour={handleStartTour}
+          onSkip={handleWelcomeSkip}
+        />
+        <OnboardingTour
+          isActive={isTourActive}
+          onComplete={handleTourComplete}
+          onSkip={handleTourSkip}
+          onNavigate={handleTourNavigate}
+        />
+        <TourToast
+          isVisible={showTourToast}
+          onDismiss={() => setShowTourToast(false)}
+        />
       </div>
-
-      {/* Chat Assistant */}
-      <ChatFAB onClick={handleOpenChat} isOpen={isChatOpen} />
-      <ChatPanel
-        isOpen={isChatOpen}
-        onClose={() => setIsChatOpen(false)}
-        messages={chatMessages}
-        setMessages={setChatMessages}
-        attached={chatAttachments}
-        setAttached={setChatAttachments}
-        onNavigateToChats={handleNavigateToChats}
-      />
-
-      {/* Onboarding Tour */}
-      <WelcomeModal
-        isOpen={showWelcomeModal && !isConnecting && !error}
-        onStartTour={handleStartTour}
-        onSkip={handleWelcomeSkip}
-      />
-      <OnboardingTour
-        isActive={isTourActive}
-        onComplete={handleTourComplete}
-        onSkip={handleTourSkip}
-        onNavigate={handleTourNavigate}
-      />
-      <TourToast
-        isVisible={showTourToast}
-        onDismiss={() => setShowTourToast(false)}
-      />
-    </div>
+    </QueryClientProvider>
   );
 }
