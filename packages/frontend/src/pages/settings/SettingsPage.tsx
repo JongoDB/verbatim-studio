@@ -6,6 +6,7 @@ import { StorageConfigForm } from '@/components/storage/StorageConfigForm';
 import { OAuthCredentialsConfig } from '@/components/storage/OAuthCredentialsConfig';
 import { TIMEZONE_OPTIONS, getStoredTimezone, setStoredTimezone, type TimezoneValue } from '@/lib/utils';
 import { EnterpriseBadge } from '@/components/ui/EnterpriseBadge';
+import { APP_VERSION } from '@/version';
 
 interface SettingsPageProps {
   theme: 'light' | 'dark' | 'system';
@@ -152,6 +153,11 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
   const [isResetting, setIsResetting] = useState(false);
   const [resetResult, setResetResult] = useState<{ success: boolean; message: string; deleted?: Record<string, number> } | null>(null);
 
+  // Update settings state
+  const [autoUpdateEnabled, setAutoUpdateEnabled] = useState(true);
+  const [isCheckingForUpdates, setIsCheckingForUpdates] = useState(false);
+  const [updateCheckResult, setUpdateCheckResult] = useState<'none' | 'available' | null>(null);
+
   const defaultLanguage = settings.defaultLanguage || '';
   const defaultPlaybackSpeed = settings.defaultPlaybackSpeed || 1;
   const autoTranscribe = settings.autoTranscribe ?? false;
@@ -172,6 +178,31 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
     api.system.mlStatus().then(setMlStatus).catch(console.error);
     loadStorageLocations();
   }, [loadStorageLocations]);
+
+  // Load update settings on mount
+  useEffect(() => {
+    if (window.electronAPI) {
+      window.electronAPI.getUpdateSettings().then(({ autoUpdateEnabled }) => {
+        setAutoUpdateEnabled(autoUpdateEnabled);
+      });
+
+      const cleanupNotAvailable = window.electronAPI.onUpdateNotAvailable(() => {
+        setIsCheckingForUpdates(false);
+        setUpdateCheckResult('none');
+        setTimeout(() => setUpdateCheckResult(null), 3000);
+      });
+
+      const cleanupAvailable = window.electronAPI.onUpdateAvailable(() => {
+        setIsCheckingForUpdates(false);
+        setUpdateCheckResult('available');
+      });
+
+      return () => {
+        cleanupNotAvailable();
+        cleanupAvailable();
+      };
+    }
+  }, []);
 
   // Handle ML dependencies installation
   const handleInstallMl = useCallback(async () => {
@@ -201,6 +232,21 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
       setMlInstalling(false);
     }
   }, []);
+
+  const handleAutoUpdateToggle = async (enabled: boolean) => {
+    setAutoUpdateEnabled(enabled);
+    if (window.electronAPI) {
+      await window.electronAPI.setAutoUpdate(enabled);
+    }
+  };
+
+  const handleCheckForUpdates = () => {
+    if (window.electronAPI) {
+      setIsCheckingForUpdates(true);
+      setUpdateCheckResult(null);
+      window.electronAPI.checkForUpdates();
+    }
+  };
 
   const handleExport = useCallback(async () => {
     setIsExporting(true);
@@ -2778,6 +2824,71 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
           <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
             Export creates a .vbz archive with all your recordings, transcripts, and projects.
           </p>
+        </div>
+      </div>
+        </>
+      )}
+
+      {/* ===== GENERAL TAB (continued) - Updates ===== */}
+      {activeTab === 'general' && window.electronAPI && (
+        <>
+      {/* Updates Section */}
+      <div className="mt-6 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+        <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-700">
+          <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Updates</h2>
+        </div>
+        <div className="px-5 py-4 space-y-4">
+          {/* Current Version */}
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-gray-600 dark:text-gray-400">Current Version</span>
+            <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{APP_VERSION}</span>
+          </div>
+
+          {/* Auto-update toggle */}
+          <div className="flex items-center justify-between py-2">
+            <div>
+              <p className="text-sm font-medium text-gray-900 dark:text-gray-100">Check for updates automatically</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Checks on launch + every 24 hours</p>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={autoUpdateEnabled}
+                onChange={(e) => handleAutoUpdateToggle(e.target.checked)}
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-500 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600" />
+            </label>
+          </div>
+
+          {/* Check for updates button */}
+          <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleCheckForUpdates}
+                disabled={isCheckingForUpdates}
+                className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors disabled:opacity-50"
+              >
+                {isCheckingForUpdates ? (
+                  <>
+                    <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                    Checking...
+                  </>
+                ) : (
+                  'Check for Updates'
+                )}
+              </button>
+              {updateCheckResult === 'none' && (
+                <span className="text-sm text-green-600 dark:text-green-400">You're on the latest version!</span>
+              )}
+              {updateCheckResult === 'available' && (
+                <span className="text-sm text-blue-600 dark:text-blue-400">Update available!</span>
+              )}
+            </div>
+          </div>
         </div>
       </div>
         </>
