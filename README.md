@@ -141,15 +141,15 @@ Or, if that doesn't work:
 2. Scroll down to find the blocked app message
 3. Click **Open Anyway**
 
-**Alternative: Download via Terminal to avoid quarantine entirely**
+**Alternative: Remove quarantine via Terminal**
 
-Go to the [Releases page](https://github.com/JongoDB/verbatim-studio/releases), right-click the `.dmg` link, copy the URL, then:
+After downloading, run this command to remove the quarantine attribute:
 
 ```bash
-curl -LO <paste-url-here>
+xattr -c ~/Downloads/Verbatim.Studio-<version>-arm64.dmg
 ```
 
-Files downloaded via `curl` bypass macOS quarantine, so you won't see security warnings.
+Replace `<version>` with the version number you downloaded (e.g., `0.26.21`).
 
 </details>
 
