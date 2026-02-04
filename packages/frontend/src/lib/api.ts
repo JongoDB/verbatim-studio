@@ -741,6 +741,7 @@ export interface WhisperModelDownloadEvent {
   message?: string;
   downloaded_bytes?: number;
   total_bytes?: number;
+  percent?: number;
 }
 
 // Diarization Model Types (Pyannote)

@@ -47,10 +47,12 @@ export function useDeleteRecording() {
       });
 
       // Optimistically remove from all recording lists
+      // Note: queryKeys.recordings.all matches both list and detail queries,
+      // so we need to check for the items array before filtering
       queryClient.setQueriesData<RecordingListResponse>(
         { queryKey: queryKeys.recordings.all },
         (old) => {
-          if (!old) return old;
+          if (!old || !('items' in old)) return old;
           return {
             ...old,
             items: old.items.filter((r) => r.id !== id),
@@ -96,7 +98,7 @@ export function useBulkDeleteRecordings() {
       queryClient.setQueriesData<RecordingListResponse>(
         { queryKey: queryKeys.recordings.all },
         (old) => {
-          if (!old) return old;
+          if (!old || !('items' in old)) return old;
           const remaining = old.items.filter((r) => !idsSet.has(r.id));
           return {
             ...old,

@@ -59,10 +59,12 @@ export function useDeleteProject() {
         queryKey: queryKeys.projects.all,
       });
 
+      // Note: queryKeys.projects.all matches both list and detail queries,
+      // so we need to check for the items array before filtering
       queryClient.setQueriesData<ProjectListResponse>(
         { queryKey: queryKeys.projects.all },
         (old) => {
-          if (!old) return old;
+          if (!old || !('items' in old)) return old;
           return {
             ...old,
             items: old.items.filter((p) => p.id !== id),

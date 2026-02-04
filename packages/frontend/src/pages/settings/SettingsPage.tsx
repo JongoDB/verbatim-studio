@@ -116,6 +116,7 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
   const [whisperModels, setWhisperModels] = useState<WhisperModel[]>([]);
   const [whisperDownloading, setWhisperDownloading] = useState<string | null>(null);
   const [whisperDownloadMessage, setWhisperDownloadMessage] = useState<string | null>(null);
+  const [whisperDownloadProgress, setWhisperDownloadProgress] = useState<{ percent: number; downloaded: number; total: number } | null>(null);
   const [whisperError, setWhisperError] = useState<string | null>(null);
   const whisperDownloadAbortRef = useRef<{ abort: () => void } | null>(null);
 
@@ -482,21 +483,33 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
   const handleDownloadWhisperModel = useCallback((modelId: string) => {
     setWhisperDownloading(modelId);
     setWhisperDownloadMessage('Starting download...');
+    setWhisperDownloadProgress(null);
     setWhisperError(null);
 
     const handle = api.whisper.downloadModel(modelId, (event: WhisperModelDownloadEvent) => {
       if (event.status === 'starting') {
         setWhisperDownloadMessage('Connecting to HuggingFace...');
       } else if (event.status === 'progress') {
-        setWhisperDownloadMessage(event.message || 'Downloading...');
+        // Update progress if byte data available
+        const percent = event.percent ?? (event.downloaded_bytes && event.total_bytes ? Math.round((event.downloaded_bytes / event.total_bytes) * 100) : 0);
+        const downloaded = event.downloaded_bytes ?? 0;
+        const total = event.total_bytes ?? 0;
+        if (downloaded > 0 || total > 0) {
+          setWhisperDownloadProgress({ percent, downloaded, total });
+          setWhisperDownloadMessage(`Downloading... ${percent}%`);
+        } else {
+          setWhisperDownloadMessage(event.message || 'Downloading...');
+        }
       } else if (event.status === 'complete') {
         setWhisperDownloading(null);
         setWhisperDownloadMessage(null);
+        setWhisperDownloadProgress(null);
         refreshWhisperModels();
       } else if (event.status === 'error') {
         setWhisperError(event.error || 'Download failed');
         setWhisperDownloading(null);
         setWhisperDownloadMessage(null);
+        setWhisperDownloadProgress(null);
       }
     });
 
@@ -1459,12 +1472,28 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
                               whisperDownloadAbortRef.current?.abort();
                               setWhisperDownloading(null);
                               setWhisperDownloadMessage(null);
+                              setWhisperDownloadProgress(null);
                             }}
                             className="px-2 py-0.5 text-xs font-medium rounded bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors"
                           >
                             Cancel
                           </button>
                         </div>
+                        {/* Progress bar */}
+                        {whisperDownloadProgress && (
+                          <div className="mt-2">
+                            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                              <div
+                                className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                                style={{ width: `${whisperDownloadProgress.percent}%` }}
+                              />
+                            </div>
+                            <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mt-1">
+                              <span>{(whisperDownloadProgress.downloaded / 1024 / 1024).toFixed(1)} MB</span>
+                              <span>{(whisperDownloadProgress.total / 1024 / 1024).toFixed(1)} MB</span>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
