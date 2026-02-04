@@ -233,7 +233,7 @@ export function SearchPage({ onResultClick, initialQuery = '' }: SearchPageProps
       </form>
 
       {/* Results */}
-      {hasSearched && (
+      {hasSearched && query.trim().length >= 2 && (
         <div className="space-y-4">
           {/* Results summary with compact history dropdown */}
           <div className="flex items-center justify-between">
@@ -412,8 +412,8 @@ export function SearchPage({ onResultClick, initialQuery = '' }: SearchPageProps
         </div>
       )}
 
-      {/* Initial state */}
-      {!hasSearched && (
+      {/* Initial state - show when search bar is empty */}
+      {query.trim().length < 2 && (
         <div className="space-y-8">
           {/* Search history */}
           <SearchHistory onSelectQuery={handleHistorySelect} />
