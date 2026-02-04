@@ -1,5 +1,6 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
-import { api, type DashboardStats, type Recording, type Project } from '@/lib/api';
+import { useState, useCallback, useRef } from 'react';
+import { api } from '@/lib/api';
+import { useDashboardStats, useRecentRecordings, useRecentProjects } from '@/hooks';
 import { formatRelativeTime } from '@/lib/utils';
 import { CreateProjectDialog } from '@/components/projects/CreateProjectDialog';
 import { AudioRecorder } from '@/components/recordings/AudioRecorder';
@@ -90,11 +91,13 @@ function StatCard({
 }
 
 export function Dashboard({ onNavigateToRecordings, onNavigateToProjects, onViewRecording, onRecordingUploaded, onStartTour }: DashboardProps) {
-  const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [recentRecordings, setRecentRecordings] = useState<Recording[]>([]);
-  const [recentProjects, setRecentProjects] = useState<Project[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data: stats, isLoading: statsLoading, error: statsError } = useDashboardStats();
+  const { data: recentRecordings = [] } = useRecentRecordings(5);
+  const { data: recentProjects = [] } = useRecentProjects(5);
+
+  const isLoading = statsLoading;
+  const error = statsError?.message;
+
   const [showCreateProject, setShowCreateProject] = useState(false);
   const [showUploadDocument, setShowUploadDocument] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -103,35 +106,6 @@ export function Dashboard({ onNavigateToRecordings, onNavigateToProjects, onView
   const [pendingUploadFile, setPendingUploadFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleProjectCreated = useCallback((project: Project) => {
-    setRecentProjects((prev) => [project, ...prev].slice(0, 5));
-    setStats((prev) => prev ? {
-      ...prev,
-      projects: {
-        ...prev.projects,
-        total_projects: prev.projects.total_projects + 1,
-        last_updated: project.updated_at,
-      },
-    } : prev);
-  }, []);
-
-  const refreshData = useCallback(async () => {
-    try {
-      const [statsData, recordingsData, projectsData] = await Promise.all([
-        api.stats.dashboard(),
-        api.recordings.list({ sortBy: 'created_at', sortOrder: 'desc', pageSize: 5 }),
-        api.projects.list(),
-      ]);
-      setStats(statsData);
-      setRecentRecordings(recordingsData.items.slice(0, 5));
-      const sortedProjects = [...projectsData.items].sort(
-        (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
-      );
-      setRecentProjects(sortedProjects.slice(0, 5));
-    } catch {
-      // Ignore refresh errors
-    }
-  }, []);
 
   const handleUpload = useCallback((file: File) => {
     // Open the setup dialog instead of uploading directly
@@ -159,14 +133,13 @@ export function Dashboard({ onNavigateToRecordings, onNavigateToProjects, onView
         }
       }
 
-      await refreshData();
       onRecordingUploaded?.();
     } catch (err) {
       console.error('Failed to upload:', err);
     } finally {
       setIsUploading(false);
     }
-  }, [onRecordingUploaded, refreshData, pendingUploadFile]);
+  }, [onRecordingUploaded, pendingUploadFile]);
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -201,7 +174,6 @@ export function Dashboard({ onNavigateToRecordings, onNavigateToProjects, onView
         }
       }
 
-      await refreshData();
       onRecordingUploaded?.();
     } catch (err) {
       console.error('Failed to upload recording:', err);
@@ -209,50 +181,13 @@ export function Dashboard({ onNavigateToRecordings, onNavigateToProjects, onView
       setIsUploading(false);
       setRecordingSettings(null);
     }
-  }, [recordingSettings, onRecordingUploaded, refreshData]);
+  }, [recordingSettings, onRecordingUploaded]);
 
   const handleRecordingCancel = useCallback(() => {
     setRecordingPhase('none');
     setRecordingSettings(null);
   }, []);
 
-  useEffect(() => {
-    async function loadDashboardData() {
-      try {
-        const [statsData, recordingsData, projectsData] = await Promise.all([
-          api.stats.dashboard(),
-          api.recordings.list({ sortBy: 'created_at', sortOrder: 'desc', pageSize: 5 }),
-          api.projects.list(),
-        ]);
-        setStats(statsData);
-        setRecentRecordings(recordingsData.items.slice(0, 5));
-        // Sort projects by updated_at desc and take first 5
-        const sortedProjects = [...projectsData.items].sort(
-          (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
-        );
-        setRecentProjects(sortedProjects.slice(0, 5));
-        setError(null);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load dashboard data');
-      } finally {
-        setIsLoading(false);
-      }
-    }
-    loadDashboardData();
-  }, []);
-
-  // Refresh when storage location changes
-  useEffect(() => {
-    const handleStorageLocationChange = () => {
-      refreshData();
-    };
-    window.addEventListener('storage-location-changed', handleStorageLocationChange);
-    window.addEventListener('storage-synced', handleStorageLocationChange);
-    return () => {
-      window.removeEventListener('storage-location-changed', handleStorageLocationChange);
-      window.removeEventListener('storage-synced', handleStorageLocationChange);
-    };
-  }, [refreshData]);
 
   if (isLoading) {
     return (
@@ -607,7 +542,7 @@ export function Dashboard({ onNavigateToRecordings, onNavigateToProjects, onView
       <CreateProjectDialog
         isOpen={showCreateProject}
         onClose={() => setShowCreateProject(false)}
-        onCreated={handleProjectCreated}
+        onCreated={() => {}}
       />
 
       {/* Upload Setup Dialog */}
