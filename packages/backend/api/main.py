@@ -151,7 +151,7 @@ app.include_router(storage_locations_router, prefix="/api")
 app.include_router(ocr_router, prefix="/api")
 app.include_router(oauth_router)  # Has its own /api prefix
 app.include_router(conversations_router, prefix="/api")
-app.include_router(sync_router)  # WebSocket sync endpoint
+app.include_router(sync_router, prefix="/api")  # WebSocket sync endpoint
 
 
 @app.get("/")
