@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, type Recording, type Tag, type Project } from '@/lib/api';
+import { useRecordings, useDeleteRecording, useBulkDeleteRecordings, useTranscribeRecording, useCancelRecording, useRetryRecording, useRunningJobs } from '@/hooks';
+import type { RecordingFilters as RecordingQueryFilters } from '@/lib/queryKeys';
 import { UploadDropzone } from '@/components/recordings/UploadDropzone';
 import { RecordingCard } from '@/components/recordings/RecordingCard';
 import { RecordingsTable } from '@/components/recordings/RecordingsTable';
@@ -95,11 +97,9 @@ function loadSavedViewMode(): ViewMode {
 }
 
 export function RecordingsPage({ onViewTranscript }: RecordingsPageProps) {
-  const [recordings, setRecordings] = useState<Recording[]>([]);
-  const [totalRecordings, setTotalRecordings] = useState(0);
-  const [isLoading, setIsLoading] = useState(true);
+  // Local UI state
   const [isUploading, setIsUploading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const [filters, setFilters] = useState<FilterState>(loadSavedFilters);
   const [viewMode, setViewMode] = useState<ViewMode>(loadSavedViewMode);
   const [transcribeDialogRecording, setTranscribeDialogRecording] = useState<Recording | null>(null);
@@ -107,7 +107,6 @@ export function RecordingsPage({ onViewTranscript }: RecordingsPageProps) {
   const [recordingPhase, setRecordingPhase] = useState<'none' | 'setup' | 'recording'>('none');
   const [recordingSettings, setRecordingSettings] = useState<RecordingSettings | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
-  const [jobProgress, setJobProgress] = useState<Record<string, number>>({});
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [templateManagerOpen, setTemplateManagerOpen] = useState(false);
   const [allTags, setAllTags] = useState<Tag[]>([]);
@@ -115,104 +114,55 @@ export function RecordingsPage({ onViewTranscript }: RecordingsPageProps) {
   const [pendingUploadFile, setPendingUploadFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const loadRecordings = useCallback(async () => {
-    try {
-      const response = await api.recordings.list({
-        search: filters.search || undefined,
-        status: filters.status || undefined,
-        sortBy: filters.sortBy,
-        sortOrder: filters.sortOrder,
-        projectId: selectedProjectId || undefined,
-        dateFrom: filters.dateFrom || undefined,
-        dateTo: filters.dateTo || undefined,
-        tagIds: filters.tagIds.length > 0 ? filters.tagIds : undefined,
-        speaker: filters.speaker || undefined,
-        templateId: filters.templateId || undefined,
-      });
-      setRecordings(response.items);
-      setTotalRecordings(response.total);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load recordings');
-    } finally {
-      setIsLoading(false);
+  // Build query filters from local state
+  const queryFilters: RecordingQueryFilters = useMemo(() => ({
+    search: filters.search || undefined,
+    status: filters.status || undefined,
+    sortBy: filters.sortBy,
+    sortOrder: filters.sortOrder,
+    projectId: selectedProjectId || undefined,
+    dateFrom: filters.dateFrom || undefined,
+    dateTo: filters.dateTo || undefined,
+    tagIds: filters.tagIds.length > 0 ? filters.tagIds : undefined,
+    speaker: filters.speaker || undefined,
+    templateId: filters.templateId || undefined,
+  }), [filters, selectedProjectId]);
+
+  // React Query hooks for data fetching
+  const { data: recordingsData, isLoading, error: fetchError } = useRecordings(queryFilters);
+  const recordings = recordingsData?.items ?? [];
+  const totalRecordings = recordingsData?.total ?? 0;
+
+  // React Query mutations
+  const deleteRecording = useDeleteRecording();
+  const bulkDeleteRecordings = useBulkDeleteRecordings();
+  const transcribeRecording = useTranscribeRecording();
+  const cancelRecording = useCancelRecording();
+  const retryRecording = useRetryRecording();
+
+  // Job progress from useRunningJobs hook
+  const { data: jobsData } = useRunningJobs();
+  const jobProgress = useMemo(() => {
+    const progressMap: Record<string, number> = {};
+    if (jobsData?.items) {
+      for (const job of jobsData.items) {
+        const recId = (job.payload as Record<string, unknown>)?.recording_id;
+        if (typeof recId === 'string') {
+          progressMap[recId] = job.progress;
+        }
+      }
     }
-  }, [filters, selectedProjectId]);
+    return progressMap;
+  }, [jobsData]);
 
-  // Initial load and polling
-  useEffect(() => {
-    loadRecordings();
-
-    // Poll every 5 seconds for updates
-    const interval = setInterval(loadRecordings, 5000);
-    return () => clearInterval(interval);
-  }, [loadRecordings]);
-
-  // Refresh when storage location changes
-  useEffect(() => {
-    const handleStorageLocationChange = () => {
-      loadRecordings();
-    };
-    window.addEventListener('storage-location-changed', handleStorageLocationChange);
-    window.addEventListener('storage-synced', handleStorageLocationChange);
-    return () => {
-      window.removeEventListener('storage-location-changed', handleStorageLocationChange);
-      window.removeEventListener('storage-synced', handleStorageLocationChange);
-    };
-  }, [loadRecordings]);
+  // Combine errors for display
+  const error = uploadError || (fetchError instanceof Error ? fetchError.message : fetchError ? 'Failed to load recordings' : null);
 
   // Load tags and projects for display
   useEffect(() => {
     api.tags.list().then((res) => setAllTags(res.items)).catch(() => {});
     api.projects.list().then((res) => setAllProjects(res.items || [])).catch(() => {});
   }, []);
-
-  // Poll job progress for processing recordings
-  useEffect(() => {
-    const processingIds = recordings
-      .filter((r) => r.status === 'processing')
-      .map((r) => r.id);
-
-    if (processingIds.length === 0) {
-      setJobProgress({});
-      return;
-    }
-
-    let cancelled = false;
-
-    const pollProgress = async () => {
-      try {
-        const response = await api.jobs.list('running');
-        if (cancelled) return;
-        const progressMap: Record<string, number> = {};
-        for (const job of response.items) {
-          const recId = (job.payload as Record<string, unknown>)?.recording_id;
-          if (typeof recId === 'string' && processingIds.includes(recId)) {
-            progressMap[recId] = job.progress;
-          }
-        }
-        // Also check queued jobs (they have 0 progress but should show "Starting...")
-        const queuedResponse = await api.jobs.list('queued');
-        if (cancelled) return;
-        for (const job of queuedResponse.items) {
-          const recId = (job.payload as Record<string, unknown>)?.recording_id;
-          if (typeof recId === 'string' && processingIds.includes(recId) && !(recId in progressMap)) {
-            progressMap[recId] = 0;
-          }
-        }
-        setJobProgress(progressMap);
-      } catch {
-        // Ignore progress polling errors
-      }
-    };
-
-    pollProgress();
-    const interval = setInterval(pollProgress, 2000);
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, [recordings]);
 
   // Sync filters to URL and localStorage
   useEffect(() => {
@@ -243,7 +193,7 @@ export function RecordingsPage({ onViewTranscript }: RecordingsPageProps) {
 
       setPendingUploadFile(null);
       setIsUploading(true);
-      setError(null);
+      setUploadError(null);
 
       try {
         const result = await api.recordings.upload(pendingUploadFile, {
@@ -261,34 +211,33 @@ export function RecordingsPage({ onViewTranscript }: RecordingsPageProps) {
             console.error('Failed to start auto-transcription');
           }
         }
-
-        await loadRecordings();
+        // WebSocket will trigger refetch automatically
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to upload file');
+        setUploadError(err instanceof Error ? err.message : 'Failed to upload file');
       } finally {
         setIsUploading(false);
       }
     },
-    [loadRecordings, pendingUploadFile]
+    [pendingUploadFile]
   );
 
   const handleBatchImport = useCallback(
     async (files: FileList) => {
       setIsUploading(true);
-      setError(null);
+      setUploadError(null);
 
       try {
         for (const file of Array.from(files)) {
           await api.recordings.upload(file);
         }
-        await loadRecordings();
+        // WebSocket will trigger refetch automatically
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to import files');
+        setUploadError(err instanceof Error ? err.message : 'Failed to import files');
       } finally {
         setIsUploading(false);
       }
     },
-    [loadRecordings]
+    []
   );
 
   const handleOpenTranscribeDialog = useCallback((recording: Recording) => {
@@ -300,53 +249,32 @@ export function RecordingsPage({ onViewTranscript }: RecordingsPageProps) {
   }, []);
 
   const handleTranscribe = useCallback(
-    async (language: string | undefined) => {
+    (language: string | undefined) => {
       if (!transcribeDialogRecording) return;
-
-      try {
-        await api.recordings.transcribe(transcribeDialogRecording.id, language);
-        await loadRecordings();
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to start transcription');
-      }
+      transcribeRecording.mutate({ id: transcribeDialogRecording.id, language });
     },
-    [loadRecordings, transcribeDialogRecording]
+    [transcribeDialogRecording, transcribeRecording]
   );
 
   const handleDelete = useCallback(
-    async (recordingId: string) => {
-      try {
-        await api.recordings.delete(recordingId);
-        setRecordings((prev) => prev.filter((r) => r.id !== recordingId));
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to delete recording');
-      }
+    (recordingId: string) => {
+      deleteRecording.mutate(recordingId);
     },
-    []
+    [deleteRecording]
   );
 
   const handleCancel = useCallback(
-    async (recordingId: string) => {
-      try {
-        await api.recordings.cancel(recordingId);
-        await loadRecordings();
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to cancel transcription');
-      }
+    (recordingId: string) => {
+      cancelRecording.mutate(recordingId);
     },
-    [loadRecordings]
+    [cancelRecording]
   );
 
   const handleRetry = useCallback(
-    async (recordingId: string) => {
-      try {
-        await api.recordings.retry(recordingId);
-        await loadRecordings();
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to retry transcription');
-      }
+    (recordingId: string) => {
+      retryRecording.mutate(recordingId);
     },
-    [loadRecordings]
+    [retryRecording]
   );
 
   const handleView = useCallback((recordingId: string) => {
@@ -357,7 +285,7 @@ export function RecordingsPage({ onViewTranscript }: RecordingsPageProps) {
     async (blob: Blob, filename: string) => {
       setRecordingPhase('none');
       setIsUploading(true);
-      setError(null);
+      setUploadError(null);
 
       try {
         const file = new File([blob], filename, { type: blob.type });
@@ -380,16 +308,15 @@ export function RecordingsPage({ onViewTranscript }: RecordingsPageProps) {
             console.error('Failed to start auto-transcription');
           }
         }
-
-        await loadRecordings();
+        // WebSocket will trigger refetch automatically
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to upload recording');
+        setUploadError(err instanceof Error ? err.message : 'Failed to upload recording');
       } finally {
         setIsUploading(false);
         setRecordingSettings(null);
       }
     },
-    [loadRecordings, recordingSettings]
+    [recordingSettings]
   );
 
   const handleRecordingCancel = useCallback(() => {
@@ -417,8 +344,8 @@ export function RecordingsPage({ onViewTranscript }: RecordingsPageProps) {
   }, []);
 
   const handleEditSaved = useCallback(() => {
-    loadRecordings();
-  }, [loadRecordings]);
+    // React Query will handle cache invalidation via WebSocket
+  }, []);
 
   // Bulk selection handlers
   const handleSelectRecording = useCallback((id: string, selected: boolean) => {
@@ -445,21 +372,19 @@ export function RecordingsPage({ onViewTranscript }: RecordingsPageProps) {
     setSelectedIds(new Set());
   }, []);
 
-  const handleBulkDelete = useCallback(async () => {
+  const handleBulkDelete = useCallback(() => {
     if (selectedIds.size === 0) return;
-    try {
-      await api.recordings.bulkDelete(Array.from(selectedIds));
-      setSelectedIds(new Set());
-      await loadRecordings();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete recordings');
-    }
-  }, [selectedIds, loadRecordings]);
+    bulkDeleteRecordings.mutate(Array.from(selectedIds), {
+      onSuccess: () => {
+        setSelectedIds(new Set());
+      },
+    });
+  }, [selectedIds, bulkDeleteRecordings]);
 
-  const handleLinkedToProjects = useCallback(async () => {
+  const handleLinkedToProjects = useCallback(() => {
     setSelectedIds(new Set());
-    await loadRecordings();
-  }, [loadRecordings]);
+    // React Query will handle cache invalidation via WebSocket
+  }, []);
 
   // Build a map of recording ID to its project IDs for the bulk action bar
   const recordingProjectMap = recordings.reduce<Record<string, string[]>>((acc, r) => {
