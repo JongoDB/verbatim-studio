@@ -58,6 +58,12 @@ function handleInvalidation(
       queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.stats, ...refetchOptions });
       break;
 
+    case 'tags':
+      queryClient.invalidateQueries({ queryKey: queryKeys.tags.all, ...refetchOptions });
+      // Also invalidate recordings since they display tags
+      queryClient.invalidateQueries({ queryKey: queryKeys.recordings.all, ...refetchOptions });
+      break;
+
     default:
       console.warn(`[DataSync] Unknown resource: ${resource}`);
   }

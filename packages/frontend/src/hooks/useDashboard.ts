@@ -7,6 +7,12 @@ export function useDashboardStats() {
   return useQuery({
     queryKey: queryKeys.dashboard.stats,
     queryFn: () => api.stats.dashboard(),
+    // Poll every 3 seconds when there are active processing jobs
+    // This provides a fallback in case WebSocket broadcasts don't deliver
+    refetchInterval: (query) => {
+      const hasActiveJobs = (query.state.data?.processing?.active_count ?? 0) > 0;
+      return hasActiveJobs ? 3000 : false;
+    },
   });
 }
 
@@ -20,6 +26,14 @@ export function useRecentRecordings(limit = 5) {
         sortOrder: 'desc',
       });
       return response.items;
+    },
+    // Poll every 3 seconds when any recording is processing
+    // This provides a fallback in case WebSocket broadcasts don't deliver
+    refetchInterval: (query) => {
+      const hasProcessing = query.state.data?.some(
+        (r) => r.status === 'processing' || r.status === 'pending'
+      );
+      return hasProcessing ? 3000 : false;
     },
   });
 }

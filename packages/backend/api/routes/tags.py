@@ -91,7 +91,10 @@ async def create_tag(
 
     tag = Tag(name=request.name, color=request.color)
     db.add(tag)
-    await db.flush()
+    await db.commit()
+
+    # Broadcast so other components update their tag lists
+    await broadcast("tags", "created", tag.id)
 
     return TagResponse(
         id=tag.id,
@@ -117,6 +120,11 @@ async def delete_tag(
         )
 
     await db.delete(tag)
+    await db.commit()
+
+    # Broadcast so other components update their tag lists
+    await broadcast("tags", "deleted", tag_id)
+
     return MessageResponse(message="Tag deleted successfully")
 
 

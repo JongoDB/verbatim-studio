@@ -68,4 +68,10 @@ export const queryKeys = {
     all: ['jobs'] as const,
     running: () => ['jobs', 'running'] as const,
   },
+
+  // Tags
+  tags: {
+    all: ['tags'] as const,
+    list: () => ['tags', 'list'] as const,
+  },
 };
