@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { api, type Project, type ProjectRecording, type ProjectType } from '@/lib/api';
 import { formatDate } from '@/lib/utils';
 import { DynamicMetadataForm } from '@/components/shared/DynamicMetadataForm';
+import { TagInput } from '@/components/shared/TagInput';
 import { AddRecordingDialog } from '@/components/projects/AddRecordingDialog';
 
 interface ProjectDetailPageProps {
@@ -40,6 +41,7 @@ export function ProjectDetailPage({
     name: '',
     description: '',
     project_type_id: '',
+    tags: [] as string[],
     metadata: {} as Record<string, unknown>,
   });
 
@@ -67,11 +69,13 @@ export function ProjectDetailPage({
 
   const openEditDialog = () => {
     if (!project) return;
+    const { tags, ...otherMetadata } = project.metadata || {};
     setForm({
       name: project.name,
       description: project.description || '',
       project_type_id: project.project_type?.id || '',
-      metadata: project.metadata || {},
+      tags: (tags as string[]) || [],
+      metadata: otherMetadata || {},
     });
     setShowEditDialog(true);
   };
@@ -79,11 +83,15 @@ export function ProjectDetailPage({
   const handleUpdateProject = async () => {
     if (!project) return;
     try {
+      const metadata = {
+        ...form.metadata,
+        tags: form.tags,  // Always include tags, even empty array to allow clearing
+      };
       await api.projects.update(project.id, {
         name: form.name,
         description: form.description || undefined,
         project_type_id: form.project_type_id || null,
-        metadata: form.metadata,
+        metadata,
       });
       setShowEditDialog(false);
       loadData();
@@ -218,6 +226,47 @@ export function ProjectDetailPage({
         <span>Created {formatDate(project.created_at)}</span>
       </div>
 
+      {/* Project Tags */}
+      {((project.metadata?.tags as string[]) || []).length > 0 && (
+        <div className="space-y-2">
+          <h3 className="text-sm font-medium text-foreground">Tags</h3>
+          <div className="flex flex-wrap gap-2">
+            {((project.metadata?.tags as string[]) || []).map((tag) => (
+              <span
+                key={tag}
+                className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-primary/10 text-primary"
+              >
+                {tag}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Inherited Tags from Recordings */}
+      {project.inherited_tags && project.inherited_tags.length > 0 && (
+        <div className="space-y-2">
+          <h3 className="text-sm font-medium text-foreground">Tags from recordings</h3>
+          <div className="flex flex-wrap gap-2">
+            {project.inherited_tags.map((tag) => (
+              <span
+                key={tag.id}
+                className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium bg-muted text-muted-foreground border border-border"
+              >
+                {tag.color && (
+                  <span
+                    className="w-2 h-2 rounded-full"
+                    style={{ backgroundColor: tag.color }}
+                  />
+                )}
+                {tag.name}
+                <span className="text-[10px] opacity-70">({tag.recording_count})</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Recordings List */}
       <div className="space-y-4">
         <h2 className="text-lg font-semibold text-foreground">Recordings</h2>
@@ -331,6 +380,15 @@ export function ProjectDetailPage({
                     <option key={type.id} value={type.id}>{type.name}</option>
                   ))}
                 </select>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-foreground">Tags</label>
+                <TagInput
+                  tags={form.tags}
+                  onChange={(tags) => setForm({ ...form, tags })}
+                  suggestions={[]}
+                  placeholder="Add tags..."
+                />
               </div>
               {selectedTypeSchema.length > 0 && (
                 <div className="space-y-1.5">

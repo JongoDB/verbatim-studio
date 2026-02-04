@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.routes.sync import broadcast
 from persistence.database import get_db
-from persistence.models import Document, Project, ProjectType, Recording
+from persistence.models import Document, Project, ProjectType, Recording, RecordingTag, Tag
 from services.storage import storage_service
 
 logger = logging.getLogger(__name__)
@@ -37,6 +37,15 @@ class ProjectUpdate(BaseModel):
     metadata: dict | None = None
 
 
+class InheritedTag(BaseModel):
+    """A tag inherited from recordings in the project."""
+
+    id: str
+    name: str
+    color: str | None
+    recording_count: int
+
+
 class ProjectTypeInfo(BaseModel):
     """Embedded project type info in response."""
 
@@ -56,6 +65,7 @@ class ProjectResponse(BaseModel):
     project_type: ProjectTypeInfo | None
     metadata: dict
     recording_count: int
+    inherited_tags: list[InheritedTag]
     created_at: str
     updated_at: str
 
@@ -87,6 +97,49 @@ def _project_type_to_info(pt: ProjectType | None) -> ProjectTypeInfo | None:
     )
 
 
+async def _compute_inherited_tags(
+    db: AsyncSession, project_id: str
+) -> list[InheritedTag]:
+    """Compute tags inherited from recordings in a project."""
+    # Get all recordings in this project
+    result = await db.execute(
+        select(Recording.id).where(Recording.project_id == project_id)
+    )
+    recording_ids = [r for r in result.scalars().all()]
+
+    if not recording_ids:
+        return []
+
+    # Get all tags associated with these recordings
+    result = await db.execute(
+        select(Tag, RecordingTag.recording_id)
+        .join(RecordingTag, RecordingTag.tag_id == Tag.id)
+        .where(RecordingTag.recording_id.in_(recording_ids))
+    )
+    tag_recordings = result.all()
+
+    # Count unique recordings per tag (use set to avoid duplicates)
+    tag_recordings_map: dict[str, tuple[Tag, set[str]]] = {}
+    for tag, recording_id in tag_recordings:
+        if tag.id not in tag_recordings_map:
+            tag_recordings_map[tag.id] = (tag, set())
+        tag_recordings_map[tag.id][1].add(recording_id)
+
+    # Convert to InheritedTag list, sorted by recording count descending
+    return sorted(
+        [
+            InheritedTag(
+                id=tag.id,
+                name=tag.name,
+                color=tag.color,
+                recording_count=len(recording_ids),
+            )
+            for tag, recording_ids in tag_recordings_map.values()
+        ],
+        key=lambda t: (-t.recording_count, t.name),
+    )
+
+
 @router.get("", response_model=ProjectListResponse)
 async def list_projects(
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -111,16 +164,9 @@ async def list_projects(
         query = query.where(Project.project_type_id == project_type_id)
 
     result = await db.execute(query)
-    projects = result.scalars().all()
+    projects = list(result.scalars().all())
 
-    # Filter by tag if specified (stored in metadata.tags array)
-    if tag:
-        projects = [
-            p for p in projects
-            if tag in (p.metadata_.get("tags") or [])
-        ]
-
-    # Get recording counts
+    # Build response items with recording counts and inherited tags
     items = []
     for project in projects:
         count_result = await db.execute(
@@ -130,6 +176,9 @@ async def list_projects(
         )
         recording_count = count_result.scalar() or 0
 
+        # Compute inherited tags from recordings
+        inherited_tags = await _compute_inherited_tags(db, project.id)
+
         items.append(
             ProjectResponse(
                 id=project.id,
@@ -138,10 +187,19 @@ async def list_projects(
                 project_type=_project_type_to_info(project.project_type),
                 metadata=project.metadata_,
                 recording_count=recording_count,
+                inherited_tags=inherited_tags,
                 created_at=project.created_at.isoformat(),
                 updated_at=project.updated_at.isoformat(),
             )
         )
+
+    # Filter by tag if specified (check both project tags and inherited recording tags)
+    if tag:
+        items = [
+            item for item in items
+            if tag in (item.metadata.get("tags") or [])
+            or any(t.name == tag for t in item.inherited_tags)
+        ]
 
     return ProjectListResponse(items=items, total=len(items))
 
@@ -195,6 +253,7 @@ async def create_project(
         project_type=_project_type_to_info(project.project_type),
         metadata=project.metadata_,
         recording_count=0,
+        inherited_tags=[],  # New project has no recordings yet
         created_at=project.created_at.isoformat(),
         updated_at=project.updated_at.isoformat(),
     )
@@ -225,6 +284,9 @@ async def get_project(
     )
     recording_count = count_result.scalar() or 0
 
+    # Compute inherited tags from recordings
+    inherited_tags = await _compute_inherited_tags(db, project.id)
+
     return ProjectResponse(
         id=project.id,
         name=project.name,
@@ -232,6 +294,7 @@ async def get_project(
         project_type=_project_type_to_info(project.project_type),
         metadata=project.metadata_,
         recording_count=recording_count,
+        inherited_tags=inherited_tags,
         created_at=project.created_at.isoformat(),
         updated_at=project.updated_at.isoformat(),
     )
@@ -318,6 +381,9 @@ async def update_project(
     )
     recording_count = count_result.scalar() or 0
 
+    # Compute inherited tags from recordings
+    inherited_tags = await _compute_inherited_tags(db, project.id)
+
     return ProjectResponse(
         id=project.id,
         name=project.name,
@@ -325,6 +391,7 @@ async def update_project(
         project_type=_project_type_to_info(project.project_type),
         metadata=project.metadata_,
         recording_count=recording_count,
+        inherited_tags=inherited_tags,
         created_at=project.created_at.isoformat(),
         updated_at=project.updated_at.isoformat(),
     )

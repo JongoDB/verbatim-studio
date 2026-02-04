@@ -458,6 +458,7 @@ export interface Project {
   project_type: ProjectTypeInfo | null;
   metadata: Record<string, unknown>;
   recording_count: number;
+  inherited_tags: InheritedTag[];
   created_at: string;
   updated_at: string;
 }

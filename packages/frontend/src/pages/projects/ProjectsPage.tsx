@@ -82,11 +82,12 @@ export function ProjectsPage({ onNavigateToProject }: ProjectsPageProps) {
     loadProjectTypes();
   }, []);
 
-  // Extract unique tags from all projects
+  // Extract unique tags from all projects (both direct and inherited)
   const uniqueTags = Array.from(
-    new Set(
-      projects.flatMap(p => (p.metadata?.tags as string[]) || [])
-    )
+    new Set([
+      ...projects.flatMap(p => (p.metadata?.tags as string[]) || []),
+      ...projects.flatMap(p => p.inherited_tags?.map(t => t.name) || [])
+    ])
   ).sort();
 
   const resetForm = () => {
@@ -131,7 +132,7 @@ export function ProjectsPage({ onNavigateToProject }: ProjectsPageProps) {
     if (!selectedProject) return;
     const metadata = {
       ...form.metadata,
-      tags: form.tags.length > 0 ? form.tags : undefined,
+      tags: form.tags,  // Always include tags, even empty array to allow clearing
     };
     await updateProject.mutateAsync({
       id: selectedProject.id,
@@ -403,6 +404,27 @@ export function ProjectsPage({ onNavigateToProject }: ProjectsPageProps) {
                       className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-primary/10 text-primary"
                     >
                       {tag}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {/* Inherited Tags from Recordings */}
+              {project.inherited_tags && project.inherited_tags.length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-2">
+                  <span className="text-[10px] text-muted-foreground mr-1 self-center">From recordings:</span>
+                  {project.inherited_tags.map((tag) => (
+                    <span
+                      key={tag.id}
+                      className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium bg-muted text-muted-foreground border border-border"
+                      title={`${tag.recording_count} recording${tag.recording_count !== 1 ? 's' : ''}`}
+                    >
+                      {tag.color && (
+                        <span
+                          className="w-1.5 h-1.5 rounded-full"
+                          style={{ backgroundColor: tag.color }}
+                        />
+                      )}
+                      {tag.name}
                     </span>
                   ))}
                 </div>
