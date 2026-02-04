@@ -89,9 +89,10 @@ function renderMarkdown(notes: string): React.ReactNode[] {
 
     // List item: - item or * item
     if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+      const content = trimmed.slice(2);
       listItems.push(
-        <li key={`li-${index}`} className="text-sm text-muted-foreground">
-          {renderBold(trimmed.slice(2))}
+        <li key={`${content.substring(0, 30)}-${index}`} className="text-sm text-muted-foreground">
+          {renderBold(content)}
         </li>
       );
       return;
@@ -120,8 +121,8 @@ export function WhatsNewDialog({ releases, onDismiss }: WhatsNewDialogProps) {
     onDismiss();
   };
 
-  const handleClose = () => {
-    handleGotIt();
+  const handleBackdropClick = () => {
+    onDismiss();
   };
 
   if (releases.length === 0) {
@@ -134,7 +135,7 @@ export function WhatsNewDialog({ releases, onDismiss }: WhatsNewDialogProps) {
       <div
         className="absolute inset-0 bg-black/50"
         aria-hidden="true"
-        onClick={handleClose}
+        onClick={handleBackdropClick}
       />
 
       {/* Modal */}
@@ -154,7 +155,7 @@ export function WhatsNewDialog({ releases, onDismiss }: WhatsNewDialogProps) {
             What's New
           </h2>
           <button
-            onClick={handleClose}
+            onClick={handleGotIt}
             className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
             aria-label="Close"
           >
