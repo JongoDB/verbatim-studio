@@ -108,6 +108,7 @@ pnpm --filter @verbatim/electron dist
 3. **Actionable**: If users need to do something, tell them clearly
 4. **Concise**: One line per item, get to the point
 5. **Categorized**: Use the sections above to organize changes
+6. **No AI attribution**: Do NOT include "Generated with Claude Code" or similar AI attribution in release notes
 
 ### Examples
 **Good**: "Fixed issue where search results wouldn't show chat conversations"
