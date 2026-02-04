@@ -1,5 +1,38 @@
 """FastAPI application entry point."""
 
+import os
+import sys
+
+def _setup_ffmpeg_path():
+    """Add bundled ffmpeg to PATH when running in Electron.
+
+    This must be done early, before any transcription libraries try to use ffmpeg.
+    """
+    if os.environ.get("VERBATIM_ELECTRON") != "1":
+        return
+
+    from pathlib import Path
+
+    # In Electron, we're running from resources/python/bin/python3
+    # FFmpeg is at resources/ffmpeg/ffmpeg
+    python_exe = Path(sys.executable)
+
+    # Go up from python/bin/python3 to resources, then into ffmpeg
+    # resources/python/bin/python3 -> resources/python/bin -> resources/python -> resources -> resources/ffmpeg
+    resources_path = python_exe.parent.parent.parent
+    ffmpeg_dir = resources_path / "ffmpeg"
+
+    if ffmpeg_dir.exists():
+        # Prepend ffmpeg directory to PATH
+        current_path = os.environ.get("PATH", "")
+        os.environ["PATH"] = f"{ffmpeg_dir}{os.pathsep}{current_path}"
+        print(f"[Startup] Added bundled ffmpeg to PATH: {ffmpeg_dir}")
+    else:
+        print(f"[Startup] Warning: Bundled ffmpeg not found at {ffmpeg_dir}")
+
+# Set up ffmpeg path early, before any imports that might need it
+_setup_ffmpeg_path()
+
 # Fix PyTorch 2.6+ weights_only=True default breaking older model checkpoints
 # This must be done before any model loading occurs
 try:
