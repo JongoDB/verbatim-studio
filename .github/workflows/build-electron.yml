@@ -173,7 +173,7 @@ jobs:
         id: whisper-cache
         with:
           path: build/resources/whisper-models
-          key: whisper-models-v2-${{ hashFiles('scripts/prepare-whisper-models.sh') }}
+          key: whisper-models-v3-${{ hashFiles('scripts/prepare-whisper-models.sh') }}
 
       - name: Prepare Whisper models for bundling
         if: steps.whisper-cache.outputs.cache-hit != 'true'
