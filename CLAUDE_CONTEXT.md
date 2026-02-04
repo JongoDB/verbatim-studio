@@ -209,7 +209,7 @@ The backend runs on a dynamic port. The API URL is injected into the frontend vi
 
 ### Database Location
 - **Development**: `packages/backend/verbatim.db`
-- **Production**: `<app-bundle>/Contents/Resources/backend/verbatim.db`
+- **Production**: `~/Library/Application Support/@verbatim/electron/verbatim.db` (persists across updates)
 - **User data**: `~/Library/Application Support/@verbatim/electron/`
 
 ### ML Model Downloads
