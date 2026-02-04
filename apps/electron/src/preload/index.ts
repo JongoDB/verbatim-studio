@@ -31,6 +31,57 @@ try {
     multiple?: boolean;
   }): Promise<string | string[] | null> =>
     ipcRenderer.invoke('dialog:openFile', options),
+
+  // Update event listeners (return cleanup function)
+  onUpdateAvailable: (
+    callback: (data: { version: string; downloadUrl: string }) => void
+  ) => {
+    ipcRenderer.on('update-available', (_event, data) => callback(data));
+    return () => ipcRenderer.removeAllListeners('update-available');
+  },
+  onUpdateNotAvailable: (callback: () => void) => {
+    ipcRenderer.on('update-not-available', () => callback());
+    return () => ipcRenderer.removeAllListeners('update-not-available');
+  },
+  onUpdateDownloading: (callback: (data: { percent: number }) => void) => {
+    ipcRenderer.on('update-downloading', (_event, data) => callback(data));
+    return () => ipcRenderer.removeAllListeners('update-downloading');
+  },
+  onUpdateReady: (callback: (data: { version: string }) => void) => {
+    ipcRenderer.on('update-ready', (_event, data) => callback(data));
+    return () => ipcRenderer.removeAllListeners('update-ready');
+  },
+  onUpdateError: (
+    callback: (data: { message: string; fallbackUrl?: string }) => void
+  ) => {
+    ipcRenderer.on('update-error', (_event, data) => callback(data));
+    return () => ipcRenderer.removeAllListeners('update-error');
+  },
+  onShowWhatsNew: (
+    callback: (data: { releases: Array<{ version: string; notes: string }> }) => void
+  ) => {
+    ipcRenderer.on('show-whats-new', (_event, data) => callback(data));
+    return () => ipcRenderer.removeAllListeners('show-whats-new');
+  },
+
+  // Update actions
+  startUpdate: (downloadUrl: string, version: string): void => {
+    ipcRenderer.send('update:start', { downloadUrl, version });
+  },
+  checkForUpdates: (): void => {
+    ipcRenderer.send('update:check');
+  },
+  whatsNewSeen: (version: string): void => {
+    ipcRenderer.send('update:whats-new-seen', version);
+  },
+
+  // Update async getters
+  getUpdateSettings: (): Promise<{ autoUpdateEnabled: boolean }> => {
+    return ipcRenderer.invoke('update:getSettings');
+  },
+  setAutoUpdate: (enabled: boolean): Promise<void> => {
+    return ipcRenderer.invoke('update:setAutoUpdate', enabled);
+  },
   });
   console.log('[Preload] contextBridge.exposeInMainWorld succeeded');
 } catch (err) {
@@ -54,6 +105,24 @@ declare global {
         filters?: { name: string; extensions: string[] }[];
         multiple?: boolean;
       }) => Promise<string | string[] | null>;
+      // Update methods
+      onUpdateAvailable: (
+        callback: (data: { version: string; downloadUrl: string }) => void
+      ) => () => void;
+      onUpdateNotAvailable: (callback: () => void) => () => void;
+      onUpdateDownloading: (callback: (data: { percent: number }) => void) => () => void;
+      onUpdateReady: (callback: (data: { version: string }) => void) => () => void;
+      onUpdateError: (
+        callback: (data: { message: string; fallbackUrl?: string }) => void
+      ) => () => void;
+      onShowWhatsNew: (
+        callback: (data: { releases: Array<{ version: string; notes: string }> }) => void
+      ) => () => void;
+      startUpdate: (downloadUrl: string, version: string) => void;
+      checkForUpdates: () => void;
+      whatsNewSeen: (version: string) => void;
+      getUpdateSettings: () => Promise<{ autoUpdateEnabled: boolean }>;
+      setAutoUpdate: (enabled: boolean) => Promise<void>;
     };
   }
 }
