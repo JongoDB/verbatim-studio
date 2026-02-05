@@ -1072,6 +1072,33 @@ export interface ResetDatabaseResponse {
   message: string;
 }
 
+// Selective clear types
+export type ClearableCategory =
+  | 'recordings'
+  | 'projects'
+  | 'documents'
+  | 'tags'
+  | 'conversations'
+  | 'search_history'
+  | 'jobs';
+
+export interface CategoryCount {
+  category: ClearableCategory;
+  count: number;
+  label: string;
+  description: string;
+}
+
+export interface CategoryCountsResponse {
+  categories: CategoryCount[];
+}
+
+export interface SelectiveClearResponse {
+  success: boolean;
+  deleted: Record<string, number>;
+  message: string;
+}
+
 // Storage Locations
 export type StorageType = 'local' | 'network' | 'cloud';
 export type StorageSubtype =
@@ -2388,6 +2415,13 @@ class ApiClient {
       this.request<ResetDatabaseResponse>('/api/system/reset-database', {
         method: 'POST',
         body: JSON.stringify({ delete_media: deleteMedia }),
+      }),
+    getCategoryCounts: () =>
+      this.request<CategoryCountsResponse>('/api/system/category-counts'),
+    clearSelective: (categories: ClearableCategory[]) =>
+      this.request<SelectiveClearResponse>('/api/system/clear-selective', {
+        method: 'POST',
+        body: JSON.stringify({ categories }),
       }),
   };
 

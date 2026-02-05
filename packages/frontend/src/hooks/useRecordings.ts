@@ -131,7 +131,7 @@ export function useTranscribeRecording() {
 
   return useMutation({
     mutationFn: ({ id, language }: { id: string; language?: string }) =>
-      api.recordings.transcribe(id, language),
+      api.recordings.transcribe(id, { language }),
 
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.recordings.all });

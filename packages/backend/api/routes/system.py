@@ -8,6 +8,7 @@ import platform
 import shutil
 import subprocess
 import sys
+from enum import Enum
 from pathlib import Path
 from typing import AsyncIterator
 
@@ -730,4 +731,205 @@ async def reset_database(request: ResetDatabaseRequest) -> ResetDatabaseResponse
             success=False,
             deleted=deleted_counts,
             message=f"Reset failed: {str(e)}",
+        )
+
+
+class ClearableCategory(str, Enum):
+    """Categories that can be selectively cleared."""
+
+    RECORDINGS = "recordings"  # Includes transcripts, segments, speakers, embeddings
+    PROJECTS = "projects"  # Unlinks recordings, doesn't delete them
+    DOCUMENTS = "documents"  # Includes document embeddings
+    TAGS = "tags"  # All tags
+    CONVERSATIONS = "conversations"  # Chat history
+    SEARCH_HISTORY = "search_history"
+    JOBS = "jobs"  # Job queue
+
+
+class SelectiveClearRequest(BaseModel):
+    """Request body for selective database clearing."""
+
+    categories: list[ClearableCategory]
+
+
+class CategoryCount(BaseModel):
+    """Count for a clearable category."""
+
+    category: ClearableCategory
+    count: int
+    label: str
+    description: str
+
+
+class CategoryCountsResponse(BaseModel):
+    """Response with counts for all clearable categories."""
+
+    categories: list[CategoryCount]
+
+
+class SelectiveClearResponse(BaseModel):
+    """Response from selective clearing."""
+
+    success: bool
+    deleted: dict[str, int]
+    message: str
+
+
+@router.get("/category-counts", response_model=CategoryCountsResponse)
+async def get_category_counts() -> CategoryCountsResponse:
+    """Get counts for all clearable database categories."""
+    from persistence.models import (
+        Conversation,
+        Document,
+        Job,
+        Project,
+        Recording,
+        Tag,
+    )
+    from persistence.models import SearchHistory
+
+    async with async_session() as db:
+        # Get counts for each category
+        recordings_count = (await db.execute(text("SELECT COUNT(*) FROM recordings"))).scalar() or 0
+        projects_count = (await db.execute(text("SELECT COUNT(*) FROM projects"))).scalar() or 0
+        documents_count = (await db.execute(text("SELECT COUNT(*) FROM documents"))).scalar() or 0
+        tags_count = (await db.execute(text("SELECT COUNT(*) FROM tags"))).scalar() or 0
+        conversations_count = (await db.execute(text("SELECT COUNT(*) FROM conversations"))).scalar() or 0
+        search_history_count = (await db.execute(text("SELECT COUNT(*) FROM search_history"))).scalar() or 0
+        jobs_count = (await db.execute(text("SELECT COUNT(*) FROM jobs"))).scalar() or 0
+
+    return CategoryCountsResponse(
+        categories=[
+            CategoryCount(
+                category=ClearableCategory.RECORDINGS,
+                count=recordings_count,
+                label="Recordings",
+                description="Includes transcripts, segments, speakers, and embeddings",
+            ),
+            CategoryCount(
+                category=ClearableCategory.PROJECTS,
+                count=projects_count,
+                label="Projects",
+                description="Unlinks recordings but does not delete them",
+            ),
+            CategoryCount(
+                category=ClearableCategory.DOCUMENTS,
+                count=documents_count,
+                label="Documents",
+                description="Includes document embeddings",
+            ),
+            CategoryCount(
+                category=ClearableCategory.TAGS,
+                count=tags_count,
+                label="Tags",
+                description="Removes from all recordings, projects, and documents",
+            ),
+            CategoryCount(
+                category=ClearableCategory.CONVERSATIONS,
+                count=conversations_count,
+                label="Chat History",
+                description="All AI conversations and messages",
+            ),
+            CategoryCount(
+                category=ClearableCategory.SEARCH_HISTORY,
+                count=search_history_count,
+                label="Search History",
+                description="Recent search queries",
+            ),
+            CategoryCount(
+                category=ClearableCategory.JOBS,
+                count=jobs_count,
+                label="Job Queue",
+                description="Pending and completed background jobs",
+            ),
+        ]
+    )
+
+
+@router.post("/clear-selective", response_model=SelectiveClearResponse)
+async def clear_selective(request: SelectiveClearRequest) -> SelectiveClearResponse:
+    """Selectively clear specific database categories.
+
+    This allows granular control over what data to delete.
+    """
+    deleted_counts: dict[str, int] = {}
+
+    try:
+        async with async_session() as db:
+            for category in request.categories:
+                if category == ClearableCategory.RECORDINGS:
+                    # Delete in dependency order
+                    result = await db.execute(text("DELETE FROM segment_embeddings"))
+                    deleted_counts["segment_embeddings"] = result.rowcount
+                    result = await db.execute(text("DELETE FROM segment_comments"))
+                    deleted_counts["segment_comments"] = result.rowcount
+                    result = await db.execute(text("DELETE FROM segment_highlights"))
+                    deleted_counts["segment_highlights"] = result.rowcount
+                    result = await db.execute(text("DELETE FROM notes"))
+                    deleted_counts["notes"] = result.rowcount
+                    result = await db.execute(text("DELETE FROM segments"))
+                    deleted_counts["segments"] = result.rowcount
+                    result = await db.execute(text("DELETE FROM speakers"))
+                    deleted_counts["speakers"] = result.rowcount
+                    result = await db.execute(text("DELETE FROM transcripts"))
+                    deleted_counts["transcripts"] = result.rowcount
+                    result = await db.execute(text("DELETE FROM recording_tags"))
+                    deleted_counts["recording_tags"] = result.rowcount
+                    result = await db.execute(text("DELETE FROM project_recordings"))
+                    deleted_counts["project_recordings"] = result.rowcount
+                    result = await db.execute(text("DELETE FROM recordings"))
+                    deleted_counts["recordings"] = result.rowcount
+
+                elif category == ClearableCategory.PROJECTS:
+                    # Clear project assignments but don't delete recordings
+                    result = await db.execute(text("DELETE FROM project_recordings"))
+                    deleted_counts["project_recordings"] = deleted_counts.get("project_recordings", 0) + result.rowcount
+                    result = await db.execute(text("DELETE FROM projects"))
+                    deleted_counts["projects"] = result.rowcount
+
+                elif category == ClearableCategory.DOCUMENTS:
+                    result = await db.execute(text("DELETE FROM document_embeddings"))
+                    deleted_counts["document_embeddings"] = result.rowcount
+                    result = await db.execute(text("DELETE FROM documents"))
+                    deleted_counts["documents"] = result.rowcount
+
+                elif category == ClearableCategory.TAGS:
+                    # Delete junction tables first
+                    result = await db.execute(text("DELETE FROM recording_tags"))
+                    deleted_counts["recording_tags"] = deleted_counts.get("recording_tags", 0) + result.rowcount
+                    result = await db.execute(text("DELETE FROM tags"))
+                    deleted_counts["tags"] = result.rowcount
+
+                elif category == ClearableCategory.CONVERSATIONS:
+                    result = await db.execute(text("DELETE FROM conversation_messages"))
+                    deleted_counts["conversation_messages"] = result.rowcount
+                    result = await db.execute(text("DELETE FROM conversations"))
+                    deleted_counts["conversations"] = result.rowcount
+
+                elif category == ClearableCategory.SEARCH_HISTORY:
+                    result = await db.execute(text("DELETE FROM search_history"))
+                    deleted_counts["search_history"] = result.rowcount
+
+                elif category == ClearableCategory.JOBS:
+                    result = await db.execute(text("DELETE FROM jobs"))
+                    deleted_counts["jobs"] = result.rowcount
+
+            await db.commit()
+
+        total_deleted = sum(deleted_counts.values())
+        categories_str = ", ".join(c.value for c in request.categories)
+        logger.info("Selective clear complete. Categories: %s, Deleted: %s", categories_str, deleted_counts)
+
+        return SelectiveClearResponse(
+            success=True,
+            deleted=deleted_counts,
+            message=f"Successfully cleared {total_deleted} items from: {categories_str}",
+        )
+
+    except Exception as e:
+        logger.exception("Selective clear failed")
+        return SelectiveClearResponse(
+            success=False,
+            deleted=deleted_counts,
+            message=f"Clear failed: {str(e)}",
         )

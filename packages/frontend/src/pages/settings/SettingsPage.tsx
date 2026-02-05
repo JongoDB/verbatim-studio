@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { api, type ArchiveInfo, type TranscriptionSettings, type AIModel, type AIModelDownloadEvent, type OCRModel, type OCRModelDownloadEvent, type WhisperModel, type WhisperModelDownloadEvent, type DiarizationModel, type DiarizationModelDownloadEvent, type SystemInfo, type MLStatus, type StorageLocation, type MigrationStatus, type SyncResult, type StorageType, type StorageSubtype, type StorageLocationConfig, type OAuthStatusResponse } from '@/lib/api';
+import { api, type ArchiveInfo, type TranscriptionSettings, type AIModel, type AIModelDownloadEvent, type OCRModel, type OCRModelDownloadEvent, type WhisperModel, type WhisperModelDownloadEvent, type DiarizationModel, type DiarizationModelDownloadEvent, type SystemInfo, type MLStatus, type StorageLocation, type MigrationStatus, type SyncResult, type StorageType, type StorageSubtype, type StorageLocationConfig, type OAuthStatusResponse, type CategoryCount, type ClearableCategory } from '@/lib/api';
 import { StorageTypeSelector } from '@/components/storage/StorageTypeSelector';
 import { StorageSubtypeSelector } from '@/components/storage/StorageSubtypeSelector';
 import { StorageConfigForm } from '@/components/storage/StorageConfigForm';
@@ -170,6 +170,14 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
   const [isResetting, setIsResetting] = useState(false);
   const [resetResult, setResetResult] = useState<{ success: boolean; message: string; deleted?: Record<string, number> } | null>(null);
 
+  // Granular clear state
+  const [categoryCounts, setCategoryCounts] = useState<CategoryCount[]>([]);
+  const [selectedCategories, setSelectedCategories] = useState<Set<ClearableCategory>>(new Set());
+  const [showClearDialog, setShowClearDialog] = useState(false);
+  const [clearConfirmText, setClearConfirmText] = useState('');
+  const [isClearing, setIsClearing] = useState(false);
+  const [clearResult, setClearResult] = useState<{ success: boolean; message: string; deleted?: Record<string, number> } | null>(null);
+
   // Update settings state
   const [autoUpdateEnabled, setAutoUpdateEnabled] = useState(true);
   const [isCheckingForUpdates, setIsCheckingForUpdates] = useState(false);
@@ -199,6 +207,7 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
     }).catch(console.error);
     api.system.info().then(setSystemInfo).catch(console.error);
     api.system.mlStatus().then(setMlStatus).catch(console.error);
+    api.system.getCategoryCounts().then((r) => setCategoryCounts(r.categories)).catch(console.error);
     loadStorageLocations();
   }, [loadStorageLocations]);
 
@@ -3654,13 +3663,82 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
               </div>
             </div>
 
-            {/* Danger Zone */}
-            <div className="border-t border-red-200 dark:border-red-900/50 pt-4 mt-2">
-              <h3 className="text-sm font-medium text-red-600 dark:text-red-400 mb-3">Danger Zone</h3>
+            {/* Database Management */}
+            <div className="border-t border-gray-200 dark:border-gray-700 pt-4 mt-2">
+              <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-3">Database Management</h3>
+
+              {/* Selective Clear */}
+              <div className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-900/50 mb-4">
+                <h4 className="font-medium text-gray-900 dark:text-gray-100 mb-2">Clear Selected Data</h4>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+                  Select categories to clear. This allows granular control over what data to delete.
+                </p>
+
+                <div className="space-y-2 mb-4">
+                  {categoryCounts.map((cat) => (
+                    <label
+                      key={cat.category}
+                      className="flex items-center justify-between p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer"
+                    >
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="checkbox"
+                          checked={selectedCategories.has(cat.category)}
+                          onChange={(e) => {
+                            const newSet = new Set(selectedCategories);
+                            if (e.target.checked) {
+                              newSet.add(cat.category);
+                            } else {
+                              newSet.delete(cat.category);
+                            }
+                            setSelectedCategories(newSet);
+                          }}
+                          className="h-4 w-4 rounded border-gray-300 dark:border-gray-600 text-primary focus:ring-primary"
+                        />
+                        <div>
+                          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{cat.label}</span>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">{cat.description}</p>
+                        </div>
+                      </div>
+                      <span className="text-sm font-medium text-gray-500 dark:text-gray-400 tabular-nums">
+                        {cat.count.toLocaleString()}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      if (selectedCategories.size === categoryCounts.length) {
+                        setSelectedCategories(new Set());
+                      } else {
+                        setSelectedCategories(new Set(categoryCounts.map((c) => c.category)));
+                      }
+                    }}
+                    className="px-3 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 border border-gray-300 dark:border-gray-600 rounded-lg"
+                  >
+                    {selectedCategories.size === categoryCounts.length ? 'Deselect All' : 'Select All'}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowClearDialog(true);
+                      setClearConfirmText('');
+                      setClearResult(null);
+                    }}
+                    disabled={selectedCategories.size === 0}
+                    className="px-3 py-1.5 text-xs font-medium bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Clear Selected ({selectedCategories.size})
+                  </button>
+                </div>
+              </div>
+
+              {/* Full Reset - Danger Zone */}
               <div className="p-4 border border-red-200 dark:border-red-800/50 rounded-lg bg-red-50 dark:bg-red-900/10">
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1">
-                    <h4 className="font-medium text-gray-900 dark:text-gray-100">Reset Database</h4>
+                    <h4 className="font-medium text-red-700 dark:text-red-300">Full Database Reset</h4>
                     <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                       Delete all recordings, transcripts, projects, and conversations. This cannot be undone.
                     </p>
@@ -3674,7 +3752,7 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
                     }}
                     className="shrink-0 px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 transition-colors"
                   >
-                    Reset Database
+                    Reset All
                   </button>
                 </div>
               </div>
@@ -3912,6 +3990,137 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
                   onClick={() => {
                     setShowResetDialog(false);
                     setResetResult(null);
+                  }}
+                  className="px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 text-sm font-medium"
+                >
+                  Close
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Clear Selected Dialog */}
+      {showClearDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
+            {!clearResult ? (
+              <>
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-10 h-10 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+                    <svg className="w-5 h-5 text-amber-600 dark:text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </div>
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                    Clear Selected Data
+                  </h3>
+                </div>
+
+                <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                  You are about to clear the following categories:
+                </p>
+
+                <ul className="text-sm text-gray-500 dark:text-gray-400 mb-4 space-y-1 list-disc list-inside">
+                  {Array.from(selectedCategories).map((cat) => {
+                    const catInfo = categoryCounts.find((c) => c.category === cat);
+                    return (
+                      <li key={cat}>
+                        {catInfo?.label || cat} ({catInfo?.count.toLocaleString() || 0} items)
+                      </li>
+                    );
+                  })}
+                </ul>
+
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Type <span className="font-mono text-amber-600 dark:text-amber-400">CLEAR</span> to confirm
+                  </label>
+                  <input
+                    type="text"
+                    value={clearConfirmText}
+                    onChange={(e) => setClearConfirmText(e.target.value)}
+                    placeholder="CLEAR"
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm"
+                  />
+                </div>
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={async () => {
+                      setIsClearing(true);
+                      try {
+                        const result = await api.system.clearSelective(Array.from(selectedCategories));
+                        setClearResult({
+                          success: result.success,
+                          message: result.message,
+                          deleted: result.deleted,
+                        });
+                        if (result.success) {
+                          // Refresh system info and category counts
+                          api.system.info().then(setSystemInfo).catch(console.error);
+                          api.system.getCategoryCounts().then((r) => setCategoryCounts(r.categories)).catch(console.error);
+                          setSelectedCategories(new Set());
+                        }
+                      } catch (err) {
+                        setClearResult({
+                          success: false,
+                          message: err instanceof Error ? err.message : 'Clear failed',
+                        });
+                      } finally {
+                        setIsClearing(false);
+                      }
+                    }}
+                    disabled={clearConfirmText !== 'CLEAR' || isClearing}
+                    className="flex-1 px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium transition-colors"
+                  >
+                    {isClearing ? 'Clearing...' : 'Clear Data'}
+                  </button>
+                  <button
+                    onClick={() => setShowClearDialog(false)}
+                    disabled={isClearing}
+                    className="px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 text-sm font-medium"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="text-center">
+                {clearResult.success ? (
+                  <>
+                    <div className="w-12 h-12 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center mx-auto mb-4">
+                      <svg className="w-6 h-6 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                    </div>
+                    <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
+                      Data Cleared
+                    </h3>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+                      {clearResult.message}
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <div className="w-12 h-12 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center mx-auto mb-4">
+                      <svg className="w-6 h-6 text-red-600 dark:text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </div>
+                    <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
+                      Clear Failed
+                    </h3>
+                    <p className="text-sm text-red-600 dark:text-red-400 mb-4">
+                      {clearResult.message}
+                    </p>
+                  </>
+                )}
+                <button
+                  onClick={() => {
+                    setShowClearDialog(false);
+                    setClearResult(null);
                   }}
                   className="px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 text-sm font-medium"
                 >
