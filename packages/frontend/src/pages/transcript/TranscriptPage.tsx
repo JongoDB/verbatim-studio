@@ -316,6 +316,32 @@ export function TranscriptPage({ recordingId, onBack, initialSeekTime }: Transcr
   }, []);
 
   const [showShortcuts, setShowShortcuts] = useState(false);
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [editedTitle, setEditedTitle] = useState('');
+
+  // Handle title edit
+  const handleStartEditTitle = useCallback(() => {
+    if (recording) {
+      setEditedTitle(recording.title);
+      setIsEditingTitle(true);
+    }
+  }, [recording]);
+
+  const handleSaveTitle = useCallback(async () => {
+    if (!recording || !editedTitle.trim()) return;
+    try {
+      await api.recordings.update(recording.id, { title: editedTitle.trim() });
+      setRecording((prev) => prev ? { ...prev, title: editedTitle.trim() } : prev);
+      setIsEditingTitle(false);
+    } catch (err) {
+      console.error('Failed to update title:', err);
+    }
+  }, [recording, editedTitle]);
+
+  const handleCancelEditTitle = useCallback(() => {
+    setIsEditingTitle(false);
+    setEditedTitle('');
+  }, []);
 
   // Create speaker lookup maps
   const speakerMap = new Map<string, Speaker>();
@@ -432,32 +458,58 @@ export function TranscriptPage({ recordingId, onBack, initialSeekTime }: Transcr
     <div className="space-y-6">
       <BackButton />
 
-      {/* Waveform Player - sticky at top */}
-      <div className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-900 pb-4 -mx-4 px-4 pt-2 -mt-2">
-        <WaveformPlayer
-          ref={audioRef}
-          src={api.recordings.getAudioUrl(recordingId)}
-          onTimeUpdate={setCurrentTime}
-        />
-        {/* In-transcript search bar */}
-        {showSearch && (
-          <div className="mt-3">
-            <TranscriptSearch
-              segments={transcript.segments}
-              onClose={handleCloseSearch}
-              onMatchChange={handleSearchMatchChange}
-              onScrollToSegment={handleScrollToSegment}
-            />
-          </div>
-        )}
-      </div>
-
-      {/* Transcript info header */}
+      {/* Transcript info header - now at top */}
       <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
         <div className="flex items-start justify-between mb-3">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-            {recording.title}
-          </h2>
+          {/* Editable title */}
+          {isEditingTitle ? (
+            <div className="flex items-center gap-2 flex-1 mr-4">
+              <input
+                type="text"
+                value={editedTitle}
+                onChange={(e) => setEditedTitle(e.target.value)}
+                className="flex-1 text-lg font-semibold rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1 text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleSaveTitle();
+                  if (e.key === 'Escape') handleCancelEditTitle();
+                }}
+              />
+              <button
+                onClick={handleSaveTitle}
+                className="p-1.5 rounded-md text-green-600 hover:bg-green-50 dark:hover:bg-green-900/30"
+                title="Save"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              </button>
+              <button
+                onClick={handleCancelEditTitle}
+                className="p-1.5 rounded-md text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"
+                title="Cancel"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                {recording.title}
+              </h2>
+              <button
+                onClick={handleStartEditTitle}
+                className="p-1 rounded-md text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                title="Edit title"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                </svg>
+              </button>
+            </div>
+          )}
           <div className="flex items-center gap-2">
             <button
               onClick={() => setShowSearch(true)}
@@ -581,6 +633,26 @@ export function TranscriptPage({ recordingId, onBack, initialSeekTime }: Transcr
                 })}
               </div>
             )}
+          </div>
+        )}
+      </div>
+
+      {/* Waveform Player - sticky when scrolling */}
+      <div className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-900 pb-4 -mx-4 px-4 pt-2 -mt-2 rounded-lg">
+        <WaveformPlayer
+          ref={audioRef}
+          src={api.recordings.getAudioUrl(recordingId)}
+          onTimeUpdate={setCurrentTime}
+        />
+        {/* In-transcript search bar */}
+        {showSearch && (
+          <div className="mt-3">
+            <TranscriptSearch
+              segments={transcript.segments}
+              onClose={handleCloseSearch}
+              onMatchChange={handleSearchMatchChange}
+              onScrollToSegment={handleScrollToSegment}
+            />
           </div>
         )}
       </div>

@@ -49,7 +49,7 @@ function loadQuality(): QualityPreset {
 
 export function RecordingSetupPanel({ onStartRecording, onCancel }: RecordingSetupPanelProps) {
   const [quality, setQuality] = useState<QualityPreset>(loadQuality);
-  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(true);
   const [autoTranscribe, setAutoTranscribe] = useState(true);
 
   // Metadata fields
