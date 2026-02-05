@@ -127,7 +127,9 @@ export function Dashboard({ onNavigateToRecordings, onNavigateToProjects, onView
       // Auto-transcribe if option is enabled
       if (options.autoTranscribe && result.id) {
         try {
-          await api.recordings.transcribe(result.id);
+          await api.recordings.transcribe(result.id, {
+            autoGenerateSummary: options.autoGenerateSummary,
+          });
         } catch {
           console.error('Failed to start auto-transcription');
         }

@@ -538,6 +538,15 @@ async def handle_transcription(
             except Exception as e:
                 logger.warning("Failed to queue embedding job: %s", e)
 
+        # Auto-queue summarization job if requested
+        auto_summary = payload.get("auto_summary", False)
+        if auto_summary:
+            try:
+                await job_queue.enqueue("summarize", {"transcript_id": transcript_id})
+                logger.info("Queued summarization job for transcript %s", transcript_id)
+            except Exception as e:
+                logger.warning("Failed to queue summarization job: %s", e)
+
         await progress_callback(100)
 
         logger.info(
@@ -687,6 +696,109 @@ async def handle_embedding(
 
 # Register the embedding handler
 job_queue.register_handler("embed", handle_embedding)
+
+
+async def handle_summarization(
+    payload: dict[str, Any], progress_callback: ProgressCallback
+) -> dict[str, Any]:
+    """Generate AI summary for a transcript.
+
+    Args:
+        payload: Job payload with:
+            - transcript_id: Required transcript ID
+        progress_callback: Callback to report progress.
+
+    Returns:
+        Result dictionary with success status.
+
+    Raises:
+        ValueError: If transcript not found or AI not available.
+    """
+    from core.factory import get_factory
+    from core.interfaces import ChatOptions
+
+    transcript_id = payload.get("transcript_id")
+    if not transcript_id:
+        raise ValueError("Missing transcript_id in payload")
+
+    await progress_callback(10)
+
+    # Check if AI service is available
+    factory = get_factory()
+    ai_service = factory.create_ai_service()
+
+    if not await ai_service.is_available():
+        logger.warning("AI service not available, skipping summarization")
+        return {"success": False, "skipped": True, "reason": "AI service not available"}
+
+    await progress_callback(20)
+
+    # Get transcript text
+    async with async_session() as session:
+        result = await session.execute(
+            select(Transcript).where(Transcript.id == transcript_id)
+        )
+        transcript = result.scalar_one_or_none()
+
+        if not transcript:
+            raise ValueError(f"Transcript not found: {transcript_id}")
+
+        # Get segments
+        seg_result = await session.execute(
+            select(Segment)
+            .where(Segment.transcript_id == transcript_id)
+            .order_by(Segment.segment_index)
+        )
+        segments = seg_result.scalars().all()
+
+        if not segments:
+            logger.warning("No segments found for transcript %s", transcript_id)
+            return {"success": False, "reason": "No segments found"}
+
+        # Build transcript text
+        transcript_text = "\n".join([
+            f"[{seg.speaker or 'Speaker'}]: {seg.text}"
+            for seg in segments
+        ])
+
+    await progress_callback(30)
+
+    # Generate summary
+    try:
+        options = ChatOptions(temperature=0.3, max_tokens=2048)
+        result = await ai_service.summarize_transcript(transcript_text, options)
+        await progress_callback(80)
+
+        # Store summary in transcript
+        async with async_session() as session:
+            await session.execute(
+                update(Transcript)
+                .where(Transcript.id == transcript_id)
+                .values(ai_summary={
+                    "summary": result.summary,
+                    "key_points": result.key_points,
+                    "action_items": result.action_items,
+                    "topics": result.topics,
+                    "named_entities": result.named_entities,
+                })
+            )
+            await session.commit()
+
+        # Broadcast update so frontend refreshes
+        await broadcast("recordings", "summary_generated", transcript.recording_id)
+
+        await progress_callback(100)
+
+        logger.info("Summarization complete for transcript %s", transcript_id)
+        return {"success": True, "transcript_id": transcript_id}
+
+    except Exception as e:
+        logger.exception("Summarization failed for transcript %s", transcript_id)
+        return {"success": False, "error": str(e)}
+
+
+# Register the summarization handler
+job_queue.register_handler("summarize", handle_summarization)
 
 
 # Document processing handler

@@ -42,6 +42,16 @@ class SegmentResponse(BaseModel):
         from_attributes = True
 
 
+class AISummary(BaseModel):
+    """AI-generated summary response model."""
+
+    summary: str
+    key_points: list[str]
+    action_items: list[str]
+    topics: list[str]
+    named_entities: list[str]
+
+
 class TranscriptResponse(BaseModel):
     """Response model for a transcript."""
 
@@ -51,6 +61,7 @@ class TranscriptResponse(BaseModel):
     model_used: str | None
     confidence_avg: float | None
     word_count: int | None
+    ai_summary: AISummary | None
     created_at: datetime
     updated_at: datetime
 
@@ -176,6 +187,7 @@ async def get_transcript(
         model_used=transcript.model_used,
         confidence_avg=transcript.confidence_avg,
         word_count=transcript.word_count,
+        ai_summary=AISummary(**transcript.ai_summary) if transcript.ai_summary else None,
         created_at=transcript.created_at,
         updated_at=transcript.updated_at,
         segments=[
@@ -362,6 +374,7 @@ async def get_transcript_by_recording(
         model_used=transcript.model_used,
         confidence_avg=transcript.confidence_avg,
         word_count=transcript.word_count,
+        ai_summary=AISummary(**transcript.ai_summary) if transcript.ai_summary else None,
         created_at=transcript.created_at,
         updated_at=transcript.updated_at,
         segments=[

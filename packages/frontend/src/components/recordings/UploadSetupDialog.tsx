@@ -7,6 +7,7 @@ export interface UploadOptions {
   templateId?: string;
   metadata?: Record<string, unknown>;
   autoTranscribe?: boolean;
+  autoGenerateSummary?: boolean;
 }
 
 interface UploadSetupDialogProps {
@@ -28,6 +29,7 @@ export function UploadSetupDialog({
   const [metadata, setMetadata] = useState<Record<string, unknown>>({});
   const [loadingTemplates, setLoadingTemplates] = useState(false);
   const [autoTranscribe, setAutoTranscribe] = useState(true);
+  const [autoGenerateSummary, setAutoGenerateSummary] = useState(false);
   const dialogRef = useRef<HTMLDivElement>(null);
   const titleRef = useRef<HTMLInputElement>(null);
 
@@ -87,6 +89,7 @@ export function UploadSetupDialog({
       templateId: selectedTemplateId || undefined,
       metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
       autoTranscribe,
+      autoGenerateSummary: autoTranscribe ? autoGenerateSummary : false,
     });
   };
 
@@ -210,7 +213,7 @@ export function UploadSetupDialog({
           )}
 
           {/* Auto-transcribe checkbox */}
-          <div className="border-t border-border pt-4">
+          <div className="border-t border-border pt-4 space-y-3">
             <label className="flex items-center gap-3 cursor-pointer">
               <input
                 type="checkbox"
@@ -221,6 +224,21 @@ export function UploadSetupDialog({
               <div>
                 <span className="text-sm font-medium text-foreground">Transcribe after upload</span>
                 <p className="text-xs text-muted-foreground">Automatically start transcription when upload completes</p>
+              </div>
+            </label>
+
+            {/* Auto-generate summary checkbox */}
+            <label className={`flex items-center gap-3 ml-7 ${autoTranscribe ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'}`}>
+              <input
+                type="checkbox"
+                checked={autoGenerateSummary}
+                onChange={(e) => setAutoGenerateSummary(e.target.checked)}
+                disabled={!autoTranscribe}
+                className="h-4 w-4 rounded border-border text-primary focus:ring-primary disabled:opacity-50"
+              />
+              <div>
+                <span className="text-sm font-medium text-foreground">Generate AI summary</span>
+                <p className="text-xs text-muted-foreground">Automatically create summary after transcription</p>
               </div>
             </label>
           </div>

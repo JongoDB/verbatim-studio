@@ -282,6 +282,14 @@ export interface CommentListResponse {
   items: SegmentComment[];
 }
 
+export interface AISummary {
+  summary: string;
+  key_points: string[];
+  action_items: string[];
+  topics: string[];
+  named_entities: string[];
+}
+
 export interface Transcript {
   id: string;
   recording_id: string;
@@ -289,6 +297,7 @@ export interface Transcript {
   model_used: string | null;
   confidence_avg: number | null;
   word_count: number | null;
+  ai_summary: AISummary | null;
   created_at: string;
   updated_at: string;
 }
@@ -1381,10 +1390,13 @@ class ApiClient {
         ),
       }),
 
-    transcribe: (id: string, language?: string) => {
+    transcribe: (id: string, options?: { language?: string; autoGenerateSummary?: boolean }) => {
       const queryParams = new URLSearchParams();
-      if (language) {
-        queryParams.set('language', language);
+      if (options?.language) {
+        queryParams.set('language', options.language);
+      }
+      if (options?.autoGenerateSummary) {
+        queryParams.set('auto_summary', 'true');
       }
       const queryString = queryParams.toString();
       return this.request<TranscribeResponse>(

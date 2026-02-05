@@ -205,7 +205,9 @@ export function RecordingsPage({ onViewTranscript }: RecordingsPageProps) {
         // Auto-transcribe if option is enabled
         if (options.autoTranscribe && result.id) {
           try {
-            await api.recordings.transcribe(result.id);
+            await api.recordings.transcribe(result.id, {
+              autoGenerateSummary: options.autoGenerateSummary,
+            });
           } catch {
             // Don't fail the upload if transcription fails to start
             console.error('Failed to start auto-transcription');

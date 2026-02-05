@@ -165,6 +165,8 @@ class Transcript(Base):
     model_used: Mapped[str | None] = mapped_column(String(50))
     confidence_avg: Mapped[float | None] = mapped_column(Float)
     word_count: Mapped[int | None] = mapped_column(Integer)
+    # AI-generated summary (summary, key_points, action_items, topics, named_entities)
+    ai_summary: Mapped[dict | None] = mapped_column(JSON, default=None)
     created_at: Mapped[datetime] = mapped_column(default=func.now())
     updated_at: Mapped[datetime] = mapped_column(default=func.now(), onupdate=func.now())
 

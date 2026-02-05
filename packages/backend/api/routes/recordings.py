@@ -1054,6 +1054,7 @@ async def transcribe_recording(
     recording_id: str,
     db: Annotated[AsyncSession, Depends(get_db)],
     language: Annotated[str | None, Query(description="Language code (e.g., 'en', 'es')")] = None,
+    auto_summary: Annotated[bool, Query(description="Auto-generate AI summary after transcription")] = False,
 ) -> TranscribeResponse:
     """Start transcription for a recording.
 
@@ -1063,6 +1064,7 @@ async def transcribe_recording(
         recording_id: The recording's unique ID.
         db: Database session.
         language: Optional language code for transcription.
+        auto_summary: Whether to auto-generate AI summary after transcription.
 
     Returns:
         Job ID and status.
@@ -1089,6 +1091,8 @@ async def transcribe_recording(
     payload = {"recording_id": recording_id}
     if language:
         payload["language"] = language
+    if auto_summary:
+        payload["auto_summary"] = True
 
     job_id = await job_queue.enqueue("transcribe", payload)
     await broadcast("recordings", "status_changed", recording_id)
