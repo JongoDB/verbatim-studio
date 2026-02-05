@@ -1219,12 +1219,14 @@ export interface MigrationStatus {
 export interface SyncResult {
   recordings_in_db: number;
   recordings_on_disk: number;
-  recordings_missing_file: number;
   recordings_imported: number;
+  recordings_removed: number;
   documents_in_db: number;
   documents_on_disk: number;
-  documents_missing_file: number;
   documents_imported: number;
+  documents_removed: number;
+  projects_created: number;
+  projects_removed: number;
   storage_location_id: string;
   storage_location_name: string;
   storage_path: string;

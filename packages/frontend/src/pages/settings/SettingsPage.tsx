@@ -2891,25 +2891,30 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
                   </h4>
                   <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs">
                     <div className="text-gray-600 dark:text-gray-400">
-                      <span className="font-medium">Recordings in DB:</span> {syncResult.recordings_in_db}
+                      <span className="font-medium">Recordings:</span> {syncResult.recordings_in_db}
                     </div>
                     <div className="text-gray-600 dark:text-gray-400">
-                      <span className="font-medium">Documents in DB:</span> {syncResult.documents_in_db}
+                      <span className="font-medium">Documents:</span> {syncResult.documents_in_db}
                     </div>
                     <div className="text-gray-600 dark:text-gray-400">
-                      <span className="font-medium">Files on disk:</span> {syncResult.recordings_on_disk + syncResult.documents_on_disk}
+                      <span className="font-medium">Files on storage:</span> {syncResult.recordings_on_disk + syncResult.documents_on_disk}
                     </div>
                     <div className="text-gray-600 dark:text-gray-400">
                       <span className="font-medium">Path:</span> {syncResult.storage_path}
                     </div>
-                    {(syncResult.recordings_missing_file > 0 || syncResult.documents_missing_file > 0) && (
-                      <div className="text-amber-600 dark:text-amber-400 col-span-2">
-                        <span className="font-medium">Missing files:</span> {syncResult.recordings_missing_file + syncResult.documents_missing_file} (records exist but files not found)
+                    {syncResult.projects_created > 0 && (
+                      <div className="text-blue-600 dark:text-blue-400 col-span-2">
+                        <span className="font-medium">Projects created:</span> {syncResult.projects_created} folders mapped to projects
                       </div>
                     )}
                     {(syncResult.recordings_imported > 0 || syncResult.documents_imported > 0) && (
                       <div className="text-green-600 dark:text-green-400 col-span-2">
-                        <span className="font-medium">Imported:</span> {syncResult.recordings_imported + syncResult.documents_imported} files added to database
+                        <span className="font-medium">Imported:</span> {syncResult.recordings_imported + syncResult.documents_imported} new files
+                      </div>
+                    )}
+                    {(syncResult.recordings_removed > 0 || syncResult.documents_removed > 0) && (
+                      <div className="text-amber-600 dark:text-amber-400 col-span-2">
+                        <span className="font-medium">Removed:</span> {syncResult.recordings_removed + syncResult.documents_removed} files no longer on storage
                       </div>
                     )}
                   </div>

@@ -14,7 +14,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from persistence.database import async_session, get_db
-from persistence.models import Document, Recording, StorageLocation
+from persistence.models import Document, Project, Recording, StorageLocation
 from services.encryption import encrypt_config, SENSITIVE_FIELDS
 from storage import StorageError, StorageAuthError, StorageUnavailableError
 from storage.factory import get_adapter
@@ -604,12 +604,14 @@ class SyncResult(BaseModel):
 
     recordings_in_db: int
     recordings_on_disk: int
-    recordings_missing_file: int
     recordings_imported: int
+    recordings_removed: int = 0
     documents_in_db: int
     documents_on_disk: int
-    documents_missing_file: int
     documents_imported: int
+    documents_removed: int = 0
+    projects_created: int = 0
+    projects_removed: int = 0
     storage_location_id: str
     storage_location_name: str
     storage_path: str
@@ -650,9 +652,14 @@ async def sync_storage(
 ) -> SyncResult:
     """Sync workspace with active storage location.
 
-    Scans the active storage location and imports any files not in the database.
-    Returns a summary of what was found and imported.
+    Storage-as-truth model:
+    - Folders become projects (auto-created if missing)
+    - Files become recordings/documents (imported if new)
+    - DB records removed if file no longer exists on storage
+    - Files assigned to their parent folder's project
     """
+    from sqlalchemy import delete
+
     # Get active storage location
     result = await db.execute(
         select(StorageLocation).where(
@@ -677,47 +684,72 @@ async def sync_storage(
 
     storage_dir = Path(storage_path) if location.type == "local" else None
 
-    # Get ALL recordings and documents from database (we'll filter/update as needed)
-    all_rec_result = await db.execute(select(Recording))
-    all_recordings = list(all_rec_result.scalars().all())
+    # Get existing data from database
+    all_rec_result = await db.execute(select(Recording).where(Recording.storage_location_id == location.id))
+    existing_recordings = {rec.file_path: rec for rec in all_rec_result.scalars().all() if rec.file_path}
 
-    all_doc_result = await db.execute(select(Document))
-    all_documents = list(all_doc_result.scalars().all())
+    all_doc_result = await db.execute(select(Document).where(Document.storage_location_id == location.id))
+    existing_documents = {doc.file_path: doc for doc in all_doc_result.scalars().all() if doc.file_path}
 
-    # Build lookup of file paths to existing records
-    recording_by_path = {rec.file_path: rec for rec in all_recordings if rec.file_path}
-    document_by_path = {doc.file_path: doc for doc in all_documents if doc.file_path}
+    all_proj_result = await db.execute(select(Project))
+    existing_projects = {proj.name: proj for proj in all_proj_result.scalars().all()}
+
+    # Track what we find on storage
+    found_file_paths: set[str] = set()
+    found_folder_names: set[str] = set()
 
     # Track counts
     recordings_on_disk = 0
     documents_on_disk = 0
     recordings_imported = 0
     documents_imported = 0
-    recordings_claimed = 0  # Existing records updated to this location
-    documents_claimed = 0
-    recordings_missing = 0
-    documents_missing = 0
+    recordings_removed = 0
+    documents_removed = 0
+    projects_created = 0
+    projects_removed = 0
 
-    # Helper function to process a file (works for both local and cloud)
+    # Helper to get or create a project for a folder
+    def get_or_create_project(folder_name: str) -> Project | None:
+        nonlocal projects_created
+        if not folder_name:
+            return None
+
+        found_folder_names.add(folder_name)
+
+        if folder_name in existing_projects:
+            return existing_projects[folder_name]
+
+        # Create new project
+        new_project = Project(name=folder_name)
+        db.add(new_project)
+        existing_projects[folder_name] = new_project
+        projects_created += 1
+        logger.info(f"Created project from folder: {folder_name}")
+        return new_project
+
+    # Helper function to process a file
     def process_file(
         file_path: str,
         file_name: str,
         file_size: int,
         ext: str,
+        parent_folder: str | None,
     ) -> None:
         nonlocal recordings_on_disk, documents_on_disk, recordings_imported, documents_imported
-        nonlocal recordings_claimed, documents_claimed
+
+        found_file_paths.add(file_path)
+
+        # Get or create project for parent folder
+        project = get_or_create_project(parent_folder) if parent_folder else None
 
         if ext in AUDIO_VIDEO_MIME_TYPES:
             recordings_on_disk += 1
 
-            if file_path in recording_by_path:
-                # Record exists - ensure it's assigned to this location
-                existing = recording_by_path[file_path]
-                if existing.storage_location_id != location.id:
-                    existing.storage_location_id = location.id
-                    recordings_claimed += 1
-                    logger.info(f"Claimed recording: {file_name}")
+            if file_path in existing_recordings:
+                # Record exists - update project assignment if needed
+                existing = existing_recordings[file_path]
+                if project and existing.project_id != (project.id if hasattr(project, 'id') and project.id else None):
+                    existing.project_id = project.id if hasattr(project, 'id') else None
             else:
                 # New file - import it
                 try:
@@ -729,11 +761,12 @@ async def sync_storage(
                         file_size=file_size,
                         mime_type=AUDIO_VIDEO_MIME_TYPES.get(ext, 'application/octet-stream'),
                         storage_location_id=location.id,
+                        project_id=project.id if project and hasattr(project, 'id') else None,
                         status="pending",
                     )
                     db.add(new_recording)
                     recordings_imported += 1
-                    recording_by_path[file_path] = new_recording
+                    existing_recordings[file_path] = new_recording
                     logger.info(f"Imported recording: {file_name}")
                 except Exception as e:
                     logger.error(f"Failed to import recording {file_path}: {e}")
@@ -741,13 +774,11 @@ async def sync_storage(
         elif ext in DOCUMENT_MIME_TYPES:
             documents_on_disk += 1
 
-            if file_path in document_by_path:
-                # Record exists - ensure it's assigned to this location
-                existing = document_by_path[file_path]
-                if existing.storage_location_id != location.id:
-                    existing.storage_location_id = location.id
-                    documents_claimed += 1
-                    logger.info(f"Claimed document: {file_name}")
+            if file_path in existing_documents:
+                # Record exists - update project assignment if needed
+                existing = existing_documents[file_path]
+                if project and existing.project_id != (project.id if hasattr(project, 'id') and project.id else None):
+                    existing.project_id = project.id if hasattr(project, 'id') else None
             else:
                 # New file - import it
                 try:
@@ -759,14 +790,30 @@ async def sync_storage(
                         mime_type=DOCUMENT_MIME_TYPES.get(ext, 'application/octet-stream'),
                         file_size_bytes=file_size,
                         storage_location_id=location.id,
+                        project_id=project.id if project and hasattr(project, 'id') else None,
                         status="pending",
                     )
                     db.add(new_document)
                     documents_imported += 1
-                    document_by_path[file_path] = new_document
+                    existing_documents[file_path] = new_document
                     logger.info(f"Imported document: {file_name}")
                 except Exception as e:
                     logger.error(f"Failed to import document {file_path}: {e}")
+
+    # Helper to extract parent folder from path
+    def get_parent_folder(file_path: str, is_cloud: bool) -> str | None:
+        if is_cloud:
+            # Cloud paths like "ProjectName/file.mp3"
+            parts = file_path.split("/")
+            return parts[0] if len(parts) > 1 else None
+        else:
+            # Local paths - get first directory under storage root
+            try:
+                rel_path = Path(file_path).relative_to(storage_dir)
+                parts = rel_path.parts
+                return parts[0] if len(parts) > 1 else None
+            except ValueError:
+                return None
 
     if location.type == "cloud":
         # Cloud storage - use adapter to scan
@@ -779,16 +826,22 @@ async def sync_storage(
                     files = await adapter.list_files(path)
                     for file_info in files:
                         if file_info.is_directory:
+                            # Track folder as potential project
+                            # Only top-level folders become projects
+                            if "/" not in file_info.path:
+                                found_folder_names.add(file_info.name)
                             # Recursively scan subdirectories
                             await scan_cloud_directory(file_info.path)
                         else:
                             # Process the file
                             ext = ("." + file_info.name.rsplit(".", 1)[1]).lower() if "." in file_info.name else ""
+                            parent = get_parent_folder(file_info.path, is_cloud=True)
                             process_file(
                                 file_path=file_info.path,
                                 file_name=file_info.name,
                                 file_size=file_info.size,
                                 ext=ext,
+                                parent_folder=parent,
                             )
                 except Exception as e:
                     logger.warning(f"Failed to scan cloud directory {path}: {e}")
@@ -804,53 +857,67 @@ async def sync_storage(
     elif storage_dir and storage_dir.exists():
         # Local storage - scan filesystem
         for file_path in storage_dir.rglob("*"):
-            if file_path.is_file():
+            if file_path.is_dir():
+                # Track top-level folders as potential projects
+                try:
+                    rel = file_path.relative_to(storage_dir)
+                    if len(rel.parts) == 1:
+                        found_folder_names.add(file_path.name)
+                except ValueError:
+                    pass
+            elif file_path.is_file():
                 ext = file_path.suffix.lower()
                 file_str = str(file_path)
                 try:
                     stat = file_path.stat()
+                    parent = get_parent_folder(file_str, is_cloud=False)
                     process_file(
                         file_path=file_str,
                         file_name=file_path.name,
                         file_size=stat.st_size,
                         ext=ext,
+                        parent_folder=parent,
                     )
                 except Exception as e:
                     logger.error(f"Failed to process local file {file_path}: {e}")
 
-    # Count records assigned to this location and check for missing files
-    recordings_in_location = [r for r in all_recordings if r.storage_location_id == location.id]
-    documents_in_location = [d for d in all_documents if d.storage_location_id == location.id]
+    # Remove DB records for files no longer on storage
+    for file_path, recording in list(existing_recordings.items()):
+        if file_path not in found_file_paths:
+            await db.delete(recording)
+            recordings_removed += 1
+            logger.info(f"Removed recording (file deleted from storage): {recording.title}")
 
-    # For cloud storage, we can't easily check if files are missing without downloading
-    # so we skip the missing file check for cloud locations
-    if location.type == "local":
-        for rec in recordings_in_location:
-            if rec.file_path and not Path(rec.file_path).exists():
-                recordings_missing += 1
+    for file_path, document in list(existing_documents.items()):
+        if file_path not in found_file_paths:
+            await db.delete(document)
+            documents_removed += 1
+            logger.info(f"Removed document (file deleted from storage): {document.title}")
 
-        for doc in documents_in_location:
-            if doc.file_path and not Path(doc.file_path).exists():
-                documents_missing += 1
+    # Commit all changes
+    await db.commit()
 
-    # Commit all changes (imports and claims)
-    if recordings_imported > 0 or documents_imported > 0 or recordings_claimed > 0 or documents_claimed > 0:
-        await db.commit()
-        logger.info(f"Sync complete: imported {recordings_imported} recordings, {documents_imported} documents; claimed {recordings_claimed} recordings, {documents_claimed} documents")
+    # Calculate final counts
+    final_recordings = recordings_on_disk
+    final_documents = documents_on_disk
 
-    # Recalculate counts after changes
-    final_recordings = len(recordings_in_location) + recordings_imported + recordings_claimed
-    final_documents = len(documents_in_location) + documents_imported + documents_claimed
+    logger.info(
+        f"Sync complete: {recordings_imported} recordings imported, {recordings_removed} removed; "
+        f"{documents_imported} documents imported, {documents_removed} removed; "
+        f"{projects_created} projects created"
+    )
 
     return SyncResult(
         recordings_in_db=final_recordings,
         recordings_on_disk=recordings_on_disk,
-        recordings_missing_file=recordings_missing,
-        recordings_imported=recordings_imported + recordings_claimed,
+        recordings_imported=recordings_imported,
+        recordings_removed=recordings_removed,
         documents_in_db=final_documents,
         documents_on_disk=documents_on_disk,
-        documents_missing_file=documents_missing,
-        documents_imported=documents_imported + documents_claimed,
+        documents_imported=documents_imported,
+        documents_removed=documents_removed,
+        projects_created=projects_created,
+        projects_removed=projects_removed,
         storage_location_id=location.id,
         storage_location_name=location.name,
         storage_path=storage_path,
