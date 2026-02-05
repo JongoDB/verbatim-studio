@@ -670,7 +670,6 @@ async def sync_storage(
     if location.type == "local":
         storage_path = location.config.get("path")
     elif location.type == "cloud":
-        # For cloud storage, we can't easily scan - just verify DB records
         storage_path = location.config.get("folder_path", "Cloud Storage")
 
     if not storage_path:
@@ -699,86 +698,140 @@ async def sync_storage(
     recordings_missing = 0
     documents_missing = 0
 
-    if storage_dir and storage_dir.exists():
-        storage_path_str = str(storage_dir)
+    # Helper function to process a file (works for both local and cloud)
+    def process_file(
+        file_path: str,
+        file_name: str,
+        file_size: int,
+        ext: str,
+    ) -> None:
+        nonlocal recordings_on_disk, documents_on_disk, recordings_imported, documents_imported
+        nonlocal recordings_claimed, documents_claimed
 
-        # Scan storage directory
+        if ext in AUDIO_VIDEO_MIME_TYPES:
+            recordings_on_disk += 1
+
+            if file_path in recording_by_path:
+                # Record exists - ensure it's assigned to this location
+                existing = recording_by_path[file_path]
+                if existing.storage_location_id != location.id:
+                    existing.storage_location_id = location.id
+                    recordings_claimed += 1
+                    logger.info(f"Claimed recording: {file_name}")
+            else:
+                # New file - import it
+                try:
+                    title = file_name.rsplit(".", 1)[0] if "." in file_name else file_name
+                    new_recording = Recording(
+                        title=title,
+                        file_path=file_path,
+                        file_name=file_name,
+                        file_size=file_size,
+                        mime_type=AUDIO_VIDEO_MIME_TYPES.get(ext, 'application/octet-stream'),
+                        storage_location_id=location.id,
+                        status="pending",
+                    )
+                    db.add(new_recording)
+                    recordings_imported += 1
+                    recording_by_path[file_path] = new_recording
+                    logger.info(f"Imported recording: {file_name}")
+                except Exception as e:
+                    logger.error(f"Failed to import recording {file_path}: {e}")
+
+        elif ext in DOCUMENT_MIME_TYPES:
+            documents_on_disk += 1
+
+            if file_path in document_by_path:
+                # Record exists - ensure it's assigned to this location
+                existing = document_by_path[file_path]
+                if existing.storage_location_id != location.id:
+                    existing.storage_location_id = location.id
+                    documents_claimed += 1
+                    logger.info(f"Claimed document: {file_name}")
+            else:
+                # New file - import it
+                try:
+                    title = file_name.rsplit(".", 1)[0] if "." in file_name else file_name
+                    new_document = Document(
+                        title=title,
+                        filename=file_name,
+                        file_path=file_path,
+                        mime_type=DOCUMENT_MIME_TYPES.get(ext, 'application/octet-stream'),
+                        file_size_bytes=file_size,
+                        storage_location_id=location.id,
+                        status="pending",
+                    )
+                    db.add(new_document)
+                    documents_imported += 1
+                    document_by_path[file_path] = new_document
+                    logger.info(f"Imported document: {file_name}")
+                except Exception as e:
+                    logger.error(f"Failed to import document {file_path}: {e}")
+
+    if location.type == "cloud":
+        # Cloud storage - use adapter to scan
+        try:
+            adapter = get_adapter(location)
+
+            # Recursive function to scan cloud directories
+            async def scan_cloud_directory(path: str = "") -> None:
+                try:
+                    files = await adapter.list_files(path)
+                    for file_info in files:
+                        if file_info.is_directory:
+                            # Recursively scan subdirectories
+                            await scan_cloud_directory(file_info.path)
+                        else:
+                            # Process the file
+                            ext = ("." + file_info.name.rsplit(".", 1)[1]).lower() if "." in file_info.name else ""
+                            process_file(
+                                file_path=file_info.path,
+                                file_name=file_info.name,
+                                file_size=file_info.size,
+                                ext=ext,
+                            )
+                except Exception as e:
+                    logger.warning(f"Failed to scan cloud directory {path}: {e}")
+
+            # Start scanning from root
+            await scan_cloud_directory("")
+            logger.info(f"Cloud sync scanned storage: found {recordings_on_disk} recordings, {documents_on_disk} documents")
+
+        except Exception as e:
+            logger.error(f"Failed to sync cloud storage: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to sync cloud storage: {str(e)}")
+
+    elif storage_dir and storage_dir.exists():
+        # Local storage - scan filesystem
         for file_path in storage_dir.rglob("*"):
             if file_path.is_file():
                 ext = file_path.suffix.lower()
                 file_str = str(file_path)
-
-                if ext in AUDIO_VIDEO_MIME_TYPES:
-                    recordings_on_disk += 1
-
-                    if file_str in recording_by_path:
-                        # Record exists - ensure it's assigned to this location
-                        existing = recording_by_path[file_str]
-                        if existing.storage_location_id != location.id:
-                            existing.storage_location_id = location.id
-                            recordings_claimed += 1
-                            logger.info(f"Claimed recording: {file_path.name}")
-                    else:
-                        # New file - import it
-                        try:
-                            stat = file_path.stat()
-                            new_recording = Recording(
-                                title=file_path.stem,
-                                file_path=file_str,
-                                file_name=file_path.name,
-                                file_size=stat.st_size,
-                                mime_type=AUDIO_VIDEO_MIME_TYPES.get(ext, 'application/octet-stream'),
-                                storage_location_id=location.id,
-                                status="pending",
-                            )
-                            db.add(new_recording)
-                            recordings_imported += 1
-                            recording_by_path[file_str] = new_recording
-                            logger.info(f"Imported recording: {file_path.name}")
-                        except Exception as e:
-                            logger.error(f"Failed to import recording {file_path}: {e}")
-
-                elif ext in DOCUMENT_MIME_TYPES:
-                    documents_on_disk += 1
-
-                    if file_str in document_by_path:
-                        # Record exists - ensure it's assigned to this location
-                        existing = document_by_path[file_str]
-                        if existing.storage_location_id != location.id:
-                            existing.storage_location_id = location.id
-                            documents_claimed += 1
-                            logger.info(f"Claimed document: {file_path.name}")
-                    else:
-                        # New file - import it
-                        try:
-                            stat = file_path.stat()
-                            new_document = Document(
-                                title=file_path.stem,
-                                filename=file_path.name,
-                                file_path=file_str,
-                                mime_type=DOCUMENT_MIME_TYPES.get(ext, 'application/octet-stream'),
-                                file_size_bytes=stat.st_size,
-                                storage_location_id=location.id,
-                                status="pending",
-                            )
-                            db.add(new_document)
-                            documents_imported += 1
-                            document_by_path[file_str] = new_document
-                            logger.info(f"Imported document: {file_path.name}")
-                        except Exception as e:
-                            logger.error(f"Failed to import document {file_path}: {e}")
+                try:
+                    stat = file_path.stat()
+                    process_file(
+                        file_path=file_str,
+                        file_name=file_path.name,
+                        file_size=stat.st_size,
+                        ext=ext,
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to process local file {file_path}: {e}")
 
     # Count records assigned to this location and check for missing files
     recordings_in_location = [r for r in all_recordings if r.storage_location_id == location.id]
     documents_in_location = [d for d in all_documents if d.storage_location_id == location.id]
 
-    for rec in recordings_in_location:
-        if rec.file_path and not Path(rec.file_path).exists():
-            recordings_missing += 1
+    # For cloud storage, we can't easily check if files are missing without downloading
+    # so we skip the missing file check for cloud locations
+    if location.type == "local":
+        for rec in recordings_in_location:
+            if rec.file_path and not Path(rec.file_path).exists():
+                recordings_missing += 1
 
-    for doc in documents_in_location:
-        if doc.file_path and not Path(doc.file_path).exists():
-            documents_missing += 1
+        for doc in documents_in_location:
+            if doc.file_path and not Path(doc.file_path).exists():
+                documents_missing += 1
 
     # Commit all changes (imports and claims)
     if recordings_imported > 0 or documents_imported > 0 or recordings_claimed > 0 or documents_claimed > 0:
