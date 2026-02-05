@@ -1,5 +1,5 @@
 #!/bin/bash
-# Update version.ts from the current git tag
+# Update all version files from the current git tag
 # Usage: ./scripts/update-version.sh
 
 set -e
@@ -18,6 +18,10 @@ else
     VERSION="$RAW_VERSION"
 fi
 
+# Extract numeric version without 'v' prefix and '+N' suffix for package.json
+NUMERIC_VERSION="${VERSION#v}"
+NUMERIC_VERSION="${NUMERIC_VERSION%+*}"
+
 # Update frontend version.ts
 VERSION_FILE="$REPO_ROOT/packages/frontend/src/version.ts"
 cat > "$VERSION_FILE" << EOF
@@ -25,5 +29,27 @@ cat > "$VERSION_FILE" << EOF
 // Run: npm run update-version or ./scripts/update-version.sh
 export const APP_VERSION = '${VERSION}';
 EOF
-
 echo "Updated $VERSION_FILE to version: $VERSION"
+
+# Update Electron package.json (critical for app.getVersion() in updater)
+ELECTRON_PKG="$REPO_ROOT/apps/electron/package.json"
+if [ -f "$ELECTRON_PKG" ]; then
+    # Use sed to update the version field
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        sed -i '' "s/\"version\": \"[^\"]*\"/\"version\": \"$NUMERIC_VERSION\"/" "$ELECTRON_PKG"
+    else
+        sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"$NUMERIC_VERSION\"/" "$ELECTRON_PKG"
+    fi
+    echo "Updated $ELECTRON_PKG to version: $NUMERIC_VERSION"
+fi
+
+# Update backend pyproject.toml
+PYPROJECT="$REPO_ROOT/packages/backend/pyproject.toml"
+if [ -f "$PYPROJECT" ]; then
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        sed -i '' "s/^version = \"[^\"]*\"/version = \"$NUMERIC_VERSION\"/" "$PYPROJECT"
+    else
+        sed -i "s/^version = \"[^\"]*\"/version = \"$NUMERIC_VERSION\"/" "$PYPROJECT"
+    fi
+    echo "Updated $PYPROJECT to version: $NUMERIC_VERSION"
+fi
