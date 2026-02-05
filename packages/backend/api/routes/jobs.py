@@ -152,3 +152,16 @@ async def cancel_job(job_id: str) -> MessageResponse:
         message="Job cancelled successfully",
         id=job_id,
     )
+
+
+@router.post("/clear-completed", response_model=MessageResponse)
+async def clear_completed_jobs() -> MessageResponse:
+    """Clear all completed, failed, and cancelled jobs from the database.
+
+    Returns:
+        Confirmation message with count of deleted jobs.
+    """
+    count = await job_queue.clear_completed_jobs()
+    return MessageResponse(
+        message=f"Cleared {count} completed/failed/cancelled job(s)",
+    )

@@ -283,6 +283,23 @@ class JobQueue:
             result = await session.execute(query)
             return list(result.scalars().all())
 
+    async def clear_completed_jobs(self) -> int:
+        """Delete all completed, failed, and cancelled jobs from the database.
+
+        Returns:
+            Number of jobs deleted.
+        """
+        from sqlalchemy import delete
+
+        async with async_session() as session:
+            result = await session.execute(
+                delete(Job).where(Job.status.in_(["completed", "failed", "cancelled"]))
+            )
+            await session.commit()
+            count = result.rowcount
+            logger.info("Cleared %d completed/failed/cancelled jobs", count)
+            return count
+
     def shutdown(self, wait: bool = True) -> None:
         """Shutdown the executor gracefully.
 

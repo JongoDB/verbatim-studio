@@ -19,6 +19,7 @@ engine = create_async_engine(
 @event.listens_for(engine.sync_engine, "connect")
 def set_sqlite_pragma(dbapi_connection, connection_record):
     cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA foreign_keys=ON")  # Enable foreign key constraints (required for CASCADE)
     cursor.execute("PRAGMA journal_mode=WAL")
     cursor.execute("PRAGMA synchronous=NORMAL")  # Faster writes, still safe with WAL
     cursor.execute("PRAGMA busy_timeout=30000")  # 30s timeout at SQLite level
