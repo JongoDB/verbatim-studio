@@ -174,6 +174,21 @@ gh cache delete <ID>            # Delete specific cache
 | Core dependencies | `scripts/requirements-core.txt` |
 | GitHub workflow | `.github/workflows/build-electron.yml` |
 
+## Debugging
+
+### Viewing Backend Logs in Packaged App
+When debugging issues in the production Electron app (from `/Applications`), backend logs aren't visible by default. To see Python backend output including error tracebacks:
+
+```bash
+# Run the app from Terminal to see all backend logs
+/Applications/Verbatim\ Studio.app/Contents/MacOS/Verbatim\ Studio
+```
+
+This shows all output with `[Backend]` prefix, including Python errors and tracebacks.
+
+### Frontend Console
+Open DevTools in the Electron app: **View → Toggle Developer Tools** (or `Cmd+Option+I`)
+
 ## Known Issues & Solutions
 
 ### White screen on Cmd+R in Electron
