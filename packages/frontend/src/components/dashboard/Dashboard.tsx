@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { api } from '@/lib/api';
 import { useDashboardStats, useRecentRecordings, useRecentProjects } from '@/hooks';
 import { formatRelativeTime } from '@/lib/utils';
@@ -8,6 +8,8 @@ import { RecordingSetupPanel, type RecordingSettings } from '@/components/record
 import { UploadSetupDialog, type UploadOptions } from '@/components/recordings/UploadSetupDialog';
 import { UploadDocumentDialog } from '@/components/documents/UploadDocumentDialog';
 import { TourSection } from '@/components/onboarding/TourSection';
+import { ModelDownloadPrompt } from '@/components/downloads/ModelDownloadPrompt';
+import { useDownloadStore } from '@/stores/downloadStore';
 
 interface DashboardProps {
   onNavigateToRecordings?: () => void;
@@ -105,6 +107,91 @@ export function Dashboard({ onNavigateToRecordings, onNavigateToProjects, onView
   const [recordingSettings, setRecordingSettings] = useState<RecordingSettings | null>(null);
   const [pendingUploadFile, setPendingUploadFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Model download prompt state
+  const [missingModels, setMissingModels] = useState<{ whisper: boolean; ai: boolean }>({ whisper: false, ai: false });
+  const [showModelPrompt, setShowModelPrompt] = useState(false);
+  const promptDismissed = useDownloadStore((state) => state.promptDismissed);
+
+  // Check for missing models on mount
+  useEffect(() => {
+    if (promptDismissed) return;
+
+    const checkModels = async () => {
+      try {
+        const [whisperResult, aiResult] = await Promise.all([
+          api.whisper.listModels(),
+          api.ai.listModels(),
+        ]);
+
+        // Check if any model is downloaded/active
+        const hasWhisper = whisperResult.models.some((m) => m.downloaded || m.active);
+        const hasAi = aiResult.models.some((m) => m.downloaded || m.active);
+
+        const missing = { whisper: !hasWhisper, ai: !hasAi };
+        setMissingModels(missing);
+
+        // Show prompt if any models are missing
+        if (missing.whisper || missing.ai) {
+          setShowModelPrompt(true);
+        }
+      } catch (err) {
+        console.error('Failed to check models:', err);
+      }
+    };
+
+    checkModels();
+  }, [promptDismissed]);
+
+  // Handle download now action
+  const handleDownloadModels = useCallback(async () => {
+    const { startDownload, updateProgress, completeDownload, failDownload, dismissPrompt } = useDownloadStore.getState();
+    setShowModelPrompt(false);
+    dismissPrompt(false); // Dismiss for this session
+
+    // Start downloading missing models
+    if (missingModels.whisper) {
+      // Download default whisper model (medium)
+      startDownload('medium', 'whisper', 'Whisper Medium');
+      try {
+        api.whisper.downloadModel('medium', (event) => {
+          if (event.status === 'progress') {
+            const downloaded = event.downloaded_bytes ?? 0;
+            const total = event.total_bytes ?? 0;
+            updateProgress('medium', downloaded, total, event.message || 'Downloading...');
+          } else if (event.status === 'complete') {
+            completeDownload('medium');
+          } else if (event.status === 'error') {
+            failDownload('medium', event.error || 'Download failed');
+          }
+        });
+      } catch (err) {
+        failDownload('medium', err instanceof Error ? err.message : 'Download failed');
+      }
+    }
+
+    if (missingModels.ai) {
+      // Download default AI model (first available or granite)
+      try {
+        const aiModels = await api.ai.listModels();
+        const defaultModel = aiModels.models.find((m) => m.id.includes('granite')) || aiModels.models[0];
+        if (defaultModel) {
+          startDownload(defaultModel.id, 'ai', defaultModel.label || defaultModel.id);
+          api.ai.downloadModel(defaultModel.id, (event) => {
+            if (event.status === 'progress') {
+              updateProgress(defaultModel.id, event.downloaded_bytes || 0, event.total_bytes || 0);
+            } else if (event.status === 'complete' || event.status === 'activated') {
+              completeDownload(defaultModel.id);
+            } else if (event.status === 'error') {
+              failDownload(defaultModel.id, event.error || 'Download failed');
+            }
+          });
+        }
+      } catch (err) {
+        console.error('Failed to start AI model download:', err);
+      }
+    }
+  }, [missingModels]);
 
 
   const handleUpload = useCallback((file: File) => {
@@ -221,6 +308,14 @@ export function Dashboard({ onNavigateToRecordings, onNavigateToProjects, onView
 
   return (
     <div className="space-y-6">
+      {/* Model Download Prompt */}
+      {showModelPrompt && (
+        <ModelDownloadPrompt
+          missingModels={missingModels}
+          onDownloadNow={handleDownloadModels}
+        />
+      )}
+
       {/* Quick Actions */}
       <div className="flex flex-wrap gap-3">
         {/* Hidden file input for upload */}
