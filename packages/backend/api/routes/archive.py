@@ -156,11 +156,17 @@ async def get_archive_info(db: Annotated[AsyncSession, Depends(get_db)]) -> Arch
     projects_result = await db.execute(select(Project))
     projects_count = len(projects_result.scalars().all())
 
-    # Calculate media size
+    # Calculate media size (with error handling for missing/inaccessible files)
     media_size = 0
     for rec in recordings:
-        if rec.file_path and Path(rec.file_path).exists():
-            media_size += Path(rec.file_path).stat().st_size
+        try:
+            if rec.file_path:
+                file_path = Path(rec.file_path)
+                if file_path.is_absolute() and file_path.exists():
+                    media_size += file_path.stat().st_size
+        except (OSError, PermissionError):
+            # Skip files that can't be accessed
+            pass
 
     return ArchiveInfo(
         version=ARCHIVE_VERSION,
