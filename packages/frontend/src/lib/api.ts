@@ -1066,6 +1066,16 @@ export interface MLInstallEvent {
   message: string;
 }
 
+export interface MemoryInfo {
+  process_rss_bytes: number;
+  process_vms_bytes: number;
+  gpu_available: boolean;
+  gpu_type: 'cuda' | 'mps' | null;
+  gpu_allocated_bytes: number | null;
+  gpu_reserved_bytes: number | null;
+  models_loaded: string[];
+}
+
 export interface ResetDatabaseResponse {
   success: boolean;
   deleted: Record<string, number>;
@@ -2422,6 +2432,11 @@ class ApiClient {
       this.request<SelectiveClearResponse>('/api/system/clear-selective', {
         method: 'POST',
         body: JSON.stringify({ categories }),
+      }),
+    memory: () => this.request<MemoryInfo>('/api/system/memory'),
+    clearMemory: () =>
+      this.request<{ status: string; message: string }>('/api/system/clear-memory', {
+        method: 'POST',
       }),
   };
 

@@ -149,6 +149,35 @@ class DiarizationService:
             "speakers": sorted(speakers),
         }
 
+    def cleanup(self) -> None:
+        """Unload diarization pipeline and free GPU memory.
+
+        Call this after diarization jobs complete to release memory.
+        The pyannote pipeline is ~1GB and should be unloaded when not in use.
+        """
+        import gc
+
+        if self._pipeline is not None:
+            logger.info("Unloading diarization pipeline")
+            del self._pipeline
+            self._pipeline = None
+
+        self._whisperx = None
+
+        # Force garbage collection
+        gc.collect()
+
+        # Clear GPU cache
+        try:
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                logger.debug("Cleared CUDA cache")
+            elif torch.backends.mps.is_available():
+                torch.mps.empty_cache()
+                logger.debug("Cleared MPS cache")
+        except Exception as e:
+            logger.debug("Could not clear GPU cache: %s", e)
+
 
 # Default diarization service instance (configured from app settings)
 def _create_diarization_service() -> DiarizationService:

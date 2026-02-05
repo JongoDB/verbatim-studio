@@ -594,6 +594,28 @@ async def handle_transcription(
         if temp_audio_file:
             Path(temp_audio_file.name).unlink(missing_ok=True)
 
+        # Clean up ML models to free memory
+        # This is important for releasing GPU memory between jobs
+        import gc
+
+        try:
+            if hasattr(tx_engine, 'cleanup'):
+                tx_engine.cleanup()
+                logger.debug("Cleaned up transcription engine")
+        except Exception as e:
+            logger.debug("Error cleaning up transcription engine: %s", e)
+
+        try:
+            if hasattr(dia_service, 'cleanup'):
+                dia_service.cleanup()
+                logger.debug("Cleaned up diarization service")
+        except Exception as e:
+            logger.debug("Error cleaning up diarization service: %s", e)
+
+        # Force garbage collection
+        gc.collect()
+        logger.debug("Forced garbage collection after transcription job")
+
 
 # Register the transcription handler
 job_queue.register_handler("transcribe", handle_transcription)

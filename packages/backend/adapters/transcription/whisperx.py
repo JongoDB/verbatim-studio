@@ -364,3 +364,37 @@ class WhisperXTranscriptionEngine(ITranscriptionEngine):
                 pass
 
         return info
+
+    def cleanup(self) -> None:
+        """Unload models and free GPU memory.
+
+        Call this after transcription jobs complete to release memory.
+        """
+        import gc
+
+        if self._model is not None:
+            logger.info("Unloading WhisperX transcription model")
+            del self._model
+            self._model = None
+
+        if self._align_model is not None:
+            logger.info("Unloading WhisperX alignment model")
+            del self._align_model
+            self._align_model = None
+            self._align_metadata = None
+            self._align_language = None
+
+        # Force garbage collection
+        gc.collect()
+
+        # Clear GPU cache
+        try:
+            import torch
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                logger.debug("Cleared CUDA cache")
+            elif torch.backends.mps.is_available():
+                torch.mps.empty_cache()
+                logger.debug("Cleared MPS cache")
+        except Exception as e:
+            logger.debug("Could not clear GPU cache: %s", e)

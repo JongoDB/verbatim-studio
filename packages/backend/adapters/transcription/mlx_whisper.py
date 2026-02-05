@@ -275,3 +275,23 @@ class MlxWhisperTranscriptionEngine(ITranscriptionEngine):
             # MLX Whisper just needs to produce segments - diarization works independently
             "supports_diarization": True,
         }
+
+    def cleanup(self) -> None:
+        """Clean up resources after transcription.
+
+        MLX Whisper loads models on-demand per transcription call,
+        so there's no persistent model to unload. This method clears
+        any GPU cache and runs garbage collection for consistency.
+        """
+        import gc
+
+        gc.collect()
+
+        # Clear MPS cache
+        try:
+            import torch
+            if torch.backends.mps.is_available():
+                torch.mps.empty_cache()
+                logger.debug("Cleared MPS cache")
+        except Exception:
+            pass  # torch may not be available

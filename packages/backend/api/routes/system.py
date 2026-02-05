@@ -588,6 +588,126 @@ async def install_ml_dependencies():
     return StreamingResponse(install_stream(), media_type="text/event-stream")
 
 
+class MemoryInfo(BaseModel):
+    """Memory usage information."""
+
+    # Process memory
+    process_rss_bytes: int  # Resident Set Size (physical memory)
+    process_vms_bytes: int  # Virtual Memory Size
+
+    # GPU memory (if available)
+    gpu_available: bool
+    gpu_type: str | None  # "cuda", "mps", or None
+    gpu_allocated_bytes: int | None
+    gpu_reserved_bytes: int | None
+
+    # Model status
+    models_loaded: list[str]  # List of currently loaded model names
+
+
+@router.get("/memory", response_model=MemoryInfo)
+async def get_memory_info() -> MemoryInfo:
+    """Get current memory usage including GPU memory if available."""
+    import os
+
+    # Get process memory using os (cross-platform fallback)
+    try:
+        import psutil
+        process = psutil.Process(os.getpid())
+        mem_info = process.memory_info()
+        process_rss = mem_info.rss
+        process_vms = mem_info.vms
+    except ImportError:
+        # Fallback if psutil not available
+        process_rss = 0
+        process_vms = 0
+
+    # Check GPU memory
+    gpu_available = False
+    gpu_type = None
+    gpu_allocated = None
+    gpu_reserved = None
+
+    try:
+        import torch
+        if torch.cuda.is_available():
+            gpu_available = True
+            gpu_type = "cuda"
+            gpu_allocated = torch.cuda.memory_allocated()
+            gpu_reserved = torch.cuda.memory_reserved()
+        elif torch.backends.mps.is_available():
+            gpu_available = True
+            gpu_type = "mps"
+            # MPS doesn't have detailed memory reporting
+            try:
+                gpu_allocated = torch.mps.current_allocated_memory()
+                gpu_reserved = gpu_allocated  # MPS doesn't distinguish reserved
+            except AttributeError:
+                # Older PyTorch versions may not have this
+                gpu_allocated = None
+                gpu_reserved = None
+    except ImportError:
+        pass
+
+    # Check which models are loaded
+    models_loaded = []
+
+    # Check transcription models
+    try:
+        from core.factory import get_factory
+        factory = get_factory()
+        # We can't easily check if models are loaded without accessing internal state
+        # For now, we'll leave this empty - could be enhanced later
+    except Exception:
+        pass
+
+    return MemoryInfo(
+        process_rss_bytes=process_rss,
+        process_vms_bytes=process_vms,
+        gpu_available=gpu_available,
+        gpu_type=gpu_type,
+        gpu_allocated_bytes=gpu_allocated,
+        gpu_reserved_bytes=gpu_reserved,
+        models_loaded=models_loaded,
+    )
+
+
+@router.post("/clear-memory")
+async def clear_memory():
+    """Force garbage collection and clear GPU caches.
+
+    Call this to free memory after intensive operations.
+    """
+    import gc
+
+    # Force garbage collection
+    gc.collect()
+
+    # Clear GPU caches
+    try:
+        import torch
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            logger.info("Cleared CUDA cache")
+        elif torch.backends.mps.is_available():
+            torch.mps.empty_cache()
+            logger.info("Cleared MPS cache")
+    except ImportError:
+        pass
+    except Exception as e:
+        logger.warning("Failed to clear GPU cache: %s", e)
+
+    # Try to unload OCR model if loaded
+    try:
+        from services.document_processor import cleanup_ocr_model
+        cleanup_ocr_model()
+        logger.info("Cleaned up OCR model")
+    except Exception as e:
+        logger.debug("OCR cleanup skipped: %s", e)
+
+    return {"status": "ok", "message": "Memory cleared"}
+
+
 class ResetDatabaseRequest(BaseModel):
     """Request body for database reset."""
 
