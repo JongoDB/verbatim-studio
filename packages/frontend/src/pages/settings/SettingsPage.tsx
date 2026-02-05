@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { api, type ArchiveInfo, type TranscriptionSettings, type AIModel, type AIModelDownloadEvent, type OCRModel, type OCRModelDownloadEvent, type WhisperModel, type WhisperModelDownloadEvent, type DiarizationModel, type DiarizationModelDownloadEvent, type SystemInfo, type MLStatus, type StorageLocation, type MigrationStatus, type SyncResult, type StorageType, type StorageSubtype, type StorageLocationConfig, type OAuthStatusResponse, type CategoryCount, type ClearableCategory } from '@/lib/api';
+import { useDownloadStore } from '@/stores/downloadStore';
 import { StorageTypeSelector } from '@/components/storage/StorageTypeSelector';
 import { StorageSubtypeSelector } from '@/components/storage/StorageSubtypeSelector';
 import { StorageConfigForm } from '@/components/storage/StorageConfigForm';
@@ -395,24 +396,34 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
     api.ai.listModels().then((r) => setAiModels(r.models)).catch(console.error);
   }, []);
 
-  const handleDownloadModel = useCallback((modelId: string) => {
+  const handleDownloadModel = useCallback((modelId: string, modelName?: string) => {
+    const { startDownload, updateProgress, completeDownload, failDownload } = useDownloadStore.getState();
+
     setAiDownloading(modelId);
     setAiDownloadedBytes(0);
     setAiTotalBytes(0);
     setAiError(null);
 
+    // Track in global store
+    startDownload(modelId, 'ai', modelName || modelId);
+
     const handle = api.ai.downloadModel(modelId, (event: AIModelDownloadEvent) => {
       if (event.status === 'progress') {
-        setAiDownloadedBytes(event.downloaded_bytes || 0);
-        setAiTotalBytes(event.total_bytes || 0);
+        const downloaded = event.downloaded_bytes || 0;
+        const total = event.total_bytes || 0;
+        setAiDownloadedBytes(downloaded);
+        setAiTotalBytes(total);
+        updateProgress(modelId, downloaded, total);
       } else if (event.status === 'complete' || event.status === 'activated') {
         setAiDownloading(null);
         setAiDownloadedBytes(0);
         setAiTotalBytes(0);
+        completeDownload(modelId);
         refreshAiModels();
       } else if (event.status === 'error') {
         setAiError(event.error || 'Download failed');
         setAiDownloading(null);
+        failDownload(modelId, event.error || 'Download failed');
       }
     });
 
@@ -444,11 +455,16 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
     api.ocr.listModels().then((r) => setOcrModels(r.models)).catch(console.error);
   }, []);
 
-  const handleDownloadOcrModel = useCallback((modelId: string) => {
+  const handleDownloadOcrModel = useCallback((modelId: string, modelName?: string) => {
+    const { startDownload, updateProgress, completeDownload, failDownload } = useDownloadStore.getState();
+
     setOcrDownloading(modelId);
     setOcrDownloadMessage('Starting download...');
     setOcrDownloadProgress(null);
     setOcrError(null);
+
+    // Track in global store
+    startDownload(modelId, 'ocr', modelName || modelId);
 
     const handle = api.ocr.downloadModel(modelId, (event: OCRModelDownloadEvent) => {
       if (event.status === 'starting') {
@@ -459,16 +475,19 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
         const total = event.total_bytes ?? 0;
         setOcrDownloadProgress({ percent, downloaded, total });
         setOcrDownloadMessage(`Downloading... ${percent}%`);
+        updateProgress(modelId, downloaded, total, `Downloading... ${percent}%`);
       } else if (event.status === 'complete') {
         setOcrDownloading(null);
         setOcrDownloadMessage(null);
         setOcrDownloadProgress(null);
+        completeDownload(modelId);
         refreshOcrModels();
       } else if (event.status === 'error') {
         setOcrError(event.error || 'Download failed');
         setOcrDownloading(null);
         setOcrDownloadMessage(null);
         setOcrDownloadProgress(null);
+        failDownload(modelId, event.error || 'Download failed');
       }
     });
 
@@ -489,11 +508,16 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
     api.whisper.listModels().then((r) => setWhisperModels(r.models)).catch(console.error);
   }, []);
 
-  const handleDownloadWhisperModel = useCallback((modelId: string) => {
+  const handleDownloadWhisperModel = useCallback((modelId: string, modelName?: string) => {
+    const { startDownload, updateProgress, completeDownload, failDownload } = useDownloadStore.getState();
+
     setWhisperDownloading(modelId);
     setWhisperDownloadMessage('Starting download...');
     setWhisperDownloadProgress(null);
     setWhisperError(null);
+
+    // Track in global store
+    startDownload(modelId, 'whisper', modelName || modelId);
 
     const handle = api.whisper.downloadModel(modelId, (event: WhisperModelDownloadEvent) => {
       if (event.status === 'starting') {
@@ -506,19 +530,23 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
         if (downloaded > 0 || total > 0) {
           setWhisperDownloadProgress({ percent, downloaded, total });
           setWhisperDownloadMessage(`Downloading... ${percent}%`);
+          updateProgress(modelId, downloaded, total, `Downloading... ${percent}%`);
         } else {
           setWhisperDownloadMessage(event.message || 'Downloading...');
+          updateProgress(modelId, 0, 0, event.message || 'Downloading...');
         }
       } else if (event.status === 'complete') {
         setWhisperDownloading(null);
         setWhisperDownloadMessage(null);
         setWhisperDownloadProgress(null);
+        completeDownload(modelId);
         refreshWhisperModels();
       } else if (event.status === 'error') {
         setWhisperError(event.error || 'Download failed');
         setWhisperDownloading(null);
         setWhisperDownloadMessage(null);
         setWhisperDownloadProgress(null);
+        failDownload(modelId, event.error || 'Download failed');
       }
     });
 
@@ -552,24 +580,32 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
     }).catch(console.error);
   }, []);
 
-  const handleDownloadDiarizationModel = useCallback((modelId: string) => {
+  const handleDownloadDiarizationModel = useCallback((modelId: string, modelName?: string) => {
+    const { startDownload, updateProgress, completeDownload, failDownload } = useDownloadStore.getState();
+
     setDiarizationDownloading(modelId);
     setDiarizationDownloadMessage('Starting download...');
     setDiarizationError(null);
+
+    // Track in global store
+    startDownload(modelId, 'diarization', modelName || modelId);
 
     const handle = api.diarization.downloadModel(modelId, (event: DiarizationModelDownloadEvent) => {
       if (event.status === 'starting') {
         setDiarizationDownloadMessage('Connecting to HuggingFace...');
       } else if (event.status === 'progress') {
         setDiarizationDownloadMessage(event.message || 'Downloading...');
+        updateProgress(modelId, 0, 0, event.message || 'Downloading...');
       } else if (event.status === 'complete') {
         setDiarizationDownloading(null);
         setDiarizationDownloadMessage(null);
+        completeDownload(modelId);
         refreshDiarizationModels();
       } else if (event.status === 'error') {
         setDiarizationError(event.error || 'Download failed');
         setDiarizationDownloading(null);
         setDiarizationDownloadMessage(null);
+        failDownload(modelId, event.error || 'Download failed');
       }
     });
 
