@@ -557,10 +557,11 @@ async def handle_transcription(
 
         # Auto-queue summarization job if requested
         auto_summary = payload.get("auto_summary", False)
+        logger.info("auto_summary flag in transcription job: %s", auto_summary)
         if auto_summary:
             try:
-                await job_queue.enqueue("summarize", {"transcript_id": transcript_id})
-                logger.info("Queued summarization job for transcript %s", transcript_id)
+                summary_job_id = await job_queue.enqueue("summarize", {"transcript_id": transcript_id})
+                logger.info("Queued summarization job %s for transcript %s", summary_job_id, transcript_id)
             except Exception as e:
                 logger.warning("Failed to queue summarization job: %s", e)
 
@@ -769,15 +770,24 @@ async def handle_summarization(
     # Helper to broadcast progress to frontend
     async def broadcast_progress(progress: float, status: str = "running"):
         if job_id:
-            await broadcast_job_progress(
-                job_id=job_id,
-                job_type="summarize",
-                status=status,
-                progress=progress,
-                task_name="AI Summary",
-                recording_id=recording_id,
-                transcript_id=transcript_id,
+            logger.info(
+                "Broadcasting summarization progress: job=%s status=%s progress=%d recording=%s",
+                job_id, status, progress, recording_id
             )
+            try:
+                await broadcast_job_progress(
+                    job_id=job_id,
+                    job_type="summarize",
+                    status=status,
+                    progress=progress,
+                    task_name="AI Summary",
+                    recording_id=recording_id,
+                    transcript_id=transcript_id,
+                )
+            except Exception as e:
+                logger.warning("Failed to broadcast progress: %s", e)
+
+    logger.info("Starting summarization job %s for transcript %s", job_id, transcript_id)
 
     await progress_callback(10)
     await broadcast_progress(10)
@@ -787,9 +797,15 @@ async def handle_summarization(
     # and may not have settings.AI_MODEL_PATH set
     _ensure_active_model_loaded()
 
+    from core.config import settings
+    logger.info("AI model path after ensure_active_model_loaded: %s", settings.AI_MODEL_PATH)
+
     # Check if AI service is available
     factory = get_factory()
     ai_service = factory.create_ai_service()
+
+    service_info = await ai_service.get_service_info()
+    logger.info("AI service info: %s", service_info)
 
     if not await ai_service.is_available():
         service_info = await ai_service.get_service_info()
@@ -838,8 +854,14 @@ async def handle_summarization(
 
     # Generate summary
     try:
+        logger.info("Generating summary for transcript %s (text length: %d chars)", transcript_id, len(transcript_text))
         options = ChatOptions(temperature=0.3, max_tokens=2048)
         result = await ai_service.summarize_transcript(transcript_text, options)
+        logger.info("Summary generated successfully: summary=%d chars, key_points=%s, topics=%s",
+            len(result.summary) if result.summary else 0,
+            len(result.key_points) if result.key_points else 0,
+            len(result.topics) if result.topics else 0
+        )
         await progress_callback(80)
         await broadcast_progress(80)
 

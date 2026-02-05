@@ -29,7 +29,7 @@ export function UploadSetupDialog({
   const [metadata, setMetadata] = useState<Record<string, unknown>>({});
   const [loadingTemplates, setLoadingTemplates] = useState(false);
   const [autoTranscribe, setAutoTranscribe] = useState(true);
-  const [autoGenerateSummary, setAutoGenerateSummary] = useState(false);
+  const [autoGenerateSummary, setAutoGenerateSummary] = useState(true);
   const dialogRef = useRef<HTMLDivElement>(null);
   const titleRef = useRef<HTMLInputElement>(null);
 
@@ -228,7 +228,7 @@ export function UploadSetupDialog({
             </label>
 
             {/* Auto-generate summary checkbox */}
-            <label className={`flex items-center gap-3 ml-7 ${autoTranscribe ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'}`}>
+            <label className={`flex items-center gap-3 ${autoTranscribe ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'}`}>
               <input
                 type="checkbox"
                 checked={autoGenerateSummary}
