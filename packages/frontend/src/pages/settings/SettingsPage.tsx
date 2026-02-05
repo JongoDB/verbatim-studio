@@ -722,8 +722,15 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
     const oldPath = originalLocation?.config?.path;
     const newPath = editingLocation.config?.path;
 
+    console.log('[Storage] handleUpdateStorageLocation called');
+    console.log('[Storage] originalLocation:', originalLocation);
+    console.log('[Storage] oldPath:', oldPath);
+    console.log('[Storage] newPath:', newPath);
+    console.log('[Storage] paths different?', oldPath !== newPath);
+
     if (oldPath && newPath && oldPath !== newPath) {
       // Path is changing - ask about migration
+      console.log('[Storage] Showing migration dialog');
       setMigrationSource(oldPath);
       setMigrationDest(newPath);
       setPendingLocationUpdate(editingLocation);
@@ -732,6 +739,7 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
     }
 
     // Path not changing, proceed with update
+    console.log('[Storage] Skipping migration dialog, calling performLocationUpdate');
     await performLocationUpdate(editingLocation);
   }, [editingLocation, storageLocations]);
 
