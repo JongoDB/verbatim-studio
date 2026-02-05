@@ -7,7 +7,15 @@ export interface TourStep {
   navigateTo?: string; // optional navigation target (page or settings tab)
 }
 
+// Tour steps ordered to match navbar: dashboard, projects, recordings, live, documents, chats, search, files
 export const TOUR_STEPS: TourStep[] = [
+  {
+    id: 'projects',
+    target: '[data-tour="projects"]',
+    title: 'Projects',
+    description: 'Organize your work into projects. Each project is a real folder on your computer — accessible anytime, with or without Verbatim',
+    position: 'right',
+  },
   {
     id: 'recordings',
     target: '[data-tour="recordings"]',
@@ -30,10 +38,10 @@ export const TOUR_STEPS: TourStep[] = [
     position: 'right',
   },
   {
-    id: 'projects',
-    target: '[data-tour="projects"]',
-    title: 'Projects',
-    description: 'Organize your work into projects. Each project is a real folder on your computer — accessible anytime, with or without Verbatim',
+    id: 'chats',
+    target: '[data-tour="chats"]',
+    title: 'Chat History',
+    description: 'View and continue your saved conversations with the AI assistant',
     position: 'right',
   },
   {
@@ -104,13 +112,6 @@ export const TOUR_STEPS: TourStep[] = [
     title: 'Verbatim Assistant',
     description: 'Quick AI help — ask questions about anything, including how to use this app',
     position: 'top',
-  },
-  {
-    id: 'chats',
-    target: '[data-tour="chats"]',
-    title: 'Chat History',
-    description: 'View and continue your saved conversations with the AI assistant',
-    position: 'right',
   },
 ];
 
