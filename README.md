@@ -14,7 +14,6 @@
 <p align="center">
   <a href="#features">Features</a> •
   <a href="#installation">Installation</a> •
-  <a href="#quick-start">Quick Start</a> •
   <a href="#architecture">Architecture</a> •
   <a href="#roadmap">Roadmap</a> •
   <a href="#contributing">Contributing</a>
@@ -56,7 +55,7 @@ Verbatim Studio works just as well for everyday use:
 
 ### Transcription That Actually Works
 
-- **Whisper-powered accuracy** — The same AI that powers the best cloud services, running locally on your Mac
+- **OpenAI Whisper accuracy** — State-of-the-art speech recognition running entirely on your Mac
 - **Multi-language support** — Transcribe in 12+ languages with automatic detection
 - **Automatic speaker identification** — Know who said what without manual tagging
 - **Live transcription** — Real-time speech-to-text from your microphone
@@ -66,13 +65,14 @@ Verbatim Studio works just as well for everyday use:
   <img src="docs/screenshots/live-transcription.png" alt="Live Transcription" width="80%">
 </p>
 
-### Max: Your AI Research Assistant
+### Max: Your AI-Powered Verbatim Assistant
 
 Max isn't just a chatbot—it's a research tool that actually understands your content:
 
 - **Query across your entire library** — Ask questions that span multiple files and documents
 - **Persistent conversations** — Pick up where you left off with saved chat history
 - **Document-aware** — Upload PDFs, images, and notes for Max to reference
+- **OCR built-in** — Extract text from scanned documents and images automatically
 - **Platform guidance** — Not sure how to do something? Just ask Max
 
 All powered by IBM Granite, running 100% locally. No API keys. No usage limits. No data leaving your machine.
@@ -117,9 +117,7 @@ Download for your platform:
 | Platform | Download | Status |
 |----------|----------|--------|
 | **macOS (Apple Silicon)** | [Download .dmg](https://github.com/JongoDB/verbatim-studio/releases) | M1/M2/M3/M4 optimized |
-| **macOS (Intel)** | — | Coming soon |
 | **Windows** | — | Coming soon |
-| **Linux** | — | Coming soon |
 
 The app is self-contained—no Python, Node.js, or other dependencies required. Just download, install, and run.
 
@@ -202,16 +200,6 @@ Open [http://localhost:5173](http://localhost:5173) in your browser.
 
 ---
 
-## Quick Start
-
-1. **Upload or record** — Drag in audio/video files or start a live transcription
-2. **Let the AI work** — Transcription happens locally, typically faster than real-time on Apple Silicon
-3. **Review and refine** — Edit speaker names, highlight key moments, add notes
-4. **Ask Max** — Query your content, generate summaries, or get help using the platform
-5. **Export** — Download as TXT, SRT, VTT, or JSON
-
----
-
 ## Architecture
 
 <pre align="center">
@@ -239,6 +227,7 @@ Open [http://localhost:5173](http://localhost:5173) in your browser.
 | Backend | FastAPI, SQLAlchemy, Pydantic |
 | Transcription | WhisperX, MLX Whisper, pyannote.audio |
 | AI/LLM | llama-cpp-python, sentence-transformers |
+| OCR | Qwen2-VL (vision-language model) |
 | Audio | WaveSurfer.js, ffmpeg |
 | Storage | SQLite, Google Drive, OneDrive, Dropbox |
 
@@ -258,6 +247,7 @@ Open [http://localhost:5173](http://localhost:5173) in your browser.
 - [x] Multi-document conversations with chat history
 - [x] Semantic search across all content
 - [x] Platform guidance and help
+- [x] OCR for scanned documents and images
 
 **Editing & Organization**
 - [x] Clickable timestamps and playback keyboard shortcuts
@@ -276,8 +266,7 @@ Open [http://localhost:5173](http://localhost:5173) in your browser.
 
 - [ ] Automatic update notifications with release notes
 - [ ] External LLM connections (Ollama, OpenAI, self-hosted)
-- [ ] Windows and Linux desktop apps
-- [ ] macOS Intel support
+- [ ] Windows desktop app
 
 ### Enterprise Tier (Planned)
 
@@ -303,7 +292,7 @@ On first use, Verbatim Studio downloads the AI models you select:
 | Whisper (base) | ~150 MB | Transcription (configurable up to large-v3) |
 | pyannote | ~200 MB | Speaker identification |
 | nomic-embed-text | ~550 MB | Semantic search |
-| IBM Granite 3.3 | ~5 GB | Max AI assistant (2B lite version also available) |
+| IBM Granite 3.3 | ~5 GB | Max AI assistant |
 
 Models are cached locally and only download once.
 
