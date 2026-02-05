@@ -3,6 +3,7 @@ import { createContext, useContext, useEffect, useRef, useState, type ReactNode 
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { getWebSocketUrl } from '@/lib/api';
 import { queryKeys } from '@/lib/queryKeys';
+import { useTaskStore, type TaskType } from '@/stores/taskStore';
 
 interface DataSyncContextValue {
   connected: boolean;
@@ -20,6 +21,20 @@ interface InvalidationMessage {
   action: string;
   id?: string;
 }
+
+interface JobProgressMessage {
+  type: 'job_progress';
+  job_id: string;
+  job_type: TaskType;
+  status: 'running' | 'completed' | 'failed';
+  progress: number;
+  task_name?: string;
+  recording_id?: string;
+  transcript_id?: string;
+  error?: string;
+}
+
+type WebSocketMessage = InvalidationMessage | JobProgressMessage;
 
 function handleInvalidation(
   queryClient: QueryClient,
@@ -66,6 +81,54 @@ function handleInvalidation(
 
     default:
       console.warn(`[DataSync] Unknown resource: ${resource}`);
+  }
+}
+
+function getTaskName(jobType: TaskType, message: JobProgressMessage): string {
+  switch (jobType) {
+    case 'summarize':
+      return 'AI Summary';
+    case 'transcribe':
+      return 'Transcription';
+    case 'embed':
+      return 'Embeddings';
+    case 'process_document':
+      return 'Document Processing';
+    default:
+      return message.task_name || 'Processing';
+  }
+}
+
+function handleJobProgress(message: JobProgressMessage) {
+  const { startTask, updateProgress, completeTask, failTask } = useTaskStore.getState();
+
+  console.log(`[DataSync] Job progress: ${message.job_type} ${message.status} ${message.progress}%`);
+
+  const taskName = getTaskName(message.job_type, message);
+
+  if (message.status === 'running') {
+    // Start or update task
+    const tasks = useTaskStore.getState().tasks;
+    if (!tasks.has(message.job_id)) {
+      startTask(message.job_id, message.job_type, taskName, {
+        recordingId: message.recording_id,
+        transcriptId: message.transcript_id,
+      });
+    }
+    updateProgress(message.job_id, message.progress);
+  } else if (message.status === 'completed') {
+    // Ensure task exists before completing
+    const tasks = useTaskStore.getState().tasks;
+    if (!tasks.has(message.job_id)) {
+      startTask(message.job_id, message.job_type, taskName);
+    }
+    completeTask(message.job_id);
+  } else if (message.status === 'failed') {
+    const tasks = useTaskStore.getState().tasks;
+    if (!tasks.has(message.job_id)) {
+      startTask(message.job_id, message.job_type, taskName);
+    }
+    failTask(message.job_id, message.error || 'Task failed');
   }
 }
 
@@ -126,9 +189,11 @@ export function DataSyncProvider({ children }: DataSyncProviderProps) {
 
       ws.onmessage = (event) => {
         try {
-          const data = JSON.parse(event.data) as InvalidationMessage;
+          const data = JSON.parse(event.data) as WebSocketMessage;
           if (data.type === 'invalidate') {
             handleInvalidation(queryClient, data.resource, data.action, data.id);
+          } else if (data.type === 'job_progress') {
+            handleJobProgress(data);
           }
         } catch (err) {
           console.error('[DataSync] Failed to parse message', err);

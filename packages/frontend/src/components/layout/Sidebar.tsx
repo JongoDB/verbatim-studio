@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { isElectron } from '../../lib/api';
 import { DownloadIndicator } from '../downloads/DownloadIndicator';
+import { TaskIndicator } from '../tasks/TaskIndicator';
 
 // Import logos to get correct bundled paths (works with both http and file:// protocols)
 import logoIcon from '/logo-icon.png';
@@ -267,10 +268,13 @@ export function Sidebar({ currentTab, onNavigate, theme, onCycleTheme, version, 
           })}
         </nav>
 
-        {/* Bottom: Downloads, Settings, Theme, version, health */}
+        {/* Bottom: Downloads, Tasks, Settings, Theme, version, health */}
         <div className="px-3 py-4 border-t border-border space-y-1 shrink-0">
           {/* Download indicator */}
           <DownloadIndicator collapsed={collapsed} />
+
+          {/* Task indicator (AI summarization, etc.) */}
+          <TaskIndicator collapsed={collapsed} />
 
           {/* Settings */}
           <button

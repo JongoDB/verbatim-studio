@@ -728,6 +728,7 @@ async def handle_summarization(
     Args:
         payload: Job payload with:
             - transcript_id: Required transcript ID
+            - job_id: Job ID for progress broadcasting
         progress_callback: Callback to report progress.
 
     Returns:
@@ -736,24 +737,54 @@ async def handle_summarization(
     Raises:
         ValueError: If transcript not found or AI not available.
     """
+    from api.routes.ai import _ensure_active_model_loaded
+    from api.routes.sync import broadcast_job_progress
     from core.factory import get_factory
     from core.interfaces import ChatOptions
 
     transcript_id = payload.get("transcript_id")
+    job_id = payload.get("job_id")
+    recording_id = None
+
     if not transcript_id:
         raise ValueError("Missing transcript_id in payload")
 
+    # Helper to broadcast progress to frontend
+    async def broadcast_progress(progress: float, status: str = "running"):
+        if job_id:
+            await broadcast_job_progress(
+                job_id=job_id,
+                job_type="summarize",
+                status=status,
+                progress=progress,
+                task_name="AI Summary",
+                recording_id=recording_id,
+                transcript_id=transcript_id,
+            )
+
     await progress_callback(10)
+    await broadcast_progress(10)
+
+    # Ensure AI model path is loaded from active_model.json
+    # This is needed because job handlers run in separate threads
+    # and may not have settings.AI_MODEL_PATH set
+    _ensure_active_model_loaded()
 
     # Check if AI service is available
     factory = get_factory()
     ai_service = factory.create_ai_service()
 
     if not await ai_service.is_available():
-        logger.warning("AI service not available, skipping summarization")
+        service_info = await ai_service.get_service_info()
+        logger.warning(
+            "AI service not available, skipping summarization. Service info: %s",
+            service_info,
+        )
+        await broadcast_progress(0, "failed")
         return {"success": False, "skipped": True, "reason": "AI service not available"}
 
     await progress_callback(20)
+    await broadcast_progress(20)
 
     # Get transcript text
     async with async_session() as session:
@@ -764,6 +795,8 @@ async def handle_summarization(
 
         if not transcript:
             raise ValueError(f"Transcript not found: {transcript_id}")
+
+        recording_id = transcript.recording_id
 
         # Get segments
         seg_result = await session.execute(
@@ -784,12 +817,14 @@ async def handle_summarization(
         ])
 
     await progress_callback(30)
+    await broadcast_progress(30)
 
     # Generate summary
     try:
         options = ChatOptions(temperature=0.3, max_tokens=2048)
         result = await ai_service.summarize_transcript(transcript_text, options)
         await progress_callback(80)
+        await broadcast_progress(80)
 
         # Store summary in transcript
         async with async_session() as session:
@@ -807,15 +842,17 @@ async def handle_summarization(
             await session.commit()
 
         # Broadcast update so frontend refreshes
-        await broadcast("recordings", "summary_generated", transcript.recording_id)
+        await broadcast("recordings", "summary_generated", recording_id)
 
         await progress_callback(100)
+        await broadcast_progress(100, "completed")
 
         logger.info("Summarization complete for transcript %s", transcript_id)
         return {"success": True, "transcript_id": transcript_id}
 
     except Exception as e:
         logger.exception("Summarization failed for transcript %s", transcript_id)
+        await broadcast_progress(0, "failed")
         return {"success": False, "error": str(e)}
 
 
