@@ -59,7 +59,7 @@ async def list_diarization_models() -> DiarizationModelsResponse:
     """
     # Check if HF token is set
     current_settings = await get_transcription_settings()
-    hf_token_set = current_settings.get("hf_token_set", False)
+    hf_token_set = bool(current_settings.get("hf_token"))
 
     models = []
     for model in PYANNOTE_MODELS:

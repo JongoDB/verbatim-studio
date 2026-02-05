@@ -84,9 +84,10 @@ app.on('before-quit', async (event) => {
 });
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit();
-  }
+  // Quit the app on all platforms, including macOS
+  // Since we have a backend process, we should quit when all windows are closed
+  // to avoid leaving orphaned Python processes
+  app.quit();
 });
 
 app.on('second-instance', () => {
@@ -110,4 +111,28 @@ backendManager.on('exit', (code: number | null) => {
   if (code !== 0 && code !== null) {
     // Unexpected exit, could show error dialog
   }
+});
+
+// Safety net: ensure backend stops on process exit
+process.on('exit', () => {
+  if (backendManager.isRunning()) {
+    console.log('[Main] Process exiting, force-stopping backend');
+    // Can't use async here, so force kill synchronously
+    try {
+      (backendManager as any).process?.kill('SIGKILL');
+    } catch {
+      // Ignore errors during cleanup
+    }
+  }
+});
+
+// Handle uncaught exceptions - try to clean up
+process.on('uncaughtException', async (error) => {
+  console.error('[Main] Uncaught exception:', error);
+  try {
+    await backendManager.stop();
+  } catch {
+    // Ignore cleanup errors
+  }
+  process.exit(1);
 });
