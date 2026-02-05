@@ -3098,8 +3098,11 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
                                   // Prefer Electron's native dialog (returns full path)
                                   if (window.electronAPI?.openDirectoryDialog) {
                                     const fullPath = await window.electronAPI.openDirectoryDialog();
+                                    console.log('[Storage] Browse dialog returned:', fullPath);
+                                    console.log('[Storage] Current editingLocation.config.path:', editingLocation?.config?.path);
                                     if (fullPath) {
                                       setEditingLocation({ ...editingLocation, config: { ...editingLocation.config, path: fullPath } });
+                                      console.log('[Storage] Set editingLocation.config.path to:', fullPath);
                                     }
                                     return;
                                   }
@@ -3173,7 +3176,11 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
                         </button>
                       )}
                       <button
-                        onClick={() => setEditingLocation(location)}
+                        onClick={() => {
+                          console.log('[Storage] Edit clicked, location:', location);
+                          console.log('[Storage] Edit clicked, location.config.path:', location.config?.path);
+                          setEditingLocation(location);
+                        }}
                         className="p-1.5 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
                         title="Edit"
                       >
