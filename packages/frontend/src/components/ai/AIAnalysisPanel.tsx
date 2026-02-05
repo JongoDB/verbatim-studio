@@ -3,11 +3,12 @@ import { api, type SummarizationResponse, type AIChatResponse } from '@/lib/api'
 
 interface AIAnalysisPanelProps {
   transcriptId: string;
+  existingSummary?: SummarizationResponse | null;
 }
 
 type TabType = 'summary' | 'ask';
 
-export function AIAnalysisPanel({ transcriptId }: AIAnalysisPanelProps) {
+export function AIAnalysisPanel({ transcriptId, existingSummary }: AIAnalysisPanelProps) {
   const [aiAvailable, setAiAvailable] = useState<boolean | null>(null); // null = loading
   const [activeTab, setActiveTab] = useState<TabType>('summary');
   const [isLoading, setIsLoading] = useState(false);
@@ -42,9 +43,16 @@ export function AIAnalysisPanel({ transcriptId }: AIAnalysisPanelProps) {
     return () => window.removeEventListener('ai-status-changed', handleAiStatusChange);
   }, [checkAiStatus]);
 
-  // Summary state
-  const [summary, setSummary] = useState<SummarizationResponse | null>(null);
+  // Summary state - initialize with existing summary if provided
+  const [summary, setSummary] = useState<SummarizationResponse | null>(existingSummary ?? null);
   const [temperature, setTemperature] = useState(0.3);
+
+  // Update summary if existingSummary prop changes (e.g., after auto-generation completes)
+  useEffect(() => {
+    if (existingSummary && !summary) {
+      setSummary(existingSummary);
+    }
+  }, [existingSummary, summary]);
 
   // Ask state
   const [question, setQuestion] = useState('');

@@ -668,7 +668,7 @@ export function TranscriptPage({ recordingId, onBack, initialSeekTime }: Transcr
       )}
 
       {/* AI Analysis Panel */}
-      <AIAnalysisPanel transcriptId={transcript.id} />
+      <AIAnalysisPanel transcriptId={transcript.id} existingSummary={transcript.ai_summary} />
 
       {/* Editable Segments */}
       <div>
