@@ -22,6 +22,9 @@ class ExportSegment:
     text: str
     speaker: str | None = None
     speaker_name: str | None = None
+    edited: bool = False
+    highlight_color: str | None = None
+    comments: list[str] | None = None
 
 
 @dataclass
@@ -99,11 +102,24 @@ class ExportService:
             speaker_name = data.speakers.get(segment.speaker or "", segment.speaker)
             speaker_prefix = f"[{speaker_name}] " if speaker_name else ""
 
+            # Build annotation markers
+            markers = []
+            if segment.edited:
+                markers.append("edited")
+            if segment.highlight_color:
+                markers.append(f"highlighted:{segment.highlight_color}")
+            marker_str = f" [{', '.join(markers)}]" if markers else ""
+
             if include_timestamps:
                 timestamp = format_timestamp_readable(segment.start_time)
-                lines.append(f"[{timestamp}] {speaker_prefix}{segment.text}")
+                lines.append(f"[{timestamp}] {speaker_prefix}{segment.text}{marker_str}")
             else:
-                lines.append(f"{speaker_prefix}{segment.text}")
+                lines.append(f"{speaker_prefix}{segment.text}{marker_str}")
+
+            # Add comments if present
+            if segment.comments:
+                for comment in segment.comments:
+                    lines.append(f"    > {comment}")
 
         return "\n".join(lines)
 
@@ -158,6 +174,21 @@ class ExportService:
         lines.append("")
 
         for i, segment in enumerate(data.segments, 1):
+            # Add notes for highlights/edits/comments before the cue
+            notes = []
+            if segment.edited:
+                notes.append("This segment was manually edited")
+            if segment.highlight_color:
+                notes.append(f"Highlighted: {segment.highlight_color}")
+            if segment.comments:
+                for comment in segment.comments:
+                    notes.append(f"Comment: {comment}")
+            if notes:
+                lines.append(f"NOTE Segment {i} annotations:")
+                for note in notes:
+                    lines.append(f"  {note}")
+                lines.append("")
+
             # Cue identifier (optional but useful)
             lines.append(f"cue-{i}")
 
@@ -189,12 +220,31 @@ class ExportService:
         """
         try:
             from docx import Document
-            from docx.shared import Inches, Pt
+            from docx.shared import Inches, Pt, RGBColor
             from docx.enum.text import WD_ALIGN_PARAGRAPH
+            from docx.oxml.ns import qn
+            from docx.oxml import OxmlElement
         except ImportError:
             raise ImportError(
                 "python-docx is not installed. Install with: pip install python-docx"
             )
+
+        # Highlight color mapping
+        HIGHLIGHT_COLORS = {
+            "yellow": "FFFF00",
+            "green": "90EE90",
+            "blue": "87CEEB",
+            "pink": "FFB6C1",
+            "orange": "FFA500",
+            "purple": "DDA0DD",
+        }
+
+        def set_highlight(run, color_name: str):
+            """Set background highlight color on a run."""
+            color_hex = HIGHLIGHT_COLORS.get(color_name.lower(), "FFFF00")
+            shd = OxmlElement("w:shd")
+            shd.set(qn("w:fill"), color_hex)
+            run._r.get_or_add_rPr().append(shd)
 
         doc = Document()
 
@@ -232,6 +282,7 @@ class ExportService:
 
         # Segments
         current_speaker = None
+        all_comments = []  # Collect comments for end section
         for segment in data.segments:
             speaker_name = data.speakers.get(segment.speaker or "", segment.speaker)
 
@@ -250,11 +301,37 @@ class ExportService:
             # Timestamp in gray
             ts_run = para.add_run(f"[{timestamp}] ")
             ts_run.font.size = Pt(9)
-            ts_run.font.color.rgb = None  # Use default gray
+            ts_run.font.color.rgb = RGBColor(128, 128, 128)
 
-            # Text
+            # Text with highlight if present
             text_run = para.add_run(segment.text)
             text_run.font.size = Pt(11)
+            if segment.highlight_color:
+                set_highlight(text_run, segment.highlight_color)
+
+            # Add edited marker
+            if segment.edited:
+                edited_run = para.add_run(" [edited]")
+                edited_run.font.size = Pt(8)
+                edited_run.font.color.rgb = RGBColor(128, 128, 128)
+                edited_run.italic = True
+
+            # Collect comments
+            if segment.comments:
+                for comment in segment.comments:
+                    all_comments.append((timestamp, speaker_name or "Unknown", comment))
+
+        # Add comments section if there are any
+        if all_comments:
+            doc.add_paragraph()
+            doc.add_heading("Comments", level=1)
+            for ts, speaker, comment in all_comments:
+                para = doc.add_paragraph()
+                ts_run = para.add_run(f"[{ts}] {speaker}: ")
+                ts_run.bold = True
+                ts_run.font.size = Pt(10)
+                comment_run = para.add_run(comment)
+                comment_run.font.size = Pt(10)
 
         # Save to bytes
         buffer = io.BytesIO()
@@ -287,6 +364,16 @@ class ExportService:
             raise ImportError(
                 "reportlab is not installed. Install with: pip install reportlab"
             )
+
+        # Highlight color mapping to hex
+        HIGHLIGHT_COLORS = {
+            "yellow": "#FFFF00",
+            "green": "#90EE90",
+            "blue": "#87CEEB",
+            "pink": "#FFB6C1",
+            "orange": "#FFA500",
+            "purple": "#DDA0DD",
+        }
 
         buffer = io.BytesIO()
         doc = SimpleDocTemplate(buffer, pagesize=letter)
@@ -322,7 +409,17 @@ class ExportService:
             spaceAfter=2,
         )
 
-        # Timestamp style
+        # Comment style
+        comment_style = ParagraphStyle(
+            "Comment",
+            parent=styles["Normal"],
+            fontSize=9,
+            leftIndent=20,
+            spaceBefore=4,
+            spaceAfter=4,
+        )
+
+        # Timestamp style (unused but kept for reference)
         timestamp_style = ParagraphStyle(
             "Timestamp",
             parent=styles["Normal"],
@@ -362,6 +459,7 @@ class ExportService:
 
         # Segments
         current_speaker = None
+        all_comments = []  # Collect comments for end section
         for segment in data.segments:
             speaker_name = data.speakers.get(segment.speaker or "", segment.speaker)
 
@@ -372,8 +470,34 @@ class ExportService:
 
             # Add segment with timestamp
             timestamp = format_timestamp_readable(segment.start_time)
-            text = f"<font color='gray' size='8'>[{timestamp}]</font> {segment.text}"
+
+            # Build text with highlight background if present
+            text_content = segment.text
+            if segment.highlight_color:
+                bg_color = HIGHLIGHT_COLORS.get(segment.highlight_color.lower(), "#FFFF00")
+                text_content = f"<span backColor='{bg_color}'>{text_content}</span>"
+
+            # Add edited marker
+            edited_marker = ""
+            if segment.edited:
+                edited_marker = " <font color='gray' size='7'><i>[edited]</i></font>"
+
+            text = f"<font color='gray' size='8'>[{timestamp}]</font> {text_content}{edited_marker}"
             elements.append(Paragraph(text, segment_style))
+
+            # Collect comments
+            if segment.comments:
+                for comment in segment.comments:
+                    all_comments.append((timestamp, speaker_name or "Unknown", comment))
+
+        # Add comments section if there are any
+        if all_comments:
+            elements.append(Spacer(1, 20))
+            elements.append(Paragraph("Comments", styles["Heading2"]))
+            elements.append(Spacer(1, 10))
+            for ts, speaker, comment in all_comments:
+                text = f"<b>[{ts}] {speaker}:</b> {comment}"
+                elements.append(Paragraph(text, comment_style))
 
         doc.build(elements)
         buffer.seek(0)

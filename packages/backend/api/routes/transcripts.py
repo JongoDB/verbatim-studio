@@ -121,6 +121,32 @@ async def _load_segment_annotations(
     return highlight_map, comment_count_map
 
 
+async def _load_segment_comments(
+    db: AsyncSession, segment_ids: list[str]
+) -> dict[str, list[str]]:
+    """Batch-load comment texts for segments.
+
+    Returns:
+        Dict of segment_id -> list of comment texts.
+    """
+    if not segment_ids:
+        return {}
+
+    result = await db.execute(
+        select(SegmentComment.segment_id, SegmentComment.content)
+        .where(SegmentComment.segment_id.in_(segment_ids))
+        .order_by(SegmentComment.created_at)
+    )
+
+    comments_map: dict[str, list[str]] = {}
+    for segment_id, content in result.all():
+        if segment_id not in comments_map:
+            comments_map[segment_id] = []
+        comments_map[segment_id].append(content)
+
+    return comments_map
+
+
 def _build_segment_response(
     s: Segment,
     highlight_map: dict[str, str],
@@ -456,6 +482,11 @@ async def export_transcript(
     # Sort segments by index
     sorted_segments = sorted(transcript.segments, key=lambda s: s.segment_index)
 
+    # Load annotations for export
+    segment_ids = [s.id for s in sorted_segments]
+    highlight_map, _ = await _load_segment_annotations(db, segment_ids)
+    comments_map = await _load_segment_comments(db, segment_ids)
+
     # Build export data
     export_data = ExportData(
         title=transcript.recording.title if transcript.recording else "Transcript",
@@ -471,6 +502,9 @@ async def export_transcript(
                 text=s.text,
                 speaker=s.speaker,
                 speaker_name=speaker_map.get(s.speaker) if s.speaker else None,
+                edited=s.edited,
+                highlight_color=highlight_map.get(s.id),
+                comments=comments_map.get(s.id),
             )
             for s in sorted_segments
         ],
