@@ -932,6 +932,7 @@ async def handle_document_processing(
         # Update status
         doc.status = "processing"
         await session.commit()
+        await broadcast("documents", "status_changed", document_id)
 
         await update_progress(10)
 
@@ -1010,6 +1011,7 @@ async def handle_document_processing(
             doc.status = "completed"
             doc.error_message = None
             await session.commit()
+            await broadcast("documents", "status_changed", document_id)
 
             await update_progress(100)
 
@@ -1029,6 +1031,7 @@ async def handle_document_processing(
             doc.status = "cancelled"
             doc.error_message = "Processing was cancelled"
             await session.commit()
+            await broadcast("documents", "status_changed", document_id)
             logger.info(f"Document {document_id} processing cancelled")
             return {"document_id": document_id, "status": "cancelled"}
 
@@ -1042,6 +1045,7 @@ async def handle_document_processing(
             doc.status = "failed"
             doc.error_message = str(e)
             await session.commit()
+            await broadcast("documents", "status_changed", document_id)
             raise
 
 

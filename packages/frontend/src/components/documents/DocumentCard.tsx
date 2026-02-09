@@ -1,6 +1,7 @@
 import type { Document, Tag, Project } from '@/lib/api';
 import { formatRelativeTime } from '@/lib/utils';
 import { cn } from '@/lib/utils';
+import { DocumentTypeIcon } from './DocumentTypeIcon';
 
 interface DocumentCardProps {
   document: Document;
@@ -11,18 +12,6 @@ interface DocumentCardProps {
   allTags?: Tag[];
   allProjects?: Project[];
 }
-
-const MIME_ICONS: Record<string, string> = {
-  'application/pdf': '📄',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '📝',
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': '📊',
-  'application/vnd.openxmlformats-officedocument.presentationml.presentation': '📽️',
-  'image/png': '🖼️',
-  'image/jpeg': '🖼️',
-  'image/tiff': '🖼️',
-  'text/plain': '📃',
-  'text/markdown': '📃',
-};
 
 const STATUS_STYLES: Record<string, string> = {
   pending: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300',
@@ -47,7 +36,6 @@ export function DocumentCard({
   allTags = [],
   allProjects = [],
 }: DocumentCardProps) {
-  const icon = MIME_ICONS[document.mime_type] || '📄';
   const statusStyle = STATUS_STYLES[document.status] || STATUS_STYLES.pending;
   const docTags = allTags.filter((t) => document.tag_ids?.includes(t.id));
   const docProjects = allProjects.filter((p) => document.project_ids?.includes(p.id));
@@ -79,7 +67,7 @@ export function DocumentCard({
       )}
 
       <div className={cn('flex items-start gap-3', onSelectChange && 'ml-6')}>
-        <div className="text-3xl">{icon}</div>
+        <DocumentTypeIcon mimeType={document.mime_type} />
         <div className="flex-1 min-w-0">
           <h3 className="font-medium text-gray-900 dark:text-gray-100 truncate">
             {document.title}

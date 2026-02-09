@@ -1,5 +1,6 @@
 import { cn, formatDateTime } from '@/lib/utils';
 import type { Document, Tag, Project } from '@/lib/api';
+import { DocumentTypeIcon } from './DocumentTypeIcon';
 
 type SortKey = 'created_at' | 'title' | 'file_size_bytes';
 
@@ -18,25 +19,6 @@ interface DocumentsTableProps {
   onSelectAll: (selected: boolean) => void;
   allTags?: Tag[];
   allProjects?: Project[];
-}
-
-const MIME_ICONS: Record<string, string> = {
-  'application/pdf': '📄',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '📝',
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': '📊',
-  'application/vnd.openxmlformats-officedocument.presentationml.presentation': '📽️',
-  'image/png': '🖼️',
-  'image/jpeg': '🖼️',
-  'image/tiff': '🖼️',
-  'text/plain': '📃',
-  'text/markdown': '📃',
-};
-
-function getMimeIcon(mimeType: string): string {
-  if (MIME_ICONS[mimeType]) return MIME_ICONS[mimeType];
-  if (mimeType.startsWith('image/')) return '🖼️';
-  if (mimeType.startsWith('text/')) return '📃';
-  return '📄';
 }
 
 function formatFileSize(bytes: number): string {
@@ -224,7 +206,6 @@ function DocumentRow({
   const docTags = allTags.filter((t) => document.tag_ids?.includes(t.id));
   const docProjects = allProjects.filter((p) => document.project_ids?.includes(p.id));
   const isClickable = document.status === 'completed';
-  const icon = getMimeIcon(document.mime_type);
 
   const handleRowClick = (e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
@@ -258,7 +239,7 @@ function DocumentRow({
       {/* Title */}
       <td className="px-3 py-2.5 min-w-0">
         <div className="flex items-center gap-2">
-          <span className="text-lg shrink-0">{icon}</span>
+          <DocumentTypeIcon mimeType={document.mime_type} size="sm" className="shrink-0" />
           <div className="min-w-0 flex-1">
             <h3 className="font-medium text-sm truncate" title={document.title}>
               {document.title}
