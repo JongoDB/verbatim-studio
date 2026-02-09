@@ -35,8 +35,6 @@ export const DEFAULT_ACTIONS: ActionDef[] = [
   { id: 'playback.skipForward5',   category: 'playback', label: 'Skip forward 5s',    defaultKey: { key: 'ArrowRight' } },
   { id: 'playback.prevSegment',    category: 'playback', label: 'Previous segment',   defaultKey: { key: 'ArrowUp' } },
   { id: 'playback.nextSegment',    category: 'playback', label: 'Next segment',       defaultKey: { key: 'ArrowDown' } },
-  { id: 'playback.skipBack1',      category: 'playback', label: 'Skip back 1s',       defaultKey: { key: '<', shift: true } },
-  { id: 'playback.skipForward1',   category: 'playback', label: 'Skip forward 1s',    defaultKey: { key: '>', shift: true } },
   { id: 'playback.goBack',         category: 'playback', label: 'Go back',            defaultKey: { key: 'Escape' } },
 
   // Live recording shortcuts (LiveTranscriptionPage)

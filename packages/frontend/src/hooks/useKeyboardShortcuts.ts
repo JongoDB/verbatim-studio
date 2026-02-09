@@ -59,12 +59,6 @@ export function useKeyboardShortcuts({
       } else if (matchesCombo(event, getKey('playback.nextSegment'))) {
         event.preventDefault();
         onNextSegment?.();
-      } else if (matchesCombo(event, getKey('playback.skipBack1'))) {
-        event.preventDefault();
-        onSkipBack?.(1);
-      } else if (matchesCombo(event, getKey('playback.skipForward1'))) {
-        event.preventDefault();
-        onSkipForward?.(1);
       } else if (matchesCombo(event, getKey('playback.goBack'))) {
         onEscape?.();
       }
