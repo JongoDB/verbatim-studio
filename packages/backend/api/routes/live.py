@@ -112,11 +112,25 @@ def _cleanup_expired_sessions() -> int:
     return len(expired)
 
 
-def _get_diarization_service():
-    """Lazy import to avoid loading pyannote unless needed."""
+async def _get_diarization_service():
+    """Lazy import to avoid loading pyannote unless needed.
+
+    Reads HF token from DB settings (user configures via Settings UI)
+    rather than relying on environment variables alone.
+    """
     try:
-        from services.diarization import diarization_service
-        return diarization_service
+        from services.diarization import DiarizationService
+        from core.transcription_settings import get_transcription_settings
+
+        ts = await get_transcription_settings()
+        hf_token = ts.get("hf_token")
+        if not hf_token:
+            logger.warning("No HuggingFace token configured for diarization")
+            return None
+
+        from core.transcription_settings import detect_diarization_device
+        device = detect_diarization_device()
+        return DiarizationService(device=device, hf_token=hf_token)
     except ImportError:
         return None
 
@@ -197,7 +211,7 @@ async def live_transcribe(websocket: WebSocket):
 
                     # Pre-load diarization service if needed
                     if high_detail and dia_service is None:
-                        dia_service = _get_diarization_service()
+                        dia_service = await _get_diarization_service()
 
                     await websocket.send_json({
                         "type": "session_start",
