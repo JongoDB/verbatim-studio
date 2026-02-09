@@ -143,6 +143,16 @@ export function formatTime(
 }
 
 /**
+ * Format a duration in seconds as MM:SS (or M:SS for compact display).
+ */
+export function formatDuration(seconds: number, pad = true): string {
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  const m = pad ? mins.toString().padStart(2, '0') : mins.toString();
+  return `${m}:${secs.toString().padStart(2, '0')}`;
+}
+
+/**
  * Format a relative time string (e.g., "2 hours ago", "yesterday").
  */
 export function formatRelativeTime(dateString: string | Date | null | undefined, timezone?: TimezoneValue): string {

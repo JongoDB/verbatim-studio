@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import type { TranscriptSegment } from '@/hooks/useLiveTranscription';
+import { formatDuration } from '@/lib/utils';
 
 interface LiveSegmentProps {
   segment: TranscriptSegment;
@@ -7,12 +8,6 @@ interface LiveSegmentProps {
   index: number;
   showTimestamps: boolean;
   showConfidence: boolean;
-}
-
-function formatTimestamp(seconds: number): string {
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60);
-  return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
 export function LiveSegment({ segment, onEditText, index, showTimestamps, showConfidence }: LiveSegmentProps) {
@@ -71,7 +66,7 @@ export function LiveSegment({ segment, onEditText, index, showTimestamps, showCo
       {/* Timestamp */}
       {showTimestamps && (
         <span className="text-xs text-gray-400 dark:text-gray-500 font-mono shrink-0 pt-0.5 w-10">
-          {formatTimestamp(segment.start)}
+          {formatDuration(segment.start, false)}
         </span>
       )}
 

@@ -45,9 +45,14 @@ export function AudioLevelMeter({ stream, isActive }: AudioLevelMeterProps) {
     rafRef.current = requestAnimationFrame(tick);
 
     return () => {
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
       source.disconnect();
       audioCtx.close();
+      audioCtxRef.current = null;
+      analyserRef.current = null;
     };
   }, [stream, isActive]);
 

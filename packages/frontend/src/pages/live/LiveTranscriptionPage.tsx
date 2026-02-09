@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { getApiUrl } from '@/lib/api';
+import { formatDuration } from '@/lib/utils';
 import { useLiveTranscription } from '@/hooks/useLiveTranscription';
 import { useLiveShortcuts, LIVE_SHORTCUTS } from '@/hooks/useLiveShortcuts';
 import { AudioLevelMeter } from '@/components/audio/AudioLevelMeter';
@@ -9,12 +10,6 @@ import { MetadataPanel, type LiveMetadata } from '@/components/live/MetadataPane
 interface LiveTranscriptionPageProps {
   onNavigateToRecordings: () => void;
   onViewRecording: (recordingId: string) => void;
-}
-
-function formatTime(seconds: number): string {
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60);
-  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 }
 
 const LANGUAGES = [
@@ -220,20 +215,28 @@ export function LiveTranscriptionPage({ onNavigateToRecordings: _onNavigateToRec
         </div>
       )}
 
-      {/* Error Banner */}
+      {/* Error / Warning Banner */}
       {error && (
         <div className={`p-4 rounded-lg border ${
-          error.retryable
-            ? 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800'
-            : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
+          error.type === 'warning'
+            ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800'
+            : error.retryable
+              ? 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800'
+              : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
         }`}>
           <div className={`flex items-center gap-2 ${
-            error.retryable
-              ? 'text-yellow-700 dark:text-yellow-400'
-              : 'text-red-700 dark:text-red-400'
+            error.type === 'warning'
+              ? 'text-blue-700 dark:text-blue-400'
+              : error.retryable
+                ? 'text-yellow-700 dark:text-yellow-400'
+                : 'text-red-700 dark:text-red-400'
           }`}>
             <svg className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              {error.type === 'warning' ? (
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              ) : (
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              )}
             </svg>
             <span className="text-sm">{error.message}</span>
             <button onClick={dismissError} className="ml-auto text-sm underline shrink-0">Dismiss</button>
@@ -327,7 +330,7 @@ export function LiveTranscriptionPage({ onNavigateToRecordings: _onNavigateToRec
 
             {/* Timer */}
             <div className="text-4xl font-mono font-bold text-center text-gray-900 dark:text-gray-100 mb-2">
-              {formatTime(duration)}
+              {formatDuration(duration)}
             </div>
 
             {/* Audio Level Meter */}

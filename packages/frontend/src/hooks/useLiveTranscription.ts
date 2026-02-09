@@ -181,6 +181,14 @@ export function useLiveTranscription(): UseLiveTranscriptionReturn {
       case 'session_end':
         break;
 
+      case 'warning':
+        setError({
+          type: 'warning',
+          message: data.message as string,
+          retryable: false,
+        });
+        break;
+
       case 'error':
         setError({
           type: (data.error_type as string) || 'unknown',
@@ -408,6 +416,9 @@ export function useLiveTranscription(): UseLiveTranscriptionReturn {
   }, []);
 
   const clearTranscript = useCallback(async () => {
+    // Don't clear while actively recording — would orphan the backend session
+    if (isRecordingRef.current) return;
+
     if (sessionId) {
       try {
         await fetch(getApiUrl(`/api/live/session/${sessionId}`), {

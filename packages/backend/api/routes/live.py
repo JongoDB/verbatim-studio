@@ -56,6 +56,7 @@ class LiveSession:
     chunk_count: int = 0  # Track chunk index for time offset
     high_detail_mode: bool = False
     speakers_found: set = field(default_factory=set)
+    diarization_warned: bool = False
     disconnected_at: datetime | None = None
 
 
@@ -305,7 +306,17 @@ async def live_transcribe(websocket: WebSocket):
                                 "Diarization failed for chunk %d: %s",
                                 chunk_index, dia_err,
                             )
-                            # Continue without diarization
+                            # Notify user once that diarization degraded
+                            if not session.diarization_warned:
+                                session.diarization_warned = True
+                                await websocket.send_json({
+                                    "type": "warning",
+                                    "message": (
+                                        "Speaker identification unavailable."
+                                        " Transcription continues without"
+                                        " speaker labels."
+                                    ),
+                                })
 
                     # Process segments with time offset applied
                     for i, seg in enumerate(result.segments):
