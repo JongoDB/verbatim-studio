@@ -527,11 +527,20 @@ export function LiveTranscriptionPage({ onNavigateToRecordings: _onNavigateToRec
 
             {/* Footer Stats */}
             {segments.length > 0 && (
-              <div className="px-5 py-3 border-t border-gray-200 dark:border-gray-700 flex items-center gap-4 text-xs text-gray-500 dark:text-gray-400">
-                <span>{segments.length} segments</span>
-                <span>{wordCount} words</span>
-                {segments.some(s => s.edited) && (
-                  <span className="text-purple-500">Edited</span>
+              <div className="px-5 py-3 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+                <div className="flex items-center gap-4">
+                  <span>{segments.length} segments</span>
+                  <span>{wordCount} words</span>
+                  {segments.some(s => s.edited) && (
+                    <span className="text-purple-500">Edited</span>
+                  )}
+                </div>
+                {highDetailMode && (
+                  <div className="flex items-center gap-3">
+                    <span className="text-gray-400">Confidence:</span>
+                    <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-yellow-100 dark:bg-yellow-900/30 border border-yellow-300 dark:border-yellow-700" /> Uncertain</span>
+                    <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700" /> Low</span>
+                  </div>
                 )}
               </div>
             )}

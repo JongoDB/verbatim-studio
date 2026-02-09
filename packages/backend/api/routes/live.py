@@ -309,14 +309,19 @@ async def live_transcribe(websocket: WebSocket):
                             # Notify user once that diarization degraded
                             if not session.diarization_warned:
                                 session.diarization_warned = True
+                                err_str = str(dia_err)
+                                if "401" in err_str or "token" in err_str.lower():
+                                    hint = "Your HuggingFace token may be invalid or missing access to pyannote models. Accept the license at huggingface.co/pyannote/speaker-diarization-3.1"
+                                elif "import" in err_str.lower() or "module" in err_str.lower():
+                                    hint = "The diarization model is not installed. You can install it in Settings → AI."
+                                else:
+                                    hint = f"Diarization error: {err_str}"
                                 await websocket.send_json({
                                     "type": "warning",
                                     "message": (
-                                        "Speaker identification is not available"
-                                        " — the diarization model may not be"
-                                        " installed. Transcription will continue"
-                                        " without speaker labels. You can install"
-                                        " the model in Settings → AI."
+                                        f"Speaker identification failed — {hint}."
+                                        " Transcription will continue without"
+                                        " speaker labels."
                                     ),
                                 })
 

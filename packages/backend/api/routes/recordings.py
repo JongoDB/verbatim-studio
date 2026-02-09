@@ -15,6 +15,7 @@ from sqlalchemy import distinct, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from core.config import settings
 from persistence import get_db
 from persistence.models import Job, Project, Recording, RecordingTag, RecordingTemplate, Speaker, StorageLocation, Tag, Transcript
 from services.jobs import job_queue
@@ -268,11 +269,18 @@ async def list_recordings(
     # Build base query with template eager load
     query = select(Recording).options(selectinload(Recording.template))
 
-    # Filter by active storage location path
+    # Filter by active storage location path (also include live recordings)
     active_location = await get_active_storage_location()
     if active_location and active_location.config.get("path"):
         active_path = active_location.config.get("path")
-        query = query.where(Recording.file_path.startswith(active_path))
+        media_path = str(settings.MEDIA_DIR)
+        query = query.where(
+            or_(
+                Recording.file_path.startswith(active_path),
+                Recording.file_path.startswith("live://"),
+                Recording.file_path.startswith(media_path),
+            )
+        )
 
     # Apply filters
     if project_id is not None:
