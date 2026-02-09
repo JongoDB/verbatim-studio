@@ -1,11 +1,10 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { renderAsync } from 'docx-preview';
 import ExcelJS from 'exceljs';
 import { MessageSquare } from 'lucide-react';
 import { api, type Document, type OCRStatusResponse } from '@/lib/api';
-import { NotesPanel, PDFViewer } from '@/components/documents';
+import { NotesPanel, PDFViewer, DOCXViewer } from '@/components/documents';
 
 interface DocumentViewerPageProps {
   documentId: string;
@@ -45,7 +44,6 @@ export function DocumentViewerPage({ documentId, onBack }: DocumentViewerPagePro
   const [currentPdfPage, setCurrentPdfPage] = useState(1);
   const [pendingAnchor, setPendingAnchor] = useState<{ type: 'selection'; data: { text: string; page: number } } | null>(null);
   const [highlightText, setHighlightText] = useState<string | null>(null);
-  const docxContainerRef = useRef<HTMLDivElement>(null);
   const [ocrStatus, setOcrStatus] = useState<OCRStatusResponse | null>(null);
 
   // Fetch OCR status on mount
@@ -54,7 +52,7 @@ export function DocumentViewerPage({ documentId, onBack }: DocumentViewerPagePro
   }, []);
 
   // Handle text selection in PDF to create a note
-  const handlePdfSelectionNote = useCallback((selection: { text: string; page: number }) => {
+  const handleSelectionNote = useCallback((selection: { text: string; page: number }) => {
     setPendingAnchor({ type: 'selection', data: selection });
     setShowNotes(true);
   }, []);
@@ -195,53 +193,6 @@ export function DocumentViewerPage({ documentId, onBack }: DocumentViewerPagePro
     }
     load();
   }, [documentId]);
-
-  // Render DOCX files using docx-preview
-  useEffect(() => {
-    async function renderDocx() {
-      if (!document || document.mime_type !== DOCX_MIME || !docxContainerRef.current) {
-        return;
-      }
-
-      setOfficeLoading(true);
-      try {
-        const response = await fetch(api.documents.getFileUrl(documentId));
-        const blob = await response.blob();
-
-        const container = docxContainerRef.current;
-        while (container.firstChild) {
-          container.removeChild(container.firstChild);
-        }
-
-        await renderAsync(blob, container, undefined, {
-          className: 'docx-preview',
-          inWrapper: true,
-          ignoreWidth: false,
-          ignoreHeight: false,
-          ignoreFonts: false,
-          breakPages: true,
-          ignoreLastRenderedPageBreak: true,
-          experimental: true,
-          trimXmlDeclaration: true,
-          useBase64URL: true,
-        });
-      } catch (err) {
-        console.error('Failed to render DOCX:', err);
-        try {
-          const contentRes = await api.documents.getContent(documentId);
-          setContent(contentRes.content);
-        } catch {
-          setContent(null);
-        }
-      } finally {
-        setOfficeLoading(false);
-      }
-    }
-
-    if (document?.status === 'completed' && document.mime_type === DOCX_MIME) {
-      renderDocx();
-    }
-  }, [document, documentId]);
 
   // Render XLSX files using exceljs
   useEffect(() => {
@@ -521,7 +472,7 @@ export function DocumentViewerPage({ documentId, onBack }: DocumentViewerPagePro
                 <div className="h-[calc(100vh-280px)]">
                   <PDFViewer
                     url={api.documents.getFileUrl(documentId, true)}
-                    onSelectionNote={handlePdfSelectionNote}
+                    onSelectionNote={handleSelectionNote}
                     currentPage={currentPdfPage}
                     onPageChange={setCurrentPdfPage}
                     highlightText={highlightText}
@@ -580,18 +531,12 @@ export function DocumentViewerPage({ documentId, onBack }: DocumentViewerPagePro
             )}
 
             {isDocx && (
-              <div className="relative">
-                {officeLoading && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-white dark:bg-gray-800 z-10">
-                    <svg className="w-8 h-8 animate-spin text-blue-500" viewBox="0 0 24 24" fill="none">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                    </svg>
-                  </div>
-                )}
-                <div
-                  ref={docxContainerRef}
-                  className="docx-container overflow-auto h-[calc(100vh-260px)]"
+              <div className="h-[calc(100vh-260px)]">
+                <DOCXViewer
+                  documentId={documentId}
+                  onSelectionNote={handleSelectionNote}
+                  highlightText={highlightText}
+                  onHighlightCleared={() => setHighlightText(null)}
                 />
               </div>
             )}
@@ -772,17 +717,6 @@ export function DocumentViewerPage({ documentId, onBack }: DocumentViewerPagePro
         )}
       </div>
 
-      {/* Styles for docx-preview */}
-      <style>{`
-        .docx-container .docx-wrapper {
-          background: white;
-          padding: 20px;
-        }
-        .docx-container .docx-wrapper > section.docx {
-          box-shadow: 0 0 10px rgba(0,0,0,0.1);
-          margin-bottom: 20px;
-        }
-      `}</style>
     </div>
   );
 }

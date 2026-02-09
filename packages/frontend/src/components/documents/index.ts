@@ -1,4 +1,5 @@
 export { AnchorBadge } from './AnchorBadge'
+export { DOCXViewer } from './DOCXViewer'
 export { NoteEditor } from './NoteEditor'
 export { NoteItem } from './NoteItem'
 export { NotesPanel } from './NotesPanel'
