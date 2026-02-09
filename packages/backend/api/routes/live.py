@@ -1,6 +1,5 @@
 """Live transcription WebSocket endpoint."""
 
-import asyncio
 import json
 import logging
 import tempfile
@@ -10,16 +9,24 @@ from datetime import datetime
 from pathlib import Path
 
 import aiofiles
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.routes.sync import broadcast
 from core.config import settings
 from core.factory import get_factory
 from core.interfaces import TranscriptionOptions
 from persistence.database import get_db
-from persistence.models import Recording, Transcript, Segment
-from api.routes.sync import broadcast
+from persistence.models import (
+    Recording,
+    RecordingTag,
+    Segment,
+    Speaker,
+    Tag,
+    Transcript,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +38,9 @@ CHUNK_INTERVAL_SECONDS = 1.5
 
 # Auto-save interval in seconds
 AUTOSAVE_INTERVAL_SECONDS = 30.0
+
+# Sessions are kept in memory for this long after disconnect to allow saving
+SESSION_TTL_SECONDS = 600  # 10 minutes
 
 
 @dataclass
@@ -44,6 +54,9 @@ class LiveSession:
     total_duration: float = 0.0
     language: str = "en"
     chunk_count: int = 0  # Track chunk index for time offset
+    high_detail_mode: bool = False
+    speakers_found: set = field(default_factory=set)
+    disconnected_at: datetime | None = None
 
 
 class SaveSessionRequest(BaseModel):
@@ -52,6 +65,9 @@ class SaveSessionRequest(BaseModel):
     session_id: str
     title: str
     save_audio: bool = True
+    project_id: str | None = None
+    tags: list[str] = []
+    description: str | None = None
 
 
 class SaveSessionResponse(BaseModel):
@@ -79,22 +95,51 @@ class AutosaveResponse(BaseModel):
 active_sessions: dict[str, LiveSession] = {}
 
 
+def _cleanup_expired_sessions() -> int:
+    """Remove sessions that have been disconnected longer than SESSION_TTL_SECONDS."""
+    now = datetime.utcnow()
+    expired = [
+        sid
+        for sid, s in active_sessions.items()
+        if s.disconnected_at
+        and (now - s.disconnected_at).total_seconds() > SESSION_TTL_SECONDS
+    ]
+    for sid in expired:
+        del active_sessions[sid]
+    if expired:
+        logger.info("Cleaned up %d expired session(s)", len(expired))
+    return len(expired)
+
+
+def _get_diarization_service():
+    """Lazy import to avoid loading pyannote unless needed."""
+    try:
+        from services.diarization import diarization_service
+        return diarization_service
+    except ImportError:
+        return None
+
+
 @router.websocket("/transcribe")
 async def live_transcribe(websocket: WebSocket):
     """WebSocket endpoint for live transcription.
 
     Protocol:
     1. Client connects
-    2. Client sends JSON: {"type": "start", "language": "en"} to start session
+    2. Client sends JSON: {"type": "start", "language": "en", "high_detail_mode": false}
     3. Client sends binary audio chunks (WebM/Opus or WAV)
-    4. Server responds with JSON: {"type": "transcript", "text": "...", "start": 0.0, "end": 5.0}
+    4. Server responds with JSON transcript messages
     5. Client sends JSON: {"type": "stop"} to end session
     6. Server responds with JSON: {"type": "session_end", "session_id": "..."}
     """
     await websocket.accept()
 
+    # Lazily clean up sessions that were abandoned after disconnect
+    _cleanup_expired_sessions()
+
     session: LiveSession | None = None
     chunk_index = 0
+    dia_service = None
 
     try:
         factory = get_factory()
@@ -103,7 +148,10 @@ async def live_transcribe(websocket: WebSocket):
             await websocket.send_json({
                 "type": "error",
                 "error_type": "engine_unavailable",
-                "message": "Transcription engine not available. Check Settings to configure your engine.",
+                "message": (
+                    "Transcription engine not available."
+                    " Check Settings to configure your engine."
+                ),
                 "retryable": False,
             })
             await websocket.close()
@@ -136,20 +184,29 @@ async def live_transcribe(websocket: WebSocket):
                     # Start new session
                     session_id = str(uuid.uuid4())
                     language = data.get("language", "en")
+                    high_detail = data.get("high_detail_mode", False)
                     session = LiveSession(
                         session_id=session_id,
                         started_at=datetime.utcnow(),
                         language=language,
+                        high_detail_mode=high_detail,
                     )
                     active_sessions[session_id] = session
                     chunk_index = 0
+
+                    # Pre-load diarization service if needed
+                    if high_detail and dia_service is None:
+                        dia_service = _get_diarization_service()
 
                     await websocket.send_json({
                         "type": "session_start",
                         "session_id": session_id,
                         "message": "Recording started"
                     })
-                    logger.info("Live session started: %s", session_id)
+                    logger.info(
+                        "Live session started: %s (high_detail=%s)",
+                        session_id, high_detail,
+                    )
 
                 elif msg_type == "stop":
                     if session:
@@ -208,29 +265,91 @@ async def live_transcribe(websocket: WebSocket):
                     # Transcribe just this chunk
                     options = TranscriptionOptions(
                         language=session.language,
-                        word_timestamps=False,  # Faster without word timestamps
+                        word_timestamps=session.high_detail_mode,
                     )
 
                     result = await engine.transcribe(tmp_path, options)
 
+                    # Run diarization if high detail mode
+                    diarized_segments = None
+                    if session.high_detail_mode and dia_service and result.segments:
+                        try:
+                            segments_data = []
+                            for seg in result.segments:
+                                seg_dict = {
+                                    "start": seg.start,
+                                    "end": seg.end,
+                                    "text": seg.text,
+                                }
+                                if seg.words:
+                                    seg_dict["words"] = [
+                                        {
+                                            "word": w.word,
+                                            "start": w.start,
+                                            "end": w.end,
+                                            "score": w.confidence or 0.0,
+                                        }
+                                        for w in seg.words
+                                    ]
+                                segments_data.append(seg_dict)
+
+                            dia_result = await dia_service.diarize(
+                                audio_path=tmp_path,
+                                segments=segments_data,
+                            )
+                            diarized_segments = dia_result.get("segments", [])
+                            for speaker in dia_result.get("speakers", []):
+                                session.speakers_found.add(speaker)
+                        except Exception as dia_err:
+                            logger.warning(
+                                "Diarization failed for chunk %d: %s",
+                                chunk_index, dia_err,
+                            )
+                            # Continue without diarization
+
                     # Process segments with time offset applied
-                    for seg in result.segments:
+                    for i, seg in enumerate(result.segments):
+                        speaker = None
+                        if diarized_segments and i < len(diarized_segments):
+                            speaker = diarized_segments[i].get("speaker")
+
+                        # Build word data for high detail mode
+                        words_data = None
+                        if session.high_detail_mode and seg.words:
+                            words_data = [
+                                {
+                                    "word": w.word,
+                                    "start": time_offset + w.start,
+                                    "end": time_offset + w.end,
+                                    "confidence": w.confidence,
+                                }
+                                for w in seg.words
+                            ]
+
                         segment_data = {
                             "text": seg.text,
                             "start": time_offset + seg.start,
                             "end": time_offset + seg.end,
-                            "speaker": seg.speaker,
+                            "speaker": speaker or seg.speaker,
+                            "confidence": seg.confidence,
+                            "words": words_data,
+                            "edited": False,
                         }
                         session.segments.append(segment_data)
 
                         # Send segment to client
-                        await websocket.send_json({
+                        msg = {
                             "type": "transcript",
                             "text": seg.text,
                             "start": segment_data["start"],
                             "end": segment_data["end"],
                             "chunk_index": chunk_index,
-                        })
+                            "speaker": segment_data["speaker"],
+                            "confidence": segment_data["confidence"],
+                        }
+                        if words_data:
+                            msg["words"] = words_data
+                        await websocket.send_json(msg)
 
                     # Update tracking
                     session.chunk_count += 1
@@ -257,7 +376,10 @@ async def live_transcribe(websocket: WebSocket):
                         retryable = False
                     elif "no such file" in error_msg.lower() or "temp" in error_msg.lower():
                         error_type = "temporary"
-                        user_msg = "Temporary processing error. The next chunk will retry automatically."
+                        user_msg = (
+                            "Temporary processing error."
+                            " The next chunk will retry automatically."
+                        )
                         retryable = True
                     else:
                         error_type = "transcription"
@@ -291,8 +413,10 @@ async def live_transcribe(websocket: WebSocket):
         except Exception:
             pass
     finally:
-        # Keep session in memory for potential save
-        pass
+        # Mark session as disconnected so TTL cleanup can reclaim it later.
+        # Session stays in memory long enough for the user to click "Save".
+        if session and session.session_id in active_sessions:
+            session.disconnected_at = datetime.utcnow()
 
 
 @router.post("/save", response_model=SaveSessionResponse)
@@ -323,15 +447,26 @@ async def save_live_session(
         file_path = str(audio_path)
         file_size = audio_path.stat().st_size
 
+    metadata = {
+        "source": "live",
+        "session_id": request.session_id,
+    }
+    if request.description:
+        metadata["description"] = request.description
+
+    # file_path and file_name are NOT NULL in the schema; use a sentinel
+    # for transcript-only live recordings where audio was not saved.
+    audio_filename = f"live-{recording_id}.webm"
     recording = Recording(
         id=recording_id,
         title=request.title,
-        file_path=file_path,
-        file_name=f"live-{recording_id}.webm" if file_path else None,
-        file_size=file_size,
+        project_id=request.project_id,
+        file_path=file_path or f"live://{recording_id}",
+        file_name=audio_filename if file_path else f"live-{recording_id}.txt",
+        file_size=file_size or 0,
         duration_seconds=session.total_duration,
-        mime_type="audio/webm" if file_path else None,
-        metadata={"source": "live", "session_id": request.session_id},
+        mime_type="audio/webm" if file_path else "text/plain",
+        metadata_=metadata,
         status="completed",
     )
     db.add(recording)
@@ -356,9 +491,34 @@ async def save_live_session(
             start_time=seg_data["start"],
             end_time=seg_data["end"],
             text=seg_data["text"],
-            edited=False,
+            confidence=seg_data.get("confidence"),
+            edited=seg_data.get("edited", False),
         )
         db.add(segment)
+
+    # Create speaker records if diarization was used
+    for speaker_label in sorted(session.speakers_found):
+        speaker = Speaker(
+            id=str(uuid.uuid4()),
+            transcript_id=transcript_id,
+            speaker_label=speaker_label,
+        )
+        db.add(speaker)
+
+    # Handle tags — find or create tags by name, then associate
+    if request.tags:
+        for tag_name in request.tags:
+            tag_name = tag_name.strip()
+            if not tag_name:
+                continue
+            # Find existing tag or create new one
+            result = await db.execute(select(Tag).where(Tag.name == tag_name))
+            tag = result.scalar_one_or_none()
+            if not tag:
+                tag = Tag(id=str(uuid.uuid4()), name=tag_name)
+                db.add(tag)
+                await db.flush()
+            db.add(RecordingTag(recording_id=recording_id, tag_id=tag.id))
 
     await db.commit()
 

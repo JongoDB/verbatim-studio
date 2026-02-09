@@ -2,13 +2,24 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { getWebSocketUrl, getApiUrl } from '@/lib/api';
 
-export type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'recording';
+export type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'recording' | 'paused';
+
+export interface WordData {
+  word: string;
+  start: number;
+  end: number;
+  confidence: number | null;
+}
 
 export interface TranscriptSegment {
   text: string;
   start: number;
   end: number;
   chunkIndex: number;
+  speaker?: string | null;
+  confidence?: number | null;
+  words?: WordData[] | null;
+  edited?: boolean;
 }
 
 export interface LiveError {
@@ -26,10 +37,17 @@ export interface UseLiveTranscriptionReturn {
   lastAutoSave: Date | null;
   fullText: string;
   wordCount: number;
+  isMuted: boolean;
+  highDetailMode: boolean;
+  stream: MediaStream | null;
   connect: () => Promise<void>;
   disconnect: () => void;
-  startRecording: (language: string) => void;
+  startRecording: (language: string, highDetail?: boolean) => void;
   stopRecording: () => void;
+  pauseRecording: () => void;
+  resumeRecording: () => void;
+  toggleMute: () => void;
+  updateSegmentText: (index: number, newText: string) => void;
   clearTranscript: () => Promise<void>;
   dismissError: () => void;
 }
@@ -54,6 +72,8 @@ export function useLiveTranscription(): UseLiveTranscriptionReturn {
   const [duration, setDuration] = useState(0);
   const [error, setError] = useState<LiveError | null>(null);
   const [lastAutoSave, setLastAutoSave] = useState<Date | null>(null);
+  const [isMuted, setIsMuted] = useState(false);
+  const [highDetailMode, setHighDetailMode] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -93,6 +113,7 @@ export function useLiveTranscription(): UseLiveTranscriptionReturn {
       }
       wsRef.current.close();
     }
+    setIsMuted(false);
   }, []);
 
   // Cleanup on unmount
@@ -127,7 +148,13 @@ export function useLiveTranscription(): UseLiveTranscriptionReturn {
   }, []);
 
   const handleWebSocketMessage = useCallback((event: MessageEvent) => {
-    const data = JSON.parse(event.data);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let data: any;
+    try {
+      data = JSON.parse(event.data);
+    } catch {
+      return;
+    }
 
     switch (data.type) {
       case 'ready':
@@ -135,15 +162,19 @@ export function useLiveTranscription(): UseLiveTranscriptionReturn {
         break;
 
       case 'session_start':
-        setSessionId(data.session_id);
+        setSessionId(data.session_id as string);
         break;
 
       case 'transcript':
         setSegments(prev => [...prev, {
-          text: data.text,
-          start: data.start,
-          end: data.end,
-          chunkIndex: data.chunk_index,
+          text: data.text as string,
+          start: data.start as number,
+          end: data.end as number,
+          chunkIndex: data.chunk_index as number,
+          speaker: (data.speaker as string) ?? null,
+          confidence: (data.confidence as number) ?? null,
+          words: (data.words as WordData[]) ?? null,
+          edited: false,
         }]);
         break;
 
@@ -152,9 +183,9 @@ export function useLiveTranscription(): UseLiveTranscriptionReturn {
 
       case 'error':
         setError({
-          type: data.error_type || 'unknown',
-          message: data.message,
-          retryable: data.retryable ?? false,
+          type: (data.error_type as string) || 'unknown',
+          message: data.message as string,
+          retryable: (data.retryable as boolean) ?? false,
         });
         break;
 
@@ -164,7 +195,6 @@ export function useLiveTranscription(): UseLiveTranscriptionReturn {
   }, []);
 
   // Unified WebSocket creation — used by both connect() and reconnect
-  // Follows the same pattern as useDataSync's centralized connect function
   const createWebSocket = useCallback((onInitialError?: () => void) => {
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
@@ -190,7 +220,6 @@ export function useLiveTranscription(): UseLiveTranscriptionReturn {
 
     ws.onclose = () => {
       if (isRecordingRef.current && reconnectAttemptsRef.current < MAX_RECONNECT_ATTEMPTS) {
-        // Unexpected close during recording — reconnect with exponential backoff
         const delay = Math.min(
           BASE_RECONNECT_DELAY_MS * Math.pow(2, reconnectAttemptsRef.current),
           30_000
@@ -243,7 +272,7 @@ export function useLiveTranscription(): UseLiveTranscriptionReturn {
   }, [createWebSocket]);
 
   const disconnect = useCallback(() => {
-    reconnectAttemptsRef.current = MAX_RECONNECT_ATTEMPTS; // Prevent reconnect on intentional disconnect
+    reconnectAttemptsRef.current = MAX_RECONNECT_ATTEMPTS;
     cleanup(true);
     setConnectionState('disconnected');
   }, [cleanup]);
@@ -276,7 +305,39 @@ export function useLiveTranscription(): UseLiveTranscriptionReturn {
     mediaRecorder.start();
   }, []);
 
-  const startRecording = useCallback((language: string) => {
+  // Shared helper: start chunk cycling + duration timer
+  const startRecordingTimers = useCallback(() => {
+    startNewChunk();
+
+    chunkIntervalRef.current = window.setInterval(() => {
+      if (!isRecordingRef.current) return;
+      if (mediaRecorderRef.current?.state === 'recording') {
+        mediaRecorderRef.current.stop();
+      }
+      startNewChunk();
+    }, CHUNK_INTERVAL_MS);
+
+    timerRef.current = window.setInterval(() => {
+      setDuration(prev => prev + 1);
+    }, 1000);
+  }, [startNewChunk]);
+
+  // Shared helper: stop chunk cycling + duration timer
+  const stopRecordingTimers = useCallback(() => {
+    if (chunkIntervalRef.current) {
+      clearInterval(chunkIntervalRef.current);
+      chunkIntervalRef.current = null;
+    }
+    if (mediaRecorderRef.current?.state === 'recording') {
+      mediaRecorderRef.current.stop();
+    }
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+  }, []);
+
+  const startRecording = useCallback((language: string, highDetail = false) => {
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
       setError({ type: 'connection', message: 'Not connected to server.', retryable: true });
       return;
@@ -286,49 +347,22 @@ export function useLiveTranscription(): UseLiveTranscriptionReturn {
       return;
     }
 
-    wsRef.current.send(JSON.stringify({ type: 'start', language }));
+    setHighDetailMode(highDetail);
+    wsRef.current.send(JSON.stringify({ type: 'start', language, high_detail_mode: highDetail }));
     isRecordingRef.current = true;
 
-    startNewChunk();
+    startRecordingTimers();
     setConnectionState('recording');
     setDuration(0);
 
-    // Cycle chunks every CHUNK_INTERVAL_MS
-    chunkIntervalRef.current = window.setInterval(() => {
-      if (!isRecordingRef.current) return;
-      if (mediaRecorderRef.current?.state === 'recording') {
-        mediaRecorderRef.current.stop();
-      }
-      startNewChunk();
-    }, CHUNK_INTERVAL_MS);
-
-    // Duration timer
-    timerRef.current = window.setInterval(() => {
-      setDuration(prev => prev + 1);
-    }, 1000);
-
-    // Start autosave
     startAutosave();
-  }, [startNewChunk, startAutosave]);
+  }, [startRecordingTimers, startAutosave]);
 
   const stopRecording = useCallback(() => {
     isRecordingRef.current = false;
 
-    if (chunkIntervalRef.current) {
-      clearInterval(chunkIntervalRef.current);
-      chunkIntervalRef.current = null;
-    }
-
+    stopRecordingTimers();
     stopAutosave();
-
-    if (mediaRecorderRef.current?.state === 'recording') {
-      mediaRecorderRef.current.stop();
-    }
-
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
 
     // Wait for final chunk to be transcribed before ending session
     setTimeout(() => {
@@ -338,7 +372,40 @@ export function useLiveTranscription(): UseLiveTranscriptionReturn {
     }, FINAL_CHUNK_WAIT_MS);
 
     setConnectionState('connected');
-  }, [stopAutosave]);
+  }, [stopRecordingTimers, stopAutosave]);
+
+  // Pause: stop chunk cycling, keep WS alive
+  const pauseRecording = useCallback(() => {
+    stopRecordingTimers();
+    setConnectionState('paused');
+  }, [stopRecordingTimers]);
+
+  // Resume: restart chunk cycling and duration timer
+  const resumeRecording = useCallback(() => {
+    if (!isRecordingRef.current) return;
+    if (!streamRef.current || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+      return;
+    }
+
+    startRecordingTimers();
+    setConnectionState('recording');
+  }, [startRecordingTimers]);
+
+  // Mute: disable audio tracks (backend receives silence)
+  const toggleMute = useCallback(() => {
+    if (!streamRef.current) return;
+    const audioTracks = streamRef.current.getAudioTracks();
+    const newMuted = !isMuted;
+    audioTracks.forEach(track => { track.enabled = !newMuted; });
+    setIsMuted(newMuted);
+  }, [isMuted]);
+
+  // Edit a segment's text before saving
+  const updateSegmentText = useCallback((index: number, newText: string) => {
+    setSegments(prev => prev.map((seg, i) =>
+      i === index ? { ...seg, text: newText, edited: true } : seg
+    ));
+  }, []);
 
   const clearTranscript = useCallback(async () => {
     if (sessionId) {
@@ -372,10 +439,17 @@ export function useLiveTranscription(): UseLiveTranscriptionReturn {
     lastAutoSave,
     fullText,
     wordCount,
+    isMuted,
+    highDetailMode,
+    stream: streamRef.current,
     connect,
     disconnect,
     startRecording,
     stopRecording,
+    pauseRecording,
+    resumeRecording,
+    toggleMute,
+    updateSegmentText,
     clearTranscript,
     dismissError,
   };
