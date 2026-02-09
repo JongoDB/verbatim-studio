@@ -20,6 +20,18 @@ export interface ProjectFilters {
   tag?: string;
 }
 
+export interface DocumentFilters {
+  search?: string;
+  status?: string;
+  sortBy?: string;
+  sortOrder?: string;
+  projectId?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  tagIds?: string[];
+  mimeType?: string;
+}
+
 export const queryKeys = {
   // Recordings
   recordings: {
@@ -58,7 +70,7 @@ export const queryKeys = {
   // Documents
   documents: {
     all: ['documents'] as const,
-    list: (filters?: { project_id?: string; status?: string; search?: string }) =>
+    list: (filters?: DocumentFilters) =>
       ['documents', 'list', filters] as const,
     detail: (id: string) => ['documents', 'detail', id] as const,
   },

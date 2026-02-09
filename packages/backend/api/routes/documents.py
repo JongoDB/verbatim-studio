@@ -1,20 +1,22 @@
 """Document management endpoints."""
 
 import logging
+from datetime import datetime
 from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse, Response
-from pydantic import BaseModel
-from sqlalchemy import func, select
+from pydantic import BaseModel, Field
+from sqlalchemy import distinct, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from persistence import get_db
-from persistence.models import Document, Project, StorageLocation
+from persistence.models import Document, DocumentTag, Project, StorageLocation
 from services.storage import storage_service, get_active_storage_location
 from storage.factory import get_adapter
+from api.routes.sync import broadcast
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +49,8 @@ class DocumentResponse(BaseModel):
     mime_type: str
     file_size_bytes: int
     project_id: str | None
+    project_ids: list[str] = []
+    tag_ids: list[str] = []
     status: str
     error_message: str | None
     page_count: int | None
@@ -63,6 +67,9 @@ class DocumentListResponse(BaseModel):
 
     items: list[DocumentResponse]
     total: int
+    page: int = 1
+    page_size: int = 20
+    total_pages: int = 1
 
 
 class DocumentUpdate(BaseModel):
@@ -79,13 +86,13 @@ class MessageResponse(BaseModel):
     id: str | None = None
 
 
-def _doc_to_response(doc: Document, include_content: bool = False) -> DocumentResponse:
-    """Convert Document model to response.
-
-    Args:
-        doc: The document model
-        include_content: If True, include extracted_text and extracted_markdown
-    """
+def _doc_to_response(
+    doc: Document,
+    include_content: bool = False,
+    tag_ids: list[str] | None = None,
+    project_ids: list[str] | None = None,
+) -> DocumentResponse:
+    """Convert Document model to response."""
     return DocumentResponse(
         id=doc.id,
         title=doc.title,
@@ -94,6 +101,8 @@ def _doc_to_response(doc: Document, include_content: bool = False) -> DocumentRe
         mime_type=doc.mime_type,
         file_size_bytes=doc.file_size_bytes,
         project_id=doc.project_id,
+        project_ids=project_ids if project_ids is not None else ([doc.project_id] if doc.project_id else []),
+        tag_ids=tag_ids if tag_ids is not None else [],
         status=doc.status,
         error_message=doc.error_message,
         page_count=doc.page_count,
@@ -223,18 +232,27 @@ async def upload_document(
     from services.jobs import job_queue
     await job_queue.enqueue("process_document", {"document_id": doc.id})
 
+    await broadcast("documents", "created", doc.id)
     return _doc_to_response(doc)
 
 
 @router.get("", response_model=DocumentListResponse)
 async def list_documents(
     db: Annotated[AsyncSession, Depends(get_db)],
+    page: Annotated[int, Query(ge=1, description="Page number")] = 1,
+    page_size: Annotated[int, Query(ge=1, le=100, description="Items per page")] = 50,
     project_id: Annotated[str | None, Query(description="Filter by project")] = None,
     status_filter: Annotated[str | None, Query(alias="status", description="Filter by status")] = None,
-    search: Annotated[str | None, Query(description="Search by title")] = None,
+    search: Annotated[str | None, Query(description="Search by title or filename")] = None,
+    sort_by: Annotated[str, Query(description="Sort field (created_at, title, file_size_bytes)")] = "created_at",
+    sort_order: Annotated[str, Query(description="Sort order (asc, desc)")] = "desc",
+    date_from: Annotated[str | None, Query(description="Filter from date (ISO 8601)")] = None,
+    date_to: Annotated[str | None, Query(description="Filter to date (ISO 8601)")] = None,
+    tag_ids: Annotated[str | None, Query(description="Comma-separated tag IDs to filter by")] = None,
+    mime_type: Annotated[str | None, Query(description="Filter by MIME type")] = None,
 ) -> DocumentListResponse:
-    """List all documents with optional filters."""
-    query = select(Document).order_by(Document.created_at.desc())
+    """List all documents with pagination and filtering."""
+    query = select(Document)
 
     # Filter by active storage location path
     active_location = await get_active_storage_location()
@@ -242,20 +260,192 @@ async def list_documents(
         active_path = active_location.config.get("path")
         query = query.where(Document.file_path.startswith(active_path))
 
-    if project_id:
+    if project_id is not None:
         query = query.where(Document.project_id == project_id)
     if status_filter:
         query = query.where(Document.status == status_filter)
-    if search:
-        query = query.where(Document.title.ilike(f"%{search}%"))
+    if search and search.strip():
+        search_term = f"%{search.strip()}%"
+        query = query.where(
+            or_(
+                Document.title.ilike(search_term),
+                Document.filename.ilike(search_term),
+            )
+        )
+    if mime_type:
+        # Support prefix matching (e.g. "image/" matches "image/png", "image/jpeg")
+        if mime_type.endswith("/"):
+            query = query.where(Document.mime_type.startswith(mime_type))
+        else:
+            query = query.where(Document.mime_type == mime_type)
 
+    # Date range filters
+    if date_from:
+        try:
+            from_date = datetime.fromisoformat(date_from)
+            query = query.where(Document.created_at >= from_date)
+        except ValueError:
+            pass
+
+    if date_to:
+        try:
+            to_date = datetime.fromisoformat(date_to).replace(hour=23, minute=59, second=59)
+            query = query.where(Document.created_at <= to_date)
+        except ValueError:
+            pass
+
+    # Tag filter — documents must have ALL specified tags
+    if tag_ids and tag_ids.strip():
+        tag_id_list = [t.strip() for t in tag_ids.split(",") if t.strip()]
+        if tag_id_list:
+            query = query.where(
+                Document.id.in_(
+                    select(DocumentTag.document_id)
+                    .where(DocumentTag.tag_id.in_(tag_id_list))
+                    .group_by(DocumentTag.document_id)
+                    .having(func.count(distinct(DocumentTag.tag_id)) == len(tag_id_list))
+                )
+            )
+
+    # Get total count
+    count_query = select(func.count()).select_from(query.subquery())
+    total_result = await db.execute(count_query)
+    total = total_result.scalar() or 0
+
+    # Calculate pagination
+    total_pages = (total + page_size - 1) // page_size if total > 0 else 1
+    offset = (page - 1) * page_size
+
+    # Apply sorting
+    sort_column = {
+        "created_at": Document.created_at,
+        "title": Document.title,
+        "file_size_bytes": Document.file_size_bytes,
+    }.get(sort_by, Document.created_at)
+
+    if sort_order == "asc":
+        query = query.order_by(sort_column.asc())
+    else:
+        query = query.order_by(sort_column.desc())
+
+    # Apply pagination
+    query = query.offset(offset).limit(page_size)
     result = await db.execute(query)
     docs = result.scalars().all()
 
+    # Batch-load tag IDs for all documents
+    doc_ids = [d.id for d in docs]
+    tag_map: dict[str, list[str]] = {did: [] for did in doc_ids}
+    if doc_ids:
+        tag_result = await db.execute(
+            select(DocumentTag.document_id, DocumentTag.tag_id).where(
+                DocumentTag.document_id.in_(doc_ids)
+            )
+        )
+        for row in tag_result:
+            tag_map[row.document_id].append(row.tag_id)
+
     return DocumentListResponse(
-        items=[_doc_to_response(doc) for doc in docs],
-        total=len(docs),
+        items=[
+            _doc_to_response(
+                d,
+                tag_ids=tag_map.get(d.id, []),
+                project_ids=[d.project_id] if d.project_id else [],
+            )
+            for d in docs
+        ],
+        total=total,
+        page=page,
+        page_size=page_size,
+        total_pages=total_pages,
     )
+
+
+class BulkIdsRequest(BaseModel):
+    """Request model for bulk operations."""
+
+    ids: list[str] = Field(..., min_length=1)
+
+
+class BulkAssignRequest(BaseModel):
+    """Request model for bulk project assignment."""
+
+    ids: list[str] = Field(..., min_length=1)
+    project_id: str | None = Field(default=None, description="Project ID or null to unassign")
+
+
+@router.post("/bulk-delete", response_model=MessageResponse)
+async def bulk_delete_documents(
+    body: BulkIdsRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> MessageResponse:
+    """Delete multiple documents and their files."""
+    result = await db.execute(select(Document).where(Document.id.in_(body.ids)))
+    docs = result.scalars().all()
+
+    for doc in docs:
+        if doc.file_path:
+            try:
+                await storage_service.delete_file(doc.file_path)
+            except Exception as e:
+                logger.warning(f"Failed to delete file {doc.file_path}: {e}")
+        await db.delete(doc)
+
+    await db.commit()
+    await broadcast("documents", "deleted")
+    return MessageResponse(message=f"Deleted {len(docs)} document(s)")
+
+
+@router.post("/bulk-assign", response_model=MessageResponse)
+async def bulk_assign_documents(
+    body: BulkAssignRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> MessageResponse:
+    """Assign multiple documents to a project (or remove from project)."""
+    result = await db.execute(select(Document).where(Document.id.in_(body.ids)))
+    docs = result.scalars().all()
+
+    if not docs:
+        return MessageResponse(message="No documents found")
+
+    new_project_name = None
+    if body.project_id:
+        project_result = await db.execute(select(Project).where(Project.id == body.project_id))
+        project = project_result.scalar_one_or_none()
+        if not project:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Project not found: {body.project_id}",
+            )
+        if project:
+            new_project_name = project.name
+
+    for doc in docs:
+        if doc.project_id != body.project_id and doc.file_path:
+            try:
+                is_cloud = False
+                if doc.storage_location_id:
+                    loc_result = await db.execute(
+                        select(StorageLocation).where(StorageLocation.id == doc.storage_location_id)
+                    )
+                    storage_loc = loc_result.scalar_one_or_none()
+                    is_cloud = storage_loc and storage_loc.type == "cloud"
+
+                if is_cloud:
+                    new_path = await storage_service.move_to_project(doc.file_path, new_project_name)
+                    doc.file_path = str(new_path)
+                else:
+                    old_path = Path(doc.file_path)
+                    if old_path.exists():
+                        new_path = await storage_service.move_to_project(old_path, new_project_name)
+                        doc.file_path = str(new_path)
+            except Exception as e:
+                logger.warning("Could not move file for document %s: %s", doc.id, e)
+        doc.project_id = body.project_id
+
+    await db.commit()
+    await broadcast("documents", "updated")
+    return MessageResponse(message=f"Updated {len(docs)} document(s)")
 
 
 @router.get("/{document_id}", response_model=DocumentResponse)
@@ -315,6 +505,7 @@ async def update_document(
 
     await db.commit()
     await db.refresh(doc)
+    await broadcast("documents", "updated", doc.id)
     return _doc_to_response(doc)
 
 
@@ -337,6 +528,7 @@ async def delete_document(
     await db.delete(doc)
     await db.commit()
 
+    await broadcast("documents", "deleted", document_id)
     return MessageResponse(message="Document deleted", id=document_id)
 
 

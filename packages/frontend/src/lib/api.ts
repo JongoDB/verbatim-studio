@@ -841,6 +841,8 @@ export interface Document {
   mime_type: string;
   file_size_bytes: number;
   project_id: string | null;
+  project_ids: string[];
+  tag_ids: string[];
   status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
   error_message: string | null;
   page_count: number | null;
@@ -855,6 +857,9 @@ export interface Document {
 export interface DocumentListResponse {
   items: Document[];
   total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
 }
 
 export interface Note {
@@ -2185,11 +2190,31 @@ class ApiClient {
 
   // Documents
   documents = {
-    list: async (params?: { project_id?: string; status?: string; search?: string }): Promise<DocumentListResponse> => {
+    list: async (params?: {
+      project_id?: string;
+      status?: string;
+      search?: string;
+      sort_by?: string;
+      sort_order?: string;
+      date_from?: string;
+      date_to?: string;
+      tag_ids?: string;
+      mime_type?: string;
+      page?: number;
+      page_size?: number;
+    }): Promise<DocumentListResponse> => {
       const searchParams = new URLSearchParams();
       if (params?.project_id) searchParams.set('project_id', params.project_id);
       if (params?.status) searchParams.set('status', params.status);
       if (params?.search) searchParams.set('search', params.search);
+      if (params?.sort_by) searchParams.set('sort_by', params.sort_by);
+      if (params?.sort_order) searchParams.set('sort_order', params.sort_order);
+      if (params?.date_from) searchParams.set('date_from', params.date_from);
+      if (params?.date_to) searchParams.set('date_to', params.date_to);
+      if (params?.tag_ids) searchParams.set('tag_ids', params.tag_ids);
+      if (params?.mime_type) searchParams.set('mime_type', params.mime_type);
+      if (params?.page) searchParams.set('page', String(params.page));
+      if (params?.page_size) searchParams.set('page_size', String(params.page_size));
       const query = searchParams.toString();
       return this.request<DocumentListResponse>(`/api/documents${query ? `?${query}` : ''}`);
     },
@@ -2239,6 +2264,20 @@ class ApiClient {
 
     delete: async (id: string): Promise<void> => {
       await this.request<void>(`/api/documents/${id}`, { method: 'DELETE' });
+    },
+
+    bulkDelete: async (ids: string[]): Promise<void> => {
+      await this.request<void>('/api/documents/bulk-delete', {
+        method: 'POST',
+        body: JSON.stringify({ ids }),
+      });
+    },
+
+    bulkAssign: async (ids: string[], projectId: string | null): Promise<void> => {
+      await this.request<void>('/api/documents/bulk-assign', {
+        method: 'POST',
+        body: JSON.stringify({ ids, project_id: projectId }),
+      });
     },
 
     getContent: async (id: string, format: 'text' | 'markdown' = 'markdown'): Promise<{ content: string; format: string }> => {

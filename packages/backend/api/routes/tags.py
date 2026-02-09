@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from persistence import get_db
-from persistence.models import Recording, RecordingTag, Tag
+from persistence.models import Document, DocumentTag, Recording, RecordingTag, Tag
 from api.routes.sync import broadcast
 
 logger = logging.getLogger(__name__)
@@ -228,6 +228,120 @@ async def get_recording_tags(
         select(Tag)
         .join(RecordingTag, RecordingTag.tag_id == Tag.id)
         .where(RecordingTag.recording_id == recording_id)
+        .order_by(Tag.name)
+    )
+    tags = result.scalars().all()
+
+    return TagListResponse(
+        items=[
+            TagResponse(
+                id=t.id,
+                name=t.name,
+                color=t.color,
+                created_at=t.created_at,
+            )
+            for t in tags
+        ]
+    )
+
+
+# === Document Tag Endpoints ===
+
+
+@router.post(
+    "/documents/{document_id}",
+    response_model=MessageResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def assign_tag_to_document(
+    document_id: str,
+    request: TagAssignRequest,
+    db: AsyncSession = Depends(get_db),
+) -> MessageResponse:
+    """Assign a tag to a document."""
+    doc_result = await db.execute(select(Document).where(Document.id == document_id))
+    if doc_result.scalar_one_or_none() is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Document not found: {document_id}",
+        )
+
+    tag_result = await db.execute(select(Tag).where(Tag.id == request.tag_id))
+    if tag_result.scalar_one_or_none() is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Tag not found: {request.tag_id}",
+        )
+
+    existing = await db.execute(
+        select(DocumentTag).where(
+            DocumentTag.document_id == document_id,
+            DocumentTag.tag_id == request.tag_id,
+        )
+    )
+    if existing.scalar_one_or_none() is not None:
+        return MessageResponse(message="Tag already assigned")
+
+    db.add(DocumentTag(document_id=document_id, tag_id=request.tag_id))
+    await db.commit()
+
+    await broadcast("documents", "updated", document_id)
+
+    return MessageResponse(message="Tag assigned successfully")
+
+
+@router.delete(
+    "/documents/{document_id}/{tag_id}",
+    response_model=MessageResponse,
+)
+async def remove_tag_from_document(
+    document_id: str,
+    tag_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> MessageResponse:
+    """Remove a tag from a document."""
+    result = await db.execute(
+        select(DocumentTag).where(
+            DocumentTag.document_id == document_id,
+            DocumentTag.tag_id == tag_id,
+        )
+    )
+    link = result.scalar_one_or_none()
+
+    if link is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Tag assignment not found",
+        )
+
+    await db.delete(link)
+    await db.commit()
+
+    await broadcast("documents", "updated", document_id)
+
+    return MessageResponse(message="Tag removed successfully")
+
+
+@router.get(
+    "/documents/{document_id}",
+    response_model=TagListResponse,
+)
+async def get_document_tags(
+    document_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> TagListResponse:
+    """Get all tags for a document."""
+    doc_result = await db.execute(select(Document).where(Document.id == document_id))
+    if doc_result.scalar_one_or_none() is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Document not found: {document_id}",
+        )
+
+    result = await db.execute(
+        select(Tag)
+        .join(DocumentTag, DocumentTag.tag_id == Tag.id)
+        .where(DocumentTag.document_id == document_id)
         .order_by(Tag.name)
     )
     tags = result.scalars().all()

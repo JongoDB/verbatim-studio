@@ -75,8 +75,9 @@ function handleInvalidation(
 
     case 'tags':
       queryClient.invalidateQueries({ queryKey: queryKeys.tags.all, ...refetchOptions });
-      // Also invalidate recordings since they display tags
+      // Also invalidate recordings and documents since they display tags
       queryClient.invalidateQueries({ queryKey: queryKeys.recordings.all, ...refetchOptions });
+      queryClient.invalidateQueries({ queryKey: queryKeys.documents.all, ...refetchOptions });
       break;
 
     default:

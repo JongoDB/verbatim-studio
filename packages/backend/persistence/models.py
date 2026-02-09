@@ -82,6 +82,9 @@ class Tag(Base):
     recordings: Mapped[list["Recording"]] = relationship(
         secondary="recording_tags", back_populates="tags"
     )
+    documents: Mapped[list["Document"]] = relationship(
+        secondary="document_tags", back_populates="tags"
+    )
 
 
 class RecordingTag(Base):
@@ -91,6 +94,19 @@ class RecordingTag(Base):
 
     recording_id: Mapped[str] = mapped_column(
         ForeignKey("recordings.id", ondelete="CASCADE"), primary_key=True
+    )
+    tag_id: Mapped[str] = mapped_column(
+        ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True
+    )
+
+
+class DocumentTag(Base):
+    """Junction table for document-tag many-to-many relationship."""
+
+    __tablename__ = "document_tags"
+
+    document_id: Mapped[str] = mapped_column(
+        ForeignKey("documents.id", ondelete="CASCADE"), primary_key=True
     )
     tag_id: Mapped[str] = mapped_column(
         ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True
@@ -353,6 +369,9 @@ class Document(Base):
     project: Mapped["Project | None"] = relationship()
     source: Mapped["Document | None"] = relationship(remote_side=[id])
     storage_location: Mapped["StorageLocation | None"] = relationship()
+    tags: Mapped[list["Tag"]] = relationship(
+        secondary="document_tags", back_populates="documents"
+    )
     notes: Mapped[list["Note"]] = relationship(back_populates="document", cascade="all, delete-orphan")
 
 

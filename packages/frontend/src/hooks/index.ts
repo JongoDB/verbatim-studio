@@ -1,5 +1,6 @@
 // packages/frontend/src/hooks/index.ts
 export * from './useRecordings';
+export * from './useDocuments';
 export * from './useProjects';
 export * from './useConversations';
 export * from './useDashboard';

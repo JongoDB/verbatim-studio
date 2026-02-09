@@ -1,10 +1,15 @@
-import type { Document } from '@/lib/api';
+import type { Document, Tag, Project } from '@/lib/api';
 import { formatRelativeTime } from '@/lib/utils';
+import { cn } from '@/lib/utils';
 
 interface DocumentCardProps {
   document: Document;
   onClick: () => void;
   onDelete?: () => void;
+  isSelected?: boolean;
+  onSelectChange?: (selected: boolean) => void;
+  allTags?: Tag[];
+  allProjects?: Project[];
 }
 
 const MIME_ICONS: Record<string, string> = {
@@ -33,16 +38,47 @@ function formatBytes(bytes: number): string {
   return `${bytes} B`;
 }
 
-export function DocumentCard({ document, onClick, onDelete }: DocumentCardProps) {
+export function DocumentCard({
+  document,
+  onClick,
+  onDelete,
+  isSelected,
+  onSelectChange,
+  allTags = [],
+  allProjects = [],
+}: DocumentCardProps) {
   const icon = MIME_ICONS[document.mime_type] || '📄';
   const statusStyle = STATUS_STYLES[document.status] || STATUS_STYLES.pending;
+  const docTags = allTags.filter((t) => document.tag_ids?.includes(t.id));
+  const docProjects = allProjects.filter((p) => document.project_ids?.includes(p.id));
 
   return (
     <div
       onClick={onClick}
-      className="group relative p-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-blue-300 dark:hover:border-blue-600 hover:shadow-md transition-all cursor-pointer"
+      className={cn(
+        'group relative p-4 rounded-lg border bg-white dark:bg-gray-800 hover:border-blue-300 dark:hover:border-blue-600 hover:shadow-md transition-all cursor-pointer',
+        isSelected
+          ? 'border-primary bg-primary/5'
+          : 'border-gray-200 dark:border-gray-700'
+      )}
     >
-      <div className="flex items-start gap-3">
+      {/* Selection checkbox */}
+      {onSelectChange && (
+        <div className="absolute top-2 left-2">
+          <input
+            type="checkbox"
+            checked={isSelected ?? false}
+            onChange={(e) => {
+              e.stopPropagation();
+              onSelectChange(e.target.checked);
+            }}
+            onClick={(e) => e.stopPropagation()}
+            className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+          />
+        </div>
+      )}
+
+      <div className={cn('flex items-start gap-3', onSelectChange && 'ml-6')}>
         <div className="text-3xl">{icon}</div>
         <div className="flex-1 min-w-0">
           <h3 className="font-medium text-gray-900 dark:text-gray-100 truncate">
@@ -64,6 +100,38 @@ export function DocumentCard({ document, onClick, onDelete }: DocumentCardProps)
               </span>
             )}
           </div>
+
+          {/* Tags and Projects */}
+          {(docTags.length > 0 || docProjects.length > 0) && (
+            <div className="flex flex-wrap gap-1 mt-2">
+              {docTags.map((tag) => (
+                <span
+                  key={tag.id}
+                  className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-medium bg-primary/10 text-primary"
+                >
+                  {tag.color && (
+                    <span
+                      className="w-1.5 h-1.5 rounded-full"
+                      style={{ backgroundColor: tag.color }}
+                    />
+                  )}
+                  {tag.name}
+                </span>
+              ))}
+              {docProjects.map((project) => (
+                <span
+                  key={project.id}
+                  className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-medium bg-muted text-muted-foreground"
+                >
+                  <svg className="w-2.5 h-2.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                  </svg>
+                  {project.name}
+                </span>
+              ))}
+            </div>
+          )}
+
           <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
             {formatRelativeTime(document.created_at)}
           </p>
