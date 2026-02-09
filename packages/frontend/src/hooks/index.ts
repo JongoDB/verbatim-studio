@@ -10,4 +10,4 @@ export * from './useKeyboardShortcuts';
 export { DataSyncProvider, useDataSyncStatus } from './useDataSync';
 export { useLiveTranscription } from './useLiveTranscription';
 export type { ConnectionState, TranscriptSegment, WordData, LiveError } from './useLiveTranscription';
-export { useLiveShortcuts, LIVE_SHORTCUTS } from './useLiveShortcuts';
+export { useLiveShortcuts, getLiveShortcuts } from './useLiveShortcuts';

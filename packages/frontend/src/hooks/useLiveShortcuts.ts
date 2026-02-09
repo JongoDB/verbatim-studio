@@ -1,4 +1,5 @@
 import { useEffect, useCallback } from 'react';
+import { useKeybindingStore, matchesCombo } from '@/stores/keybindingStore';
 
 interface LiveShortcutsConfig {
   onPauseResume?: () => void;
@@ -21,6 +22,8 @@ export function useLiveShortcuts({
   onDisconnect,
   enabled = true,
 }: LiveShortcutsConfig) {
+  const getKey = useKeybindingStore(s => s.getKey);
+
   const handleKeyDown = useCallback(
     (event: KeyboardEvent) => {
       const target = event.target as HTMLElement;
@@ -33,60 +36,30 @@ export function useLiveShortcuts({
         return;
       }
 
-      switch (event.key.toLowerCase()) {
-        case 'r':
-          if (!event.ctrlKey && !event.metaKey) {
-            event.preventDefault();
-            onToggleRecording?.();
-          }
-          break;
-
-        case 'p':
-          if (!event.ctrlKey && !event.metaKey) {
-            event.preventDefault();
-            onPauseResume?.();
-          }
-          break;
-
-        case ' ':
-          event.preventDefault();
-          onToggleRecording?.();
-          break;
-
-        case 's':
-          if (event.ctrlKey || event.metaKey) {
-            event.preventDefault();
-            onSave?.();
-          }
-          break;
-
-        case 'm':
-          if (!event.ctrlKey && !event.metaKey) {
-            event.preventDefault();
-            onToggleMute?.();
-          }
-          break;
-
-        case 'd':
-          if (!event.ctrlKey && !event.metaKey) {
-            event.preventDefault();
-            onDiscard?.();
-          }
-          break;
-
-        case 'c':
-          if (!event.ctrlKey && !event.metaKey) {
-            event.preventDefault();
-            onClear?.();
-          }
-          break;
-
-        case 'escape':
-          onDisconnect?.();
-          break;
+      if (matchesCombo(event, getKey('live.toggleRecording')) ||
+          matchesCombo(event, getKey('live.toggleRecordingAlt'))) {
+        event.preventDefault();
+        onToggleRecording?.();
+      } else if (matchesCombo(event, getKey('live.pauseResume'))) {
+        event.preventDefault();
+        onPauseResume?.();
+      } else if (matchesCombo(event, getKey('live.save'))) {
+        event.preventDefault();
+        onSave?.();
+      } else if (matchesCombo(event, getKey('live.toggleMute'))) {
+        event.preventDefault();
+        onToggleMute?.();
+      } else if (matchesCombo(event, getKey('live.discard'))) {
+        event.preventDefault();
+        onDiscard?.();
+      } else if (matchesCombo(event, getKey('live.clear'))) {
+        event.preventDefault();
+        onClear?.();
+      } else if (matchesCombo(event, getKey('live.disconnect'))) {
+        onDisconnect?.();
       }
     },
-    [onToggleRecording, onPauseResume, onSave, onToggleMute, onDiscard, onClear, onDisconnect],
+    [onToggleRecording, onPauseResume, onSave, onToggleMute, onDiscard, onClear, onDisconnect, getKey],
   );
 
   useEffect(() => {
@@ -96,12 +69,5 @@ export function useLiveShortcuts({
   }, [enabled, handleKeyDown]);
 }
 
-export const LIVE_SHORTCUTS = [
-  { key: 'R / Space', description: 'Start / Stop recording' },
-  { key: 'P', description: 'Pause / Resume recording' },
-  { key: 'Ctrl+S', description: 'Save session' },
-  { key: 'M', description: 'Toggle microphone mute' },
-  { key: 'D', description: 'Discard session' },
-  { key: 'C', description: 'Clear transcript' },
-  { key: 'Esc', description: 'Disconnect' },
-] as const;
+// Re-export for display components
+export { getLiveShortcuts } from '@/stores/keybindingStore';

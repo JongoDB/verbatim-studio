@@ -2,7 +2,8 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { getApiUrl } from '@/lib/api';
 import { formatDuration } from '@/lib/utils';
 import { useLiveTranscription } from '@/hooks/useLiveTranscription';
-import { useLiveShortcuts, LIVE_SHORTCUTS } from '@/hooks/useLiveShortcuts';
+import { useLiveShortcuts, getLiveShortcuts } from '@/hooks/useLiveShortcuts';
+import { useKeybindingStore } from '@/stores/keybindingStore';
 import { AudioLevelMeter } from '@/components/audio/AudioLevelMeter';
 import { LiveSegment } from '@/components/live/LiveSegment';
 import { MetadataPanel, type LiveMetadata } from '@/components/live/MetadataPanel';
@@ -32,6 +33,7 @@ const DEFAULT_METADATA: LiveMetadata = {
 };
 
 export function LiveTranscriptionPage({ onNavigateToRecordings: _onNavigateToRecordings, onViewRecording }: LiveTranscriptionPageProps) {
+  const getDisplayLabel = useKeybindingStore(s => s.getDisplayLabel);
   const {
     connectionState,
     sessionId,
@@ -215,8 +217,8 @@ export function LiveTranscriptionPage({ onNavigateToRecordings: _onNavigateToRec
         <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-4">
           <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2">Keyboard Shortcuts</h3>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-            {LIVE_SHORTCUTS.map(s => (
-              <div key={s.key} className="flex items-center gap-2 text-xs">
+            {getLiveShortcuts().map(s => (
+              <div key={s.description} className="flex items-center gap-2 text-xs">
                 <kbd className="px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 font-mono">{s.key}</kbd>
                 <span className="text-gray-600 dark:text-gray-400">{s.description}</span>
               </div>
@@ -442,8 +444,8 @@ export function LiveTranscriptionPage({ onNavigateToRecordings: _onNavigateToRec
             {/* Compact shortcut hints */}
             {connectionState !== 'disconnected' && (
               <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-700 text-xs text-gray-400 dark:text-gray-500 space-y-0.5">
-                <div className="flex justify-between"><span><kbd className="font-mono">Space</kbd> Start/Stop</span><span><kbd className="font-mono">P</kbd> Pause</span></div>
-                <div className="flex justify-between"><span><kbd className="font-mono">M</kbd> Mute</span><span><kbd className="font-mono">⌘S</kbd> Save</span></div>
+                <div className="flex justify-between"><span><kbd className="font-mono">{getDisplayLabel('live.toggleRecording')}</kbd> Start/Stop</span><span><kbd className="font-mono">{getDisplayLabel('live.pauseResume')}</kbd> Pause</span></div>
+                <div className="flex justify-between"><span><kbd className="font-mono">{getDisplayLabel('live.toggleMute')}</kbd> Mute</span><span><kbd className="font-mono">{getDisplayLabel('live.save')}</kbd> Save</span></div>
               </div>
             )}
           </div>

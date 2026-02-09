@@ -7,7 +7,8 @@ import { SpeakerPanel } from '@/components/transcript/SpeakerPanel';
 import { AIAnalysisPanel } from '@/components/ai/AIAnalysisPanel';
 import { BulkHighlightToolbar } from '@/components/transcript/BulkHighlightToolbar';
 import { TranscriptSearch, highlightSearchMatches } from '@/components/transcript/TranscriptSearch';
-import { useKeyboardShortcuts, KEYBOARD_SHORTCUTS } from '@/hooks/useKeyboardShortcuts';
+import { useKeyboardShortcuts, getPlaybackShortcuts } from '@/hooks/useKeyboardShortcuts';
+import { useKeybindingStore } from '@/stores/keybindingStore';
 
 interface SearchMatch {
   segmentId: string;
@@ -23,6 +24,8 @@ interface TranscriptPageProps {
 }
 
 export function TranscriptPage({ recordingId, onBack, initialSeekTime }: TranscriptPageProps) {
+  // Subscribe to keybinding changes so shortcut labels update reactively
+  useKeybindingStore(s => s.overrides);
   const [transcript, setTranscript] = useState<TranscriptWithSegments | null>(null);
   const [recording, setRecording] = useState<Recording | null>(null);
   const [speakers, setSpeakers] = useState<Speaker[]>([]);
@@ -550,8 +553,8 @@ export function TranscriptPage({ recordingId, onBack, initialSeekTime }: Transcr
               </button>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
-              {KEYBOARD_SHORTCUTS.map(({ key, description }) => (
-                <div key={key} className="flex items-center gap-2">
+              {getPlaybackShortcuts().map(({ key, description }) => (
+                <div key={description} className="flex items-center gap-2">
                   <kbd className="px-1.5 py-0.5 bg-gray-200 dark:bg-gray-700 rounded text-gray-700 dark:text-gray-300 font-mono">
                     {key}
                   </kbd>

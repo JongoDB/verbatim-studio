@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { api, type ArchiveInfo, type TranscriptionSettings, type AIModel, type AIModelDownloadEvent, type OCRModel, type OCRModelDownloadEvent, type WhisperModel, type WhisperModelDownloadEvent, type DiarizationModel, type DiarizationModelDownloadEvent, type SystemInfo, type MLStatus, type StorageLocation, type MigrationStatus, type SyncResult, type StorageType, type StorageSubtype, type StorageLocationConfig, type OAuthStatusResponse, type CategoryCount, type ClearableCategory } from '@/lib/api';
 import { useDownloadStore } from '@/stores/downloadStore';
+import { useKeybindingStore, DEFAULT_ACTIONS, formatCombo, type KeyCombo, type ActionCategory } from '@/stores/keybindingStore';
 import { StorageTypeSelector } from '@/components/storage/StorageTypeSelector';
 import { StorageSubtypeSelector } from '@/components/storage/StorageSubtypeSelector';
 import { StorageConfigForm } from '@/components/storage/StorageConfigForm';
@@ -74,6 +75,145 @@ function SettingSection({
           )}
         </div>
         <div className="sm:w-64">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+const IGNORED_KEYS = new Set(['Control', 'Shift', 'Alt', 'Meta', 'CapsLock', 'Tab', 'NumLock', 'ScrollLock']);
+
+const CATEGORY_LABELS: Record<ActionCategory, string> = {
+  playback: 'Playback Shortcuts',
+  live: 'Live Recording Shortcuts',
+};
+
+function KeybindingEditor() {
+  const { getKey, getDisplayLabel, setKey, resetKey, resetAll, findConflict } = useKeybindingStore();
+  // Subscribe to overrides to re-render on changes
+  useKeybindingStore(s => s.overrides);
+  const [capturing, setCapturing] = useState<string | null>(null);
+  const [conflict, setConflict] = useState<{ actionId: string; combo: KeyCombo } | null>(null);
+
+  useEffect(() => {
+    if (!capturing) return;
+    const handler = (e: KeyboardEvent) => {
+      // Let ignored keys (bare modifiers, Tab) pass through naturally
+      if (IGNORED_KEYS.has(e.key)) return;
+      e.preventDefault();
+      e.stopPropagation();
+
+      // Escape cancels capture
+      if (e.key === 'Escape' && !e.ctrlKey && !e.shiftKey && !e.altKey) {
+        setCapturing(null);
+        return;
+      }
+
+      const combo: KeyCombo = {
+        key: e.key,
+        ...(e.ctrlKey || e.metaKey ? { ctrl: true } : {}),
+        ...(e.shiftKey ? { shift: true } : {}),
+        ...(e.altKey ? { alt: true } : {}),
+      };
+
+      const conflictId = findConflict(combo, capturing);
+      if (conflictId) {
+        setConflict({ actionId: conflictId, combo });
+      } else {
+        setKey(capturing, combo);
+        setCapturing(null);
+      }
+    };
+    window.addEventListener('keydown', handler, true);
+    return () => window.removeEventListener('keydown', handler, true);
+  }, [capturing, findConflict, setKey]);
+
+  const handleSwap = () => {
+    if (!conflict || !capturing) return;
+    // Swap: give the conflicted action whatever key the capturing action currently has
+    const currentKey = getKey(capturing);
+    setKey(capturing, conflict.combo);
+    setKey(conflict.actionId, currentKey);
+    setConflict(null);
+    setCapturing(null);
+  };
+
+  const handleCancelConflict = () => {
+    setConflict(null);
+    // Stay in capture mode so user can try another key
+  };
+
+  const conflictLabel = conflict
+    ? DEFAULT_ACTIONS.find(a => a.id === conflict.actionId)?.label ?? conflict.actionId
+    : '';
+
+  const hasOverrides = Object.keys(useKeybindingStore.getState().overrides).length > 0;
+
+  return (
+    <div className="mt-6 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+      <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+        <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Keyboard Shortcuts</h2>
+        {hasOverrides && (
+          <button
+            onClick={() => { resetAll(); setCapturing(null); setConflict(null); }}
+            className="text-xs text-gray-500 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+          >
+            Reset all to defaults
+          </button>
+        )}
+      </div>
+      <div className="px-5 py-4 space-y-6">
+        {(['playback', 'live'] as ActionCategory[]).map(category => (
+          <div key={category}>
+            <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">{CATEGORY_LABELS[category]}</h3>
+            <div className="space-y-1">
+              {DEFAULT_ACTIONS.filter(a => a.category === category).map(action => {
+                const isCapturing = capturing === action.id;
+                const isDefault = !useKeybindingStore.getState().overrides[action.id];
+                return (
+                  <div key={action.id} className={`flex items-center justify-between py-2 px-3 rounded-lg transition-colors ${isCapturing ? 'bg-blue-50 dark:bg-blue-900/20 ring-1 ring-blue-300 dark:ring-blue-700' : 'hover:bg-gray-50 dark:hover:bg-gray-700/50'}`}>
+                    <span className="text-sm text-gray-700 dark:text-gray-300">{action.label}</span>
+                    <div className="flex items-center gap-2">
+                      {/* Conflict warning inline */}
+                      {conflict && capturing === action.id && (
+                        <div className="flex items-center gap-2 text-xs">
+                          <span className="text-amber-600 dark:text-amber-400">
+                            {formatCombo(conflict.combo)} used by "{conflictLabel}"
+                          </span>
+                          <button onClick={handleSwap} className="text-blue-600 dark:text-blue-400 hover:underline font-medium">Swap</button>
+                          <button onClick={handleCancelConflict} className="text-gray-500 hover:underline">Cancel</button>
+                        </div>
+                      )}
+                      <kbd
+                        onClick={() => { setCapturing(action.id); setConflict(null); }}
+                        className={`min-w-[3rem] text-center px-2 py-1 rounded text-xs font-mono cursor-pointer transition-colors ${
+                          isCapturing
+                            ? 'bg-blue-100 dark:bg-blue-800 text-blue-700 dark:text-blue-300 animate-pulse'
+                            : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                        }`}
+                      >
+                        {isCapturing && !conflict ? 'Press a key\u2026' : getDisplayLabel(action.id)}
+                      </kbd>
+                      {!isDefault && (
+                        <button
+                          onClick={() => { resetKey(action.id); if (capturing === action.id) { setCapturing(null); setConflict(null); } }}
+                          className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                          title="Reset to default"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          Click any key to change it. Press Escape to cancel. Shortcuts within the same category must be unique.
+        </p>
       </div>
     </div>
   );
@@ -2831,31 +2971,8 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
         </div>
       </div>
 
-      {/* Keyboard Shortcuts Reference */}
-      <div className="mt-6 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
-        <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-700">
-          <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Keyboard Shortcuts</h2>
-        </div>
-        <div className="px-5 py-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-            {[
-              { key: 'Space / K', action: 'Play / Pause' },
-              { key: 'J', action: 'Skip back 10s' },
-              { key: 'L', action: 'Skip forward 10s' },
-              { key: '← / →', action: 'Skip 5s' },
-              { key: '↑ / ↓', action: 'Navigate segments' },
-              { key: 'Esc', action: 'Go back' },
-            ].map(({ key, action }) => (
-              <div key={key} className="flex items-center justify-between">
-                <kbd className="px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded text-xs font-mono text-gray-700 dark:text-gray-300">
-                  {key}
-                </kbd>
-                <span className="text-gray-600 dark:text-gray-400">{action}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
+      {/* Keyboard Shortcuts Editor */}
+      <KeybindingEditor />
         </>
       )}
 

@@ -1,4 +1,5 @@
 import { useEffect, useCallback } from 'react';
+import { useKeybindingStore, matchesCombo } from '@/stores/keybindingStore';
 
 interface KeyboardShortcutsConfig {
   onPlayPause?: () => void;
@@ -21,6 +22,8 @@ export function useKeyboardShortcuts({
   onPrevSegment,
   enabled = true,
 }: KeyboardShortcutsConfig) {
+  const getKey = useKeybindingStore(s => s.getKey);
+
   const handleKeyDown = useCallback(
     (event: KeyboardEvent) => {
       // Don't trigger if user is typing in an input field
@@ -34,82 +37,39 @@ export function useKeyboardShortcuts({
         return;
       }
 
-      // Map of key -> action
-      switch (event.key) {
-        case ' ':
-          // Space: Play/Pause
-          event.preventDefault();
-          onPlayPause?.();
-          break;
-
-        case 'k':
-        case 'K':
-          // K: Play/Pause (YouTube-style)
-          event.preventDefault();
-          onPlayPause?.();
-          break;
-
-        case 'j':
-        case 'J':
-          // J: Skip back 10 seconds (YouTube-style)
-          event.preventDefault();
-          onSkipBack?.(10);
-          break;
-
-        case 'l':
-        case 'L':
-          // L: Skip forward 10 seconds (YouTube-style)
-          event.preventDefault();
-          onSkipForward?.(10);
-          break;
-
-        case 'ArrowLeft':
-          // Left arrow: Skip back 5 seconds
-          event.preventDefault();
-          onSkipBack?.(SKIP_SECONDS);
-          break;
-
-        case 'ArrowRight':
-          // Right arrow: Skip forward 5 seconds
-          event.preventDefault();
-          onSkipForward?.(SKIP_SECONDS);
-          break;
-
-        case 'ArrowUp':
-          // Up arrow: Previous segment
-          event.preventDefault();
-          onPrevSegment?.();
-          break;
-
-        case 'ArrowDown':
-          // Down arrow: Next segment
-          event.preventDefault();
-          onNextSegment?.();
-          break;
-
-        case 'Escape':
-          // Escape: Go back / close dialog
-          onEscape?.();
-          break;
-
-        case ',':
-          // Comma: Frame back (small skip)
-          if (event.shiftKey) {
-            event.preventDefault();
-            onSkipBack?.(1);
-          }
-          break;
-
-        case '.':
-          // Period: Frame forward (small skip)
-          if (event.shiftKey) {
-            event.preventDefault();
-            onSkipForward?.(1);
-          }
-          break;
+      if (matchesCombo(event, getKey('playback.playPause')) ||
+          matchesCombo(event, getKey('playback.playPauseAlt'))) {
+        event.preventDefault();
+        onPlayPause?.();
+      } else if (matchesCombo(event, getKey('playback.skipBack10'))) {
+        event.preventDefault();
+        onSkipBack?.(10);
+      } else if (matchesCombo(event, getKey('playback.skipForward10'))) {
+        event.preventDefault();
+        onSkipForward?.(10);
+      } else if (matchesCombo(event, getKey('playback.skipBack5'))) {
+        event.preventDefault();
+        onSkipBack?.(SKIP_SECONDS);
+      } else if (matchesCombo(event, getKey('playback.skipForward5'))) {
+        event.preventDefault();
+        onSkipForward?.(SKIP_SECONDS);
+      } else if (matchesCombo(event, getKey('playback.prevSegment'))) {
+        event.preventDefault();
+        onPrevSegment?.();
+      } else if (matchesCombo(event, getKey('playback.nextSegment'))) {
+        event.preventDefault();
+        onNextSegment?.();
+      } else if (matchesCombo(event, getKey('playback.skipBack1'))) {
+        event.preventDefault();
+        onSkipBack?.(1);
+      } else if (matchesCombo(event, getKey('playback.skipForward1'))) {
+        event.preventDefault();
+        onSkipForward?.(1);
+      } else if (matchesCombo(event, getKey('playback.goBack'))) {
+        onEscape?.();
       }
     },
-    [onPlayPause, onSkipBack, onSkipForward, onEscape, onNextSegment, onPrevSegment]
+    [onPlayPause, onSkipBack, onSkipForward, onEscape, onNextSegment, onPrevSegment, getKey]
   );
 
   useEffect(() => {
@@ -120,17 +80,5 @@ export function useKeyboardShortcuts({
   }, [enabled, handleKeyDown]);
 }
 
-// Keyboard shortcuts help text
-export const KEYBOARD_SHORTCUTS = [
-  { key: 'Space', description: 'Play / Pause' },
-  { key: 'K', description: 'Play / Pause' },
-  { key: 'J', description: 'Skip back 10s' },
-  { key: 'L', description: 'Skip forward 10s' },
-  { key: '←', description: 'Skip back 5s' },
-  { key: '→', description: 'Skip forward 5s' },
-  { key: '↑', description: 'Previous segment' },
-  { key: '↓', description: 'Next segment' },
-  { key: 'Shift + <', description: 'Skip back 1s' },
-  { key: 'Shift + >', description: 'Skip forward 1s' },
-  { key: 'Esc', description: 'Go back' },
-] as const;
+// Re-export for display components
+export { getPlaybackShortcuts } from '@/stores/keybindingStore';
