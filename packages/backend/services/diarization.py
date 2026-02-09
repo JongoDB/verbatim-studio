@@ -11,18 +11,29 @@ from typing import Any
 # Patch must happen BEFORE any pyannote/whisperx imports.
 try:
     import torch
-    from lightning_fabric.utilities import cloud_io
-    _original_pl_load = cloud_io._load
     _original_torch_load = torch.load
 
-    def _patched_pl_load(path_or_url, map_location=None, **kwargs):
+    def _patched_torch_load(*args, **kwargs):
         # Force weights_only=False for pyannote compatibility
-        kwargs["weights_only"] = False
-        return _original_torch_load(path_or_url, map_location=map_location, **kwargs)
+        kwargs.setdefault("weights_only", False)
+        return _original_torch_load(*args, **kwargs)
 
-    cloud_io._load = _patched_pl_load
+    torch.load = _patched_torch_load
+
+    # Also patch lightning_fabric if available (used by pyannote internally)
+    try:
+        from lightning_fabric.utilities import cloud_io
+        _original_pl_load = cloud_io._load
+
+        def _patched_pl_load(path_or_url, map_location=None, **kwargs):
+            kwargs["weights_only"] = False
+            return _original_torch_load(path_or_url, map_location=map_location, **kwargs)
+
+        cloud_io._load = _patched_pl_load
+    except ImportError:
+        pass
 except ImportError:
-    pass  # torch or lightning_fabric not installed
+    pass  # torch not installed
 
 logger = logging.getLogger(__name__)
 
