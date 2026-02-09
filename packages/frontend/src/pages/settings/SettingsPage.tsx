@@ -1682,14 +1682,15 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
 
             <div className="text-xs text-gray-500 dark:text-gray-400 border-t border-gray-200 dark:border-gray-700 pt-3 space-y-2">
               <p>
-                Pyannote models are required for speaker diarization (identifying who spoke when).
+                Speaker diarization identifies who spoke when in your recordings.
               </p>
               <p>
-                Before downloading, you must accept the license agreements on HuggingFace:
+                Before downloading, accept the license agreements for all three models on HuggingFace:
               </p>
               <ul className="list-disc list-inside pl-2 space-y-1">
-                <li><a href="https://huggingface.co/pyannote/segmentation-3.0" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">pyannote/segmentation-3.0</a></li>
-                <li><a href="https://huggingface.co/pyannote/wespeaker-voxceleb-resnet34-LM" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">pyannote/wespeaker-voxceleb-resnet34-LM</a></li>
+                <li><a href="https://huggingface.co/pyannote/speaker-diarization-3.1" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">pyannote/speaker-diarization-3.1</a> (main pipeline)</li>
+                <li><a href="https://huggingface.co/pyannote/segmentation-3.0" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">pyannote/segmentation-3.0</a> (voice detection)</li>
+                <li><a href="https://huggingface.co/pyannote/wespeaker-voxceleb-resnet34-LM" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">pyannote/wespeaker-voxceleb-resnet34-LM</a> (speaker embedding)</li>
               </ul>
             </div>
           </div>
