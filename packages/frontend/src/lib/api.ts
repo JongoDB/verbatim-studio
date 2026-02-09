@@ -445,11 +445,16 @@ export interface ProcessingStats {
   running_count: number;
 }
 
+export interface DocumentStats {
+  total_documents: number;
+}
+
 export interface DashboardStats {
   recordings: RecordingStats;
   transcriptions: TranscriptionStats;
   projects: ProjectStats;
   processing: ProcessingStats;
+  documents: DocumentStats;
 }
 
 export interface ProjectTypeInfo {

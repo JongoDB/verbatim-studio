@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from persistence.database import get_db
-from persistence.models import Recording, Transcript, Segment, Project, Job
+from persistence.models import Recording, Transcript, Segment, Project, Job, Document
 from services.storage import get_active_storage_location
 
 router = APIRouter(prefix="/stats", tags=["stats"])
@@ -47,6 +47,12 @@ class ProcessingStats(BaseModel):
     running_count: int
 
 
+class DocumentStats(BaseModel):
+    """Statistics about documents."""
+
+    total_documents: int
+
+
 class DashboardStats(BaseModel):
     """Combined dashboard statistics."""
 
@@ -54,6 +60,7 @@ class DashboardStats(BaseModel):
     transcriptions: TranscriptionStats
     projects: ProjectStats
     processing: ProcessingStats
+    documents: DocumentStats
 
 
 @router.get("", response_model=DashboardStats)
@@ -163,6 +170,10 @@ async def get_stats(
     queued_count = job_counts.get("queued", 0)
     running_count = job_counts.get("running", 0)
 
+    # Document stats
+    document_count_result = await db.execute(select(func.count(Document.id)))
+    document_count = document_count_result.scalar() or 0
+
     return DashboardStats(
         recordings=RecordingStats(
             total_recordings=recording_row.total or 0,
@@ -184,5 +195,8 @@ async def get_stats(
             active_count=queued_count + running_count,
             queued_count=queued_count,
             running_count=running_count,
+        ),
+        documents=DocumentStats(
+            total_documents=document_count,
         ),
     )

@@ -14,6 +14,7 @@ import { useDownloadStore } from '@/stores/downloadStore';
 interface DashboardProps {
   onNavigateToRecordings?: () => void;
   onNavigateToProjects?: () => void;
+  onNavigateToDocuments?: () => void;
   onViewRecording?: (recordingId: string) => void;
   onRecordingUploaded?: () => void;
   onStartTour?: () => void;
@@ -92,7 +93,7 @@ function StatCard({
   );
 }
 
-export function Dashboard({ onNavigateToRecordings, onNavigateToProjects, onViewRecording, onRecordingUploaded, onStartTour }: DashboardProps) {
+export function Dashboard({ onNavigateToRecordings, onNavigateToProjects, onNavigateToDocuments, onViewRecording, onRecordingUploaded, onStartTour }: DashboardProps) {
   const { data: stats, isLoading: statsLoading, error: statsError } = useDashboardStats();
   const { data: recentRecordings = [] } = useRecentRecordings(5);
   const { data: recentProjects = [] } = useRecentProjects(5);
@@ -304,7 +305,7 @@ export function Dashboard({ onNavigateToRecordings, onNavigateToProjects, onView
 
   if (!stats) return null;
 
-  const { recordings, transcriptions, projects, processing } = stats;
+  const { recordings, transcriptions, projects, documents } = stats;
 
   return (
     <div className="space-y-6">
@@ -424,14 +425,14 @@ export function Dashboard({ onNavigateToRecordings, onNavigateToProjects, onView
           }
         />
         <StatCard
-          title="Processing"
-          value={processing.active_count}
-          subtitle={processing.active_count === 0 ? 'All caught up' : `${processing.running_count} running, ${processing.queued_count} queued`}
-          color={processing.active_count > 0 ? 'amber' : 'green'}
-          onClick={onNavigateToRecordings}
+          title="Documents"
+          value={documents?.total_documents ?? 0}
+          subtitle={documents?.total_documents === 1 ? '1 document' : `${documents?.total_documents ?? 0} documents`}
+          color="purple"
+          onClick={onNavigateToDocuments}
           icon={
             <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
             </svg>
           }
         />

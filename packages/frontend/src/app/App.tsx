@@ -557,6 +557,7 @@ export function App() {
                   <Dashboard
                     onNavigateToRecordings={handleNavigateToRecordings}
                     onNavigateToProjects={handleNavigateToProjects}
+                    onNavigateToDocuments={handleNavigateToDocuments}
                     onViewRecording={handleViewTranscript}
                     onStartTour={handleStartTour}
                   />
