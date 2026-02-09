@@ -8,3 +8,5 @@ export * from './useSearchHistory';
 export * from './useJobs';
 export * from './useKeyboardShortcuts';
 export { DataSyncProvider, useDataSyncStatus } from './useDataSync';
+export { useLiveTranscription } from './useLiveTranscription';
+export type { ConnectionState, TranscriptSegment, LiveError } from './useLiveTranscription';

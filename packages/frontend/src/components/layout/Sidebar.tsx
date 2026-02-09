@@ -59,7 +59,6 @@ const NAV_ITEMS = [
   {
     key: 'live' as const,
     label: 'Live',
-    badge: 'BETA',
     icon: (
       <svg className="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
         <path strokeLinecap="round" strokeLinejoin="round" d="M5.636 18.364a9 9 0 010-12.728m12.728 0a9 9 0 010 12.728m-9.9-2.829a5 5 0 010-7.07m7.072 0a5 5 0 010 7.07M13 12a1 1 0 11-2 0 1 1 0 012 0z" />
@@ -253,11 +252,6 @@ export function Sidebar({ currentTab, onNavigate, theme, onCycleTheme, version, 
                 <span className={`overflow-hidden whitespace-nowrap transition-all duration-300 ${collapsed ? 'md:w-0 md:opacity-0' : 'md:w-auto md:opacity-100'}`}>
                   {item.label}
                 </span>
-                {'badge' in item && item.badge && (
-                  <span className={`ml-1.5 px-1.5 py-0.5 text-[10px] font-semibold rounded bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 overflow-hidden whitespace-nowrap transition-all duration-300 ${collapsed ? 'md:w-0 md:opacity-0 md:hidden' : 'md:w-auto md:opacity-100'}`}>
-                    {item.badge}
-                  </span>
-                )}
                 {/* Tooltip when collapsed (desktop only) */}
                 {collapsed && (
                   <span className="hidden md:block absolute left-full ml-2 px-2 py-1 rounded-md bg-gray-900 text-gray-100 dark:bg-gray-100 dark:text-gray-900 text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-100 z-50">

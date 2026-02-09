@@ -1,6 +1,7 @@
 """Live transcription WebSocket endpoint."""
 
 import asyncio
+import json
 import logging
 import tempfile
 import uuid
@@ -8,6 +9,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
+import aiofiles
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,14 +19,18 @@ from core.factory import get_factory
 from core.interfaces import TranscriptionOptions
 from persistence.database import get_db
 from persistence.models import Recording, Transcript, Segment
+from api.routes.sync import broadcast
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/live", tags=["live"])
 
 
-# Chunk interval must match frontend (3 seconds)
-CHUNK_INTERVAL_SECONDS = 3.0
+# Chunk interval must match frontend (1.5 seconds for lower latency)
+CHUNK_INTERVAL_SECONDS = 1.5
+
+# Auto-save interval in seconds
+AUTOSAVE_INTERVAL_SECONDS = 30.0
 
 
 @dataclass
@@ -56,6 +62,19 @@ class SaveSessionResponse(BaseModel):
     message: str
 
 
+class AutosaveRequest(BaseModel):
+    """Request to autosave live session segments."""
+
+    session_id: str
+
+
+class AutosaveResponse(BaseModel):
+    """Response after autosaving."""
+
+    saved_segments: int
+    total_duration: float
+
+
 # Active sessions storage
 active_sessions: dict[str, LiveSession] = {}
 
@@ -83,7 +102,9 @@ async def live_transcribe(websocket: WebSocket):
         if not await engine.is_available():
             await websocket.send_json({
                 "type": "error",
-                "message": "Transcription engine not available"
+                "error_type": "engine_unavailable",
+                "message": "Transcription engine not available. Check Settings to configure your engine.",
+                "retryable": False,
             })
             await websocket.close()
             return
@@ -98,13 +119,14 @@ async def live_transcribe(websocket: WebSocket):
 
             # Handle text messages (JSON commands)
             if "text" in message:
-                import json
                 try:
                     data = json.loads(message["text"])
                 except json.JSONDecodeError:
                     await websocket.send_json({
                         "type": "error",
-                        "message": "Invalid JSON"
+                        "error_type": "protocol",
+                        "message": "Invalid JSON message",
+                        "retryable": False,
                     })
                     continue
 
@@ -160,7 +182,9 @@ async def live_transcribe(websocket: WebSocket):
                 if not session:
                     await websocket.send_json({
                         "type": "error",
-                        "message": "Session not started. Send {\"type\": \"start\"} first."
+                        "error_type": "no_session",
+                        "message": "No active session. Click Start Recording first.",
+                        "retryable": False,
                     })
                     continue
 
@@ -225,9 +249,25 @@ async def live_transcribe(websocket: WebSocket):
 
                 except Exception as e:
                     logger.error("Transcription error: %s", e)
+                    error_msg = str(e)
+                    # Categorize the error for the frontend
+                    if "out of memory" in error_msg.lower() or "cuda" in error_msg.lower():
+                        error_type = "resource"
+                        user_msg = "Transcription engine ran out of memory. Try a smaller model."
+                        retryable = False
+                    elif "no such file" in error_msg.lower() or "temp" in error_msg.lower():
+                        error_type = "temporary"
+                        user_msg = "Temporary processing error. The next chunk will retry automatically."
+                        retryable = True
+                    else:
+                        error_type = "transcription"
+                        user_msg = "Failed to process audio chunk. Recording continues."
+                        retryable = True
                     await websocket.send_json({
                         "type": "error",
-                        "message": f"Transcription failed: {str(e)}"
+                        "error_type": error_type,
+                        "message": user_msg,
+                        "retryable": retryable,
                     })
 
                 finally:
@@ -244,7 +284,9 @@ async def live_transcribe(websocket: WebSocket):
         try:
             await websocket.send_json({
                 "type": "error",
-                "message": str(e)
+                "error_type": "connection",
+                "message": "Connection error. Please reconnect.",
+                "retryable": True,
             })
         except Exception:
             pass
@@ -274,9 +316,9 @@ async def save_live_session(
         audio_filename = f"live-{recording_id}.webm"
         audio_path = settings.MEDIA_DIR / audio_filename
 
-        with open(audio_path, "wb") as f:
+        async with aiofiles.open(audio_path, "wb") as f:
             for chunk in session.audio_chunks:
-                f.write(chunk)
+                await f.write(chunk)
 
         file_path = str(audio_path)
         file_size = audio_path.stat().st_size
@@ -320,6 +362,9 @@ async def save_live_session(
 
     await db.commit()
 
+    # Broadcast to data sync clients so UI updates immediately
+    await broadcast("recordings", "created", recording_id)
+
     # Remove session from memory
     del active_sessions[request.session_id]
 
@@ -334,6 +379,30 @@ async def save_live_session(
         recording_id=recording_id,
         transcript_id=transcript_id,
         message=f"Saved {len(session.segments)} segments",
+    )
+
+
+@router.post("/autosave", response_model=AutosaveResponse)
+async def autosave_session(request: AutosaveRequest):
+    """Autosave endpoint - confirms session state is preserved.
+
+    The session data lives in-memory on the server. This endpoint lets the
+    frontend periodically confirm the session is still alive and get current stats.
+    """
+    session = active_sessions.get(request.session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found or expired")
+
+    logger.debug(
+        "Autosave check for session %s: %d segments, %.1fs",
+        request.session_id,
+        len(session.segments),
+        session.total_duration,
+    )
+
+    return AutosaveResponse(
+        saved_segments=len(session.segments),
+        total_duration=session.total_duration,
     )
 
 
