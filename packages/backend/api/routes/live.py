@@ -112,11 +112,14 @@ def _cleanup_expired_sessions() -> int:
     return len(expired)
 
 
-async def _get_diarization_service():
+async def _get_diarization_service() -> tuple[object | None, str | None]:
     """Lazy import to avoid loading pyannote unless needed.
 
     Reads HF token from DB settings (user configures via Settings UI)
     rather than relying on environment variables alone.
+
+    Returns (service, reason) — reason is None on success, otherwise
+    a short key: "no_token", "models_missing", "import_error".
     """
     try:
         from services.diarization import DiarizationService
@@ -126,13 +129,18 @@ async def _get_diarization_service():
         hf_token = ts.get("hf_token")
         if not hf_token:
             logger.warning("No HuggingFace token configured for diarization")
-            return None
+            return None, "no_token"
+
+        from core.pyannote_catalog import are_all_models_downloaded
+        if not are_all_models_downloaded():
+            logger.warning("Required diarization models not downloaded")
+            return None, "models_missing"
 
         from core.transcription_settings import detect_diarization_device
         device = detect_diarization_device()
-        return DiarizationService(device=device, hf_token=hf_token)
+        return DiarizationService(device=device, hf_token=hf_token), None
     except ImportError:
-        return None
+        return None, "import_error"
 
 
 @router.websocket("/transcribe")
@@ -211,7 +219,28 @@ async def live_transcribe(websocket: WebSocket):
 
                     # Pre-load diarization service if needed
                     if high_detail and dia_service is None:
-                        dia_service = await _get_diarization_service()
+                        dia_service, dia_reason = await _get_diarization_service()
+                        if dia_reason:
+                            _DIA_HINTS = {
+                                "no_token": (
+                                    "No HuggingFace token configured."
+                                    " Add your token in Settings \u2192 Transcription"
+                                    " to enable speaker identification."
+                                ),
+                                "models_missing": (
+                                    "Diarization models not downloaded."
+                                    " Download them in Settings \u2192 AI"
+                                    " to enable speaker identification."
+                                ),
+                                "import_error": (
+                                    "Diarization dependencies not available."
+                                    " Speaker identification is disabled."
+                                ),
+                            }
+                            await websocket.send_json({
+                                "type": "warning",
+                                "message": _DIA_HINTS.get(dia_reason, f"Diarization unavailable: {dia_reason}"),
+                            })
 
                     await websocket.send_json({
                         "type": "session_start",

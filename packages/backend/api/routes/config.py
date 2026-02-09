@@ -273,7 +273,8 @@ async def update_transcription_config(
         updates["diarize"] = body.diarize
 
     if body.hf_token is not None:
-        updates["hf_token"] = body.hf_token
+        # Allow empty string to clear the token
+        updates["hf_token"] = body.hf_token if body.hf_token else None
 
     # External WhisperX settings (enterprise feature)
     if body.external_url is not None:

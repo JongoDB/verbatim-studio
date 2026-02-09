@@ -1360,6 +1360,25 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
                     </svg>
                     Token configured ({txSettings.hf_token_masked})
                   </span>
+                  <button
+                    onClick={async () => {
+                      setTxSaving(true);
+                      try {
+                        const updated = await api.config.updateTranscription({ hf_token: '' });
+                        setTxSettings(updated);
+                        api.diarization.listModels().then((r) => {
+                          setDiarizationModels(r.models);
+                          setDiarizationHfTokenSet(r.hf_token_set);
+                        });
+                      } finally {
+                        setTxSaving(false);
+                      }
+                    }}
+                    disabled={txSaving}
+                    className="text-xs text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 hover:underline disabled:opacity-50"
+                  >
+                    Remove
+                  </button>
                 </div>
               )}
               <div className="flex gap-2">
