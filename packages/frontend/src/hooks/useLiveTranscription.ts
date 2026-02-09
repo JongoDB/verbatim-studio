@@ -48,6 +48,7 @@ export interface UseLiveTranscriptionReturn {
   resumeRecording: () => void;
   toggleMute: () => void;
   updateSegmentText: (index: number, newText: string) => void;
+  deleteSegment: (index: number) => void;
   clearTranscript: () => Promise<void>;
   dismissError: () => void;
 }
@@ -415,6 +416,11 @@ export function useLiveTranscription(): UseLiveTranscriptionReturn {
     ));
   }, []);
 
+  // Delete a segment
+  const deleteSegment = useCallback((index: number) => {
+    setSegments(prev => prev.filter((_, i) => i !== index));
+  }, []);
+
   const clearTranscript = useCallback(async () => {
     // Don't clear while actively recording — would orphan the backend session
     if (isRecordingRef.current) return;
@@ -461,6 +467,7 @@ export function useLiveTranscription(): UseLiveTranscriptionReturn {
     resumeRecording,
     toggleMute,
     updateSegmentText,
+    deleteSegment,
     clearTranscript,
     dismissError,
   };

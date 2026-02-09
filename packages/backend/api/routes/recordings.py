@@ -990,6 +990,13 @@ async def stream_audio(
                     detail="Audio file not found in cloud storage",
                 )
 
+    # Live recordings without saved audio use a sentinel URI
+    if recording.file_path.startswith("live://"):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="no_audio",
+        )
+
     # Local storage - check file exists
     file_path = Path(recording.file_path)
     if not file_path.exists():

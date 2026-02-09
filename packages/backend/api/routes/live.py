@@ -312,9 +312,11 @@ async def live_transcribe(websocket: WebSocket):
                                 await websocket.send_json({
                                     "type": "warning",
                                     "message": (
-                                        "Speaker identification unavailable."
-                                        " Transcription continues without"
-                                        " speaker labels."
+                                        "Speaker identification is not available"
+                                        " — the diarization model may not be"
+                                        " installed. Transcription will continue"
+                                        " without speaker labels. You can install"
+                                        " the model in Settings → AI."
                                     ),
                                 })
 

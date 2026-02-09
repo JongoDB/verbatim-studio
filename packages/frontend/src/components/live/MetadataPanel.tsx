@@ -118,18 +118,25 @@ export function MetadataPanel({ metadata, onChange, disabled = false }: Metadata
           </div>
 
           {/* Save Audio toggle */}
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={metadata.saveAudio}
-              onChange={(e) => update({ saveAudio: e.target.checked })}
-              disabled={disabled}
-              className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
-            />
-            <span className="text-xs text-gray-700 dark:text-gray-300">
-              Save audio recording
-            </span>
-          </label>
+          <div>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={metadata.saveAudio}
+                onChange={(e) => update({ saveAudio: e.target.checked })}
+                disabled={disabled}
+                className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+              />
+              <span className="text-xs text-gray-700 dark:text-gray-300">
+                Save audio recording
+              </span>
+            </label>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-1 ml-6">
+              {metadata.saveAudio
+                ? 'Audio will be saved alongside the transcript for playback'
+                : 'Only the text transcript will be saved (no audio file)'}
+            </p>
+          </div>
         </div>
       )}
     </div>

@@ -51,6 +51,7 @@ export function LiveTranscriptionPage({ onNavigateToRecordings: _onNavigateToRec
     resumeRecording,
     toggleMute,
     updateSegmentText,
+    deleteSegment,
     clearTranscript,
     dismissError,
   } = useLiveTranscription();
@@ -62,15 +63,18 @@ export function LiveTranscriptionPage({ onNavigateToRecordings: _onNavigateToRec
   const [saveError, setSaveError] = useState<string | null>(null);
   const [metadata, setMetadata] = useState<LiveMetadata>(DEFAULT_METADATA);
   const [showShortcuts, setShowShortcuts] = useState(false);
+  const [isEditingSegment, setIsEditingSegment] = useState(false);
 
   const transcriptEndRef = useRef<HTMLDivElement>(null);
 
   const isActive = connectionState === 'recording' || connectionState === 'paused';
 
-  // Auto-scroll to bottom when new segments arrive
+  // Auto-scroll to bottom when new segments arrive (paused during editing)
   useEffect(() => {
-    transcriptEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [segments]);
+    if (!isEditingSegment) {
+      transcriptEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [segments, isEditingSegment]);
 
   const handleStartRecording = useCallback(() => {
     startRecording(language, highDetail);
@@ -135,9 +139,10 @@ export function LiveTranscriptionPage({ onNavigateToRecordings: _onNavigateToRec
       const data = await response.json();
       setShowSaveConfirm(false);
       setMetadata(DEFAULT_METADATA);
-      clearTranscript();
 
+      // Navigate first, then clean up state (save already deleted the session)
       onViewRecording(data.recording_id);
+      clearTranscript();
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Save failed');
     } finally {
@@ -191,12 +196,17 @@ export function LiveTranscriptionPage({ onNavigateToRecordings: _onNavigateToRec
         </div>
         <button
           onClick={() => setShowShortcuts(!showShortcuts)}
-          className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+          className={`inline-flex items-center gap-1.5 text-xs transition-colors ${
+            showShortcuts
+              ? 'text-purple-600 dark:text-purple-400'
+              : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+          }`}
           title="Keyboard shortcuts"
         >
-          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
           </svg>
+          Shortcuts
         </button>
       </div>
 
@@ -428,6 +438,14 @@ export function LiveTranscriptionPage({ onNavigateToRecordings: _onNavigateToRec
                 High detail: speakers + word confidence
               </p>
             )}
+
+            {/* Compact shortcut hints */}
+            {connectionState !== 'disconnected' && (
+              <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-700 text-xs text-gray-400 dark:text-gray-500 space-y-0.5">
+                <div className="flex justify-between"><span><kbd className="font-mono">Space</kbd> Start/Stop</span><span><kbd className="font-mono">P</kbd> Pause</span></div>
+                <div className="flex justify-between"><span><kbd className="font-mono">M</kbd> Mute</span><span><kbd className="font-mono">⌘S</kbd> Save</span></div>
+              </div>
+            )}
           </div>
 
           {/* Metadata Panel */}
@@ -476,7 +494,11 @@ export function LiveTranscriptionPage({ onNavigateToRecordings: _onNavigateToRec
             </div>
 
             {/* Transcript Content — Segment-based display */}
-            <div className="flex-1 p-3 overflow-y-auto min-h-[400px] max-h-[600px]">
+            <div
+              className="flex-1 p-3 overflow-y-auto min-h-[400px] max-h-[600px]"
+              onFocusCapture={() => setIsEditingSegment(true)}
+              onBlurCapture={() => setIsEditingSegment(false)}
+            >
               {segments.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-gray-400 dark:text-gray-500">
                   <svg className="w-16 h-16 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1">
@@ -493,6 +515,7 @@ export function LiveTranscriptionPage({ onNavigateToRecordings: _onNavigateToRec
                       segment={seg}
                       index={i}
                       onEditText={updateSegmentText}
+                      onDelete={deleteSegment}
                       showTimestamps={true}
                       showConfidence={highDetailMode}
                     />

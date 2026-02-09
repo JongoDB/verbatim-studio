@@ -637,13 +637,19 @@ export function TranscriptPage({ recordingId, onBack, initialSeekTime }: Transcr
         )}
       </div>
 
-      {/* Waveform Player - sticky when scrolling */}
+      {/* Waveform Player - sticky when scrolling (hidden for transcript-only live recordings) */}
       <div className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-900 pb-4 -mx-4 px-4 pt-2 -mt-2 rounded-lg">
-        <WaveformPlayer
-          ref={audioRef}
-          src={api.recordings.getAudioUrl(recordingId)}
-          onTimeUpdate={setCurrentTime}
-        />
+        {recording.file_path.startsWith('live://') ? (
+          <div className="py-3 px-4 rounded-lg bg-gray-100 dark:bg-gray-800 text-sm text-gray-500 dark:text-gray-400 text-center">
+            Transcript-only recording (no audio saved)
+          </div>
+        ) : (
+          <WaveformPlayer
+            ref={audioRef}
+            src={api.recordings.getAudioUrl(recordingId)}
+            onTimeUpdate={setCurrentTime}
+          />
+        )}
         {/* In-transcript search bar */}
         {showSearch && (
           <div className="mt-3">
