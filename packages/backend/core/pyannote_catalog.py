@@ -23,19 +23,11 @@ class PyannoteModel(TypedDict):
 # All models are gated and require HF token with accepted license agreement
 PYANNOTE_MODELS: list[PyannoteModel] = [
     {
-        "id": "pyannote-segmentation",
-        "label": "Segmentation 3.0",
-        "description": "Voice activity detection and speaker segmentation model. Required for diarization.",
-        "repo": "pyannote/segmentation-3.0",
-        "size_bytes": 5_600_000,  # ~5.6 MB
-        "required": True,
-    },
-    {
-        "id": "pyannote-embedding",
-        "label": "Speaker Embedding",
-        "description": "Speaker embedding model for speaker identification. Required for diarization.",
-        "repo": "pyannote/wespeaker-voxceleb-resnet34-LM",
-        "size_bytes": 94_000_000,  # ~94 MB
+        "id": "pyannote-diarization",
+        "label": "Speaker Diarization 3.1",
+        "description": "Identifies different speakers in audio. Automatically downloads required component models.",
+        "repo": "pyannote/speaker-diarization-3.1",
+        "size_bytes": 100_000_000,  # ~100 MB (pipeline + components)
         "required": True,
     },
 ]
