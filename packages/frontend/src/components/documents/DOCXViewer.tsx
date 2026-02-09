@@ -100,8 +100,8 @@ export function DOCXViewer({ documentId, onSelectionNote, highlightText, onHighl
           const page = getPageForNode(range.startContainer);
           setSelection({ text: selectedText, page });
           setSelectionPosition({
-            x: rect.left - containerRect.left + rect.width / 2,
-            y: rect.top - containerRect.top - 40,
+            x: rect.left - containerRect.left + rect.width / 2 + (containerRef.current?.scrollLeft || 0),
+            y: rect.top - containerRect.top - 40 + (containerRef.current?.scrollTop || 0),
           });
         }
       }

@@ -136,8 +136,8 @@ export function PDFViewer({ url, onSelectionNote, currentPage = 1, onPageChange,
         if (containerRect) {
           setSelection({ text: selectedText, page: pageNumber });
           setSelectionPosition({
-            x: rect.left - containerRect.left + rect.width / 2,
-            y: rect.top - containerRect.top - 40,
+            x: rect.left - containerRect.left + rect.width / 2 + (containerRef.current?.scrollLeft || 0),
+            y: rect.top - containerRect.top - 40 + (containerRef.current?.scrollTop || 0),
           });
         }
       }
