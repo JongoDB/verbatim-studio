@@ -133,6 +133,10 @@ async def _run_migrations(conn) -> None:
     from migrations.add_storage_subtype import migrate as migrate_storage_subtype
     await conn.run_sync(lambda _: migrate_storage_subtype(db_path))
 
+    # Add ai_summary column to transcripts table
+    from migrations.add_transcript_ai_summary import migrate as migrate_transcript_ai_summary
+    await conn.run_sync(lambda _: migrate_transcript_ai_summary(db_path))
+
     # Add indexes on segments table for query performance
     from migrations.add_segment_indexes import migrate as migrate_segment_indexes
     await conn.run_sync(lambda _: migrate_segment_indexes(db_path))

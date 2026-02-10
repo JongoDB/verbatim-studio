@@ -160,13 +160,19 @@ async def get_archive_info(db: Annotated[AsyncSession, Depends(get_db)]) -> Arch
     media_size = 0
     for rec in recordings:
         try:
-            if rec.file_path:
-                file_path = Path(rec.file_path)
-                if file_path.is_absolute() and file_path.exists():
-                    media_size += file_path.stat().st_size
-        except (OSError, PermissionError):
-            # Skip files that can't be accessed
-            pass
+            if not rec.file_path or rec.file_path.startswith("live://"):
+                # Use DB file_size for sentinel paths
+                media_size += rec.file_size or 0
+                continue
+            file_path = Path(rec.file_path)
+            if file_path.is_absolute() and file_path.exists():
+                media_size += file_path.stat().st_size
+            elif rec.file_size:
+                # Cloud or relative paths – use DB file_size
+                media_size += rec.file_size
+        except Exception:
+            # Fallback to DB file_size for any path access error
+            media_size += rec.file_size or 0
 
     return ArchiveInfo(
         version=ARCHIVE_VERSION,
@@ -214,11 +220,16 @@ async def export_archive(
         # Include media files
         if include_media:
             for rec in data["recordings"]:
-                file_path = Path(rec["file_path"])
-                if file_path.exists():
-                    # Use recording ID as filename to avoid conflicts
-                    archive_path = f"media/{rec['id']}/{rec['file_name']}"
-                    zf.write(file_path, archive_path)
+                fp = rec.get("file_path") or ""
+                if not fp or fp.startswith("live://"):
+                    continue
+                try:
+                    file_path = Path(fp)
+                    if file_path.is_absolute() and file_path.exists():
+                        archive_path = f"media/{rec['id']}/{rec['file_name']}"
+                        zf.write(file_path, archive_path)
+                except Exception:
+                    continue
 
     buffer.seek(0)
 
