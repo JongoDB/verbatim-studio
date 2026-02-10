@@ -14,6 +14,16 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'pdf-vendor': ['react-pdf'],
+          'docx-vendor': ['docx-preview'],
+          'audio-vendor': ['wavesurfer.js'],
+          'excel-vendor': ['exceljs'],
+        },
+      },
+    },
   },
   server: {
     port: 5173,

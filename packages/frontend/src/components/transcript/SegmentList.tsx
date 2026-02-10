@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Segment, Speaker } from '@/lib/api';
 import { api } from '@/lib/api';
 import { SpeakerBadge } from './SpeakerBadge';
@@ -24,19 +24,23 @@ export function SegmentList({ segments, transcriptId }: SegmentListProps) {
       .catch((error) => console.error('Failed to load speakers:', error));
   }, [transcriptId]);
 
-  // Create a map of speaker_label -> Speaker object
-  const speakerMap = new Map<string, Speaker>();
-  speakers.forEach((s) => speakerMap.set(s.speaker_label, s));
+  const speakerMap = useMemo(() => {
+    const map = new Map<string, Speaker>();
+    speakers.forEach((s) => map.set(s.speaker_label, s));
+    return map;
+  }, [speakers]);
 
-  // Create a map of speaker_label -> index for consistent coloring
-  const speakerIndexMap = new Map<string, number>();
-  speakers.forEach((s, idx) => speakerIndexMap.set(s.speaker_label, idx));
+  const speakerIndexMap = useMemo(() => {
+    const map = new Map<string, number>();
+    speakers.forEach((s, idx) => map.set(s.speaker_label, idx));
+    return map;
+  }, [speakers]);
 
-  const handleSpeakerUpdate = (updated: Speaker) => {
+  const handleSpeakerUpdate = useCallback((updated: Speaker) => {
     setSpeakers((prev) =>
       prev.map((s) => (s.id === updated.id ? updated : s))
     );
-  };
+  }, []);
 
   if (segments.length === 0) {
     return (

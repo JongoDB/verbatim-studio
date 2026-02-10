@@ -124,3 +124,7 @@ async def _run_migrations(conn) -> None:
     from migrations.add_storage_subtype import migrate as migrate_storage_subtype
     db_path = Path(__file__).parent.parent / "verbatim.db"
     await conn.run_sync(lambda _: migrate_storage_subtype(db_path))
+
+    # Add indexes on segments table for query performance
+    from migrations.add_segment_indexes import migrate as migrate_segment_indexes
+    await conn.run_sync(lambda _: migrate_segment_indexes(db_path))

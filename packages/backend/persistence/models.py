@@ -218,10 +218,10 @@ class Segment(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
     transcript_id: Mapped[str] = mapped_column(
-        ForeignKey("transcripts.id", ondelete="CASCADE"), nullable=False
+        ForeignKey("transcripts.id", ondelete="CASCADE"), nullable=False, index=True
     )
     segment_index: Mapped[int] = mapped_column(Integer, nullable=False)
-    speaker: Mapped[str | None] = mapped_column(String(100))
+    speaker: Mapped[str | None] = mapped_column(String(100), index=True)
     start_time: Mapped[float] = mapped_column(Float, nullable=False)
     end_time: Mapped[float] = mapped_column(Float, nullable=False)
     text: Mapped[str] = mapped_column(Text, nullable=False)

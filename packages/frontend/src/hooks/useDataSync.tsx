@@ -162,10 +162,17 @@ export function DataSyncProvider({ children }: DataSyncProviderProps) {
       ws.onopen = () => {
         console.log('[DataSync] Connected');
         setConnected(true);
-        reconnectAttempts.current = 0;
 
-        // Invalidate all queries to ensure fresh data after reconnect
-        queryClient.invalidateQueries();
+        // Only refetch stale data on reconnect (not all queries)
+        if (reconnectAttempts.current > 0) {
+          queryClient.invalidateQueries({ queryKey: queryKeys.recordings.all });
+          queryClient.invalidateQueries({ queryKey: queryKeys.projects.all });
+          queryClient.invalidateQueries({ queryKey: queryKeys.documents.all });
+          queryClient.invalidateQueries({ queryKey: queryKeys.jobs.all });
+          queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.stats });
+        }
+
+        reconnectAttempts.current = 0;
       };
 
       ws.onclose = (event) => {
