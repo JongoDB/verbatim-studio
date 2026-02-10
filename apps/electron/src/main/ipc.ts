@@ -76,16 +76,21 @@ export function registerIpcHandlers(): void {
 
   // Update handlers
   ipcMain.on('update:start', (_event, { downloadUrl, version }) => {
-    // Validate URL
+    // Validate URL - restrict to GitHub releases only
     try {
-      new URL(downloadUrl);
+      const parsed = new URL(downloadUrl);
+      const allowedHosts = ['github.com', 'api.github.com', 'objects.githubusercontent.com'];
+      if (!allowedHosts.some((h) => parsed.hostname === h || parsed.hostname.endsWith('.' + h))) {
+        console.error('[IPC] Download URL must be from GitHub:', parsed.hostname);
+        return;
+      }
     } catch {
       console.error('[IPC] Invalid download URL:', downloadUrl);
       return;
     }
-    // Validate version
-    if (!version || typeof version !== 'string') {
-      console.error('[IPC] Invalid version:', version);
+    // Validate version format (semver-like)
+    if (!version || typeof version !== 'string' || !/^\d+\.\d+\.\d+/.test(version)) {
+      console.error('[IPC] Invalid version format:', version);
       return;
     }
     startUpdate(downloadUrl, version);

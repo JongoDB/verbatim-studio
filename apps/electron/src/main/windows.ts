@@ -16,7 +16,7 @@ export function createMainWindow(): BrowserWindow {
       nodeIntegration: false,
       contextIsolation: true,
       preload: preloadPath,
-      sandbox: false, // Disable sandbox to allow preload to work
+      sandbox: true,
     },
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     trafficLightPosition: { x: 16, y: 16 },
@@ -50,8 +50,9 @@ export function createMainWindow(): BrowserWindow {
     console.log('[Window] dom-ready - Backend status: running=%s, port=%s, apiUrl=%s', isRunning, port, apiUrl);
 
     if (apiUrl) {
+      const safeUrl = JSON.stringify(apiUrl);
       mainWindow.webContents.executeJavaScript(`
-        window.__VERBATIM_API_URL__ = '${apiUrl}';
+        window.__VERBATIM_API_URL__ = ${safeUrl};
         console.log('[Injected] API URL set to:', window.__VERBATIM_API_URL__);
       `).then(() => {
         console.log('[Window] API URL injection succeeded');
@@ -67,13 +68,15 @@ export function createMainWindow(): BrowserWindow {
   mainWindow.webContents.on('did-finish-load', () => {
     const apiUrl = backendManager.getApiUrl();
     if (apiUrl) {
-      // Re-inject in case dom-ready injection was too late
+      const safeUrl = JSON.stringify(apiUrl);
       mainWindow.webContents.executeJavaScript(`
         if (!window.__VERBATIM_API_URL__) {
-          window.__VERBATIM_API_URL__ = '${apiUrl}';
+          window.__VERBATIM_API_URL__ = ${safeUrl};
           console.log('[Injected on did-finish-load] API URL set to:', window.__VERBATIM_API_URL__);
         }
-      `).catch(() => {});
+      `).catch((err) => {
+        console.error('[Window] did-finish-load injection failed:', err);
+      });
     }
   });
 
@@ -118,9 +121,18 @@ export function createMainWindow(): BrowserWindow {
     mainWindow.show();
   });
 
-  // Open external links in browser
+  // Open external links in browser (restrict to http/https only)
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url);
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+        shell.openExternal(url);
+      } else {
+        console.warn('[Window] Blocked non-HTTP(S) external URL:', parsed.protocol);
+      }
+    } catch {
+      console.error('[Window] Invalid external URL:', url);
+    }
     return { action: 'deny' };
   });
 
