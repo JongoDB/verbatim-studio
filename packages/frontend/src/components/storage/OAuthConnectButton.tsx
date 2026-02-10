@@ -133,50 +133,38 @@ export function OAuthConnectButton({
     try {
       const response = await api.oauth.start({ provider });
 
-      // Open auth URL in new window
-      const authWindow = window.open(
-        response.auth_url,
-        'oauth',
-        'width=600,height=700,menubar=no,toolbar=no,location=no,status=no'
-      );
+      // Open auth URL in a new tab (not a popup — popups get blocked)
+      const authWindow = window.open(response.auth_url, '_blank');
 
-      // Check if window was blocked
-      if (!authWindow) {
-        // Cancel OAuth to release backend resources (callback server, state)
-        await api.oauth.cancel(response.state);
-        setIsConnecting(false);
-        onError?.('Pop-up blocked. Please allow pop-ups and try again.');
-        return;
-      }
-
-      // Only start polling AFTER confirming window opened successfully
+      // Start polling regardless — even if window.open returns null,
+      // the backend callback server is running and should stay alive.
+      // The user might allow the blocked popup or navigate manually.
       setPollState(response.state);
 
-      // Monitor window close — use ref to avoid stale closure over isConnecting
-      const checkClosed = setInterval(() => {
-        if (authWindow.closed) {
-          clearInterval(checkClosed);
-          // Give polling a brief chance to catch the result, then cancel
-          setTimeout(async () => {
-            // activeStateRef tracks current pollState without stale closure issues
-            if (activeStateRef.current) {
-              try {
-                const status = await api.oauth.status(response.state);
-                if (status.status === 'pending') {
-                  // User closed without completing - cancel to release port
-                  await api.oauth.cancel(response.state);
+      // Monitor tab/window close if we got a handle
+      if (authWindow) {
+        const checkClosed = setInterval(() => {
+          if (authWindow.closed) {
+            clearInterval(checkClosed);
+            // Give polling a brief chance to catch the result, then cancel
+            setTimeout(async () => {
+              if (activeStateRef.current) {
+                try {
+                  const status = await api.oauth.status(response.state);
+                  if (status.status === 'pending') {
+                    await api.oauth.cancel(response.state);
+                    setIsConnecting(false);
+                    setPollState(null);
+                  }
+                } catch {
                   setIsConnecting(false);
                   setPollState(null);
                 }
-              } catch {
-                // State may be gone, that's fine
-                setIsConnecting(false);
-                setPollState(null);
               }
-            }
-          }, 1500);
-        }
-      }, 500);
+            }, 1500);
+          }
+        }, 500);
+      }
     } catch (err) {
       setIsConnecting(false);
       onError?.(err instanceof Error ? err.message : 'Failed to start authentication');
