@@ -463,7 +463,7 @@ class DropboxAdapter(StorageAdapter):
             )
 
             return response.status_code == 200
-        except (OSError, ValueError):
+        except Exception:
             return False
 
     async def get_file_info(self, path: str) -> FileInfo:

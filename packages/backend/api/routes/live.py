@@ -471,7 +471,7 @@ async def live_transcribe(websocket: WebSocket):
                 "message": "Connection error. Please reconnect.",
                 "retryable": True,
             })
-        except (WebSocketDisconnect, RuntimeError):
+        except Exception:
             pass
     finally:
         # Mark session as disconnected so TTL cleanup can reclaim it later.

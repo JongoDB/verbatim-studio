@@ -143,7 +143,7 @@ async def download_whisper_model(model_id: str) -> StreamingResponse:
             sibling.size for sibling in model_info.siblings
             if sibling.size is not None
         ) or model["size_bytes"]
-    except (ImportError, OSError, ValueError):
+    except Exception:
         pass  # Use catalog size as fallback
 
     # Start download in background thread

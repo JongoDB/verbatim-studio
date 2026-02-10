@@ -83,7 +83,7 @@ def _extract_duration(content: bytes, filename: str) -> float | None:
         audio = MutagenFile(io.BytesIO(content), filename=filename)
         if audio is not None and audio.info is not None:
             return round(audio.info.length, 2)
-    except (ImportError, OSError, ValueError, AttributeError):
+    except Exception:
         logger.debug("Could not extract duration from %s", filename)
     return None
 
