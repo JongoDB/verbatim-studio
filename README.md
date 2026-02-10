@@ -264,7 +264,7 @@ Open [http://localhost:5173](http://localhost:5173) in your browser.
 
 ### In Development
 
-- [ ] Automatic update notifications with release notes
+- [x] Automatic update notifications with release notes
 - [ ] External LLM connections (Ollama, OpenAI, self-hosted)
 - [ ] Windows desktop app
 
