@@ -15,7 +15,9 @@ function formatTimeAgo(dateStr: string): string {
   const days = Math.floor(hours / 24);
   if (days < 30) return rtf.format(-days, 'day');
   const months = Math.floor(days / 30);
-  return rtf.format(-months, 'month');
+  if (months < 12) return rtf.format(-months, 'month');
+  const years = Math.floor(days / 365);
+  return rtf.format(-years, 'year');
 }
 
 interface NoteItemProps {

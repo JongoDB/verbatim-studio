@@ -59,7 +59,19 @@ app.on('ready', bootstrap);
 app.on('activate', () => {
   if (app.isReady() && BrowserWindow.getAllWindows().length === 0) {
     if (!backendManager.isRunning()) {
-      console.error('[Main] Backend not running on activate, cannot create window');
+      console.error('[Main] Backend not running on activate');
+      dialog.showMessageBox({
+        type: 'error',
+        title: 'Backend Not Running',
+        message: 'The backend process is not running.',
+        detail: 'Please restart the application.',
+        buttons: ['Restart', 'Quit'],
+      }).then((result) => {
+        if (result.response === 0) {
+          app.relaunch();
+        }
+        app.quit();
+      });
       return;
     }
     mainWindow = createMainWindow();
@@ -131,9 +143,10 @@ backendManager.on('unhealthy', () => {
   }
 });
 
-// Reset health failure counter on successful backend output
-backendManager.on('log', () => {
-  if (healthFailures > 0) healthFailures = 0;
+// Reset health failure counter on successful backend output (stdout only —
+// stderr may fire during error loops when the backend is actually unresponsive)
+backendManager.on('log', (data: { level: string }) => {
+  if (data.level === 'info' && healthFailures > 0) healthFailures = 0;
 });
 
 backendManager.on('exit', (code: number | null) => {

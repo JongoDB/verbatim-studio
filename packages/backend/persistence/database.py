@@ -118,11 +118,19 @@ async def _run_migrations(conn) -> None:
     from migrations.migrate_file_browser import migrate as migrate_file_browser
     await migrate_file_browser()
 
+    # Derive the actual database file path from the configured DATABASE_URL
+    # so migrations target the correct database (including production paths
+    # like ~/Library/Application Support/@verbatim/electron/verbatim.db)
+    from pathlib import Path
+    db_url = settings.DATABASE_URL
+    # Strip the SQLAlchemy driver prefix to get the filesystem path
+    # Format: sqlite+aiosqlite:///./verbatim.db or sqlite+aiosqlite:////absolute/path
+    db_file = db_url.split(":///", 1)[1] if ":///" in db_url else "verbatim.db"
+    db_path = Path(db_file)
+
     # Run storage subtype migration (adds subtype and status columns)
     # This is synchronous sqlite3, run it via run_sync
-    from pathlib import Path
     from migrations.add_storage_subtype import migrate as migrate_storage_subtype
-    db_path = Path(__file__).parent.parent / "verbatim.db"
     await conn.run_sync(lambda _: migrate_storage_subtype(db_path))
 
     # Add indexes on segments table for query performance
