@@ -37,11 +37,13 @@ _setup_ffmpeg_path()
 # This must be done before any model loading occurs
 try:
     import torch.serialization
+    import torch.torch_version
     import omegaconf
     from omegaconf import DictConfig, ListConfig
     from omegaconf.base import ContainerMetadata, Metadata
     from omegaconf.nodes import ValueNode
-    # Allow omegaconf classes used by pyannote/whisperx model checkpoints
+    from pyannote.audio.core.task import Specifications, Problem, Resolution
+    # Allow classes used by pyannote/whisperx model checkpoints
     torch.serialization.add_safe_globals([
         ListConfig,
         DictConfig,
@@ -51,6 +53,12 @@ try:
         # Include base module classes
         omegaconf.listconfig.ListConfig,
         omegaconf.dictconfig.DictConfig,
+        # PyTorch internal class stored in some checkpoints
+        torch.torch_version.TorchVersion,
+        # pyannote model checkpoint classes
+        Specifications,
+        Problem,
+        Resolution,
     ])
 except ImportError:
     pass  # torch or omegaconf not installed yet

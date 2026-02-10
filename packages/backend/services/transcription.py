@@ -12,8 +12,15 @@ import torch
 _original_torch_load = torch.load
 
 
-def _patched_torch_load(*args, weights_only=False, **kwargs):
-    """Patched torch.load that defaults weights_only=False for pyannote compatibility."""
+def _patched_torch_load(*args, weights_only=None, **kwargs):
+    """Patched torch.load that forces weights_only=False for pyannote compatibility.
+
+    Callers like lightning_fabric pass weights_only=None explicitly, and
+    PyTorch 2.6+ treats None as True (the new default). Force False unless
+    the caller explicitly passed True.
+    """
+    if not weights_only:
+        weights_only = False
     return _original_torch_load(*args, weights_only=weights_only, **kwargs)
 
 

@@ -104,7 +104,11 @@ class WhisperXTranscriptionEngine(ITranscriptionEngine):
 
         _original_torch_load = torch.load
 
-        def _patched_torch_load(*args, weights_only=False, **kwargs):
+        def _patched_torch_load(*args, weights_only=None, **kwargs):
+            # Force weights_only=False unless caller explicitly passed True.
+            # lightning_fabric passes weights_only=None which PyTorch 2.6+ treats as True.
+            if not weights_only:
+                weights_only = False
             return _original_torch_load(*args, weights_only=weights_only, **kwargs)
 
         _patched_torch_load._verbatim_patched = True

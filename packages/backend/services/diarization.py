@@ -14,8 +14,12 @@ try:
     _original_torch_load = torch.load
 
     def _patched_torch_load(*args, **kwargs):
-        # Force weights_only=False for pyannote compatibility
-        kwargs.setdefault("weights_only", False)
+        # Force weights_only=False for pyannote compatibility.
+        # Use direct assignment (not setdefault) because callers like
+        # lightning_fabric pass weights_only=None explicitly, and
+        # PyTorch 2.6+ treats None as True (the new default).
+        if not kwargs.get("weights_only"):
+            kwargs["weights_only"] = False
         return _original_torch_load(*args, **kwargs)
 
     torch.load = _patched_torch_load
