@@ -104,7 +104,7 @@ class SQLiteDatabaseAdapter(IDatabaseAdapter):
             async with self._engine.connect() as conn:
                 await conn.execute(text("SELECT 1"))
             return True
-        except Exception:
+        except Exception as e:
             return False
 
     @asynccontextmanager
@@ -127,7 +127,7 @@ class SQLiteDatabaseAdapter(IDatabaseAdapter):
             try:
                 yield session
                 await session.commit()
-            except Exception:
+            except Exception as e:
                 await session.rollback()
                 raise
             finally:

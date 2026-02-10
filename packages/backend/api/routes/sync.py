@@ -52,7 +52,7 @@ async def broadcast(resource: str, action: str, id: str | None = None):
     for client in _clients.copy():
         try:
             await client.send_json(message)
-        except Exception:
+        except (WebSocketDisconnect, RuntimeError):
             disconnected.add(client)
 
     # Clean up disconnected clients
@@ -106,7 +106,7 @@ async def broadcast_job_progress(
     for client in _clients.copy():
         try:
             await client.send_json(message)
-        except Exception:
+        except (WebSocketDisconnect, RuntimeError):
             disconnected.add(client)
 
     # Clean up disconnected clients

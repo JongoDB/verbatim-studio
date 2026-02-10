@@ -125,7 +125,7 @@ class DropboxAdapter(StorageAdapter):
             if "error_summary" in data:
                 return data["error_summary"]
             return response.text
-        except Exception:
+        except (ValueError, KeyError):
             return response.text
 
     async def test_connection(self) -> bool:
@@ -463,7 +463,7 @@ class DropboxAdapter(StorageAdapter):
             )
 
             return response.status_code == 200
-        except Exception:
+        except (OSError, ValueError):
             return False
 
     async def get_file_info(self, path: str) -> FileInfo:

@@ -35,7 +35,7 @@ def _get_git_version() -> str:
                 version = data.get("project", {}).get("version")
                 if version:
                     return f"v{version}"
-    except Exception:
+    except (OSError, ValueError, KeyError):
         pass
 
     # Fall back to git describe (works in development)
@@ -658,7 +658,7 @@ async def get_memory_info() -> MemoryInfo:
         factory = get_factory()
         # We can't easily check if models are loaded without accessing internal state
         # For now, we'll leave this empty - could be enhanced later
-    except Exception:
+    except ImportError:
         pass
 
     return MemoryInfo(

@@ -364,7 +364,7 @@ class WhisperXTranscriptionEngine(ITranscriptionEngine):
                 info["mps_available"] = torch.backends.mps.is_available()
                 if torch.cuda.is_available():
                     info["cuda_device_name"] = torch.cuda.get_device_name(0)
-            except Exception:
+            except (ImportError, AttributeError):
                 pass
 
         return info

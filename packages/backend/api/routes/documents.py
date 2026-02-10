@@ -191,7 +191,7 @@ async def upload_document(
             filename=safe_filename,
             project_name=project_name,
         )
-    except Exception:
+    except Exception as e:
         logger.exception("Failed to save uploaded document file")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

@@ -105,7 +105,7 @@ def _get_version() -> str:
                 version = data.get("project", {}).get("version")
                 if version:
                     return f"v{version}"
-    except Exception:
+    except (OSError, ValueError, KeyError):
         pass
 
     # Fall back to git describe (works in development)

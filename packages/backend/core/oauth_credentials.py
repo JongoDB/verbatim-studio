@@ -73,7 +73,7 @@ async def get_oauth_credentials(provider: str | None = None) -> dict[str, Any]:
             if setting and setting.value:
                 # Decrypt the stored credentials
                 db_credentials = decrypt_config(setting.value)
-    except Exception:
+    except Exception as e:
         logger.warning("Failed to read OAuth credentials from DB", exc_info=True)
 
     # Merge credentials (DB takes precedence)
@@ -141,7 +141,7 @@ async def get_oauth_credentials_raw(provider: str) -> dict[str, str | None]:
                         "client_id": db_creds.get("client_id") or env_id,
                         "client_secret": db_creds.get("client_secret") or env_secret,
                     }
-    except Exception:
+    except Exception as e:
         logger.warning("Failed to read OAuth credentials from DB", exc_info=True)
 
     # Fall back to env vars

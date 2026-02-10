@@ -286,7 +286,7 @@ async def get_transcription_settings() -> dict[str, Any]:
                 for key in DEFAULTS:
                     if key in setting.value and setting.value[key] is not None:
                         effective[key] = setting.value[key]
-    except Exception:
+    except Exception as e:
         logger.warning("Failed to read transcription settings from DB, using defaults", exc_info=True)
 
     return effective

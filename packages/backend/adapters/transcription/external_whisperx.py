@@ -286,7 +286,7 @@ class ExternalWhisperXEngine(ITranscriptionEngine):
                 if response.status_code == 200:
                     status = response.json()
                     info.update(status)
-            except Exception:
+            except (OSError, ValueError):
                 pass
 
         return info

@@ -293,5 +293,5 @@ class MlxWhisperTranscriptionEngine(ITranscriptionEngine):
             if torch.backends.mps.is_available():
                 torch.mps.empty_cache()
                 logger.debug("Cleared MPS cache")
-        except Exception:
+        except (ImportError, AttributeError):
             pass  # torch may not be available

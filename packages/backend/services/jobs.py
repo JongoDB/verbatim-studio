@@ -595,7 +595,7 @@ async def handle_transcription(
         logger.info("Transcription cancelled for recording %s", recording_id)
         raise
 
-    except Exception:
+    except Exception as e:
         # Update recording status to failed
         async with async_session() as session:
             await session.execute(

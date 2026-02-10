@@ -206,7 +206,7 @@ class PyannoteDiarizationEngine(IDiarizationEngine):
                 import torch
                 info["cuda_available"] = torch.cuda.is_available()
                 info["mps_available"] = torch.backends.mps.is_available()
-            except Exception:
+            except (ImportError, AttributeError):
                 pass
 
         return info

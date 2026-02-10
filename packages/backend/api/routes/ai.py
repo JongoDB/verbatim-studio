@@ -731,8 +731,8 @@ async def chat_multi_stream(
                 title = recording.title
                 context_parts.append(f"=== Transcript {label}: {title} ===\n{text}\n")
                 label_index += 1
-            except Exception:
-                logger.warning("Could not load recording %s", recording_id)
+            except Exception as e:
+                logger.warning("Could not load recording %s: %s", recording_id, e)
                 continue
 
     # Add documents to context
@@ -749,8 +749,8 @@ async def chat_multi_stream(
                     label_index += 1
                 else:
                     logger.warning("Document %s has no extracted text", doc_id)
-            except Exception:
-                logger.warning("Could not load document %s", doc_id)
+            except Exception as e:
+                logger.warning("Could not load document %s: %s", doc_id, e)
                 continue
 
     # Add temporary file content if provided
