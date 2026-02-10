@@ -268,16 +268,22 @@ async def list_documents(
     """List all documents with pagination and filtering."""
     query = select(Document)
 
-    # Filter by active storage location
+    # Filter by active storage location (include unassigned docs for backward compat)
     active_location = await get_active_storage_location()
     if active_location:
         if active_location.type == "cloud":
-            query = query.where(Document.storage_location_id == active_location.id)
+            query = query.where(
+                or_(
+                    Document.storage_location_id == active_location.id,
+                    Document.storage_location_id.is_(None),
+                )
+            )
         elif active_location.config.get("path"):
             active_path = active_location.config.get("path")
             query = query.where(
                 or_(
                     Document.storage_location_id == active_location.id,
+                    Document.storage_location_id.is_(None),
                     Document.file_path.startswith(active_path),
                 )
             )

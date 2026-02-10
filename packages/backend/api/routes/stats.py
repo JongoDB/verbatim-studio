@@ -4,9 +4,10 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.config import settings
 from persistence.database import get_db
 from persistence.models import Recording, Transcript, Segment, Project, Job, Document
 from services.storage import get_active_storage_location
@@ -69,14 +70,24 @@ async def get_stats(
 ) -> DashboardStats:
     """Get dashboard statistics."""
 
-    # Get active storage location for filtering
+    # Build storage location filter (reused across queries)
     active_location = await get_active_storage_location()
-    active_path = active_location.config.get("path") if active_location else None
-
-    # Build base recording query with storage location filter
-    recording_base = select(Recording)
-    if active_path:
-        recording_base = recording_base.where(Recording.file_path.startswith(active_path))
+    storage_filter = None
+    if active_location:
+        if active_location.type == "cloud":
+            storage_filter = or_(
+                Recording.storage_location_id == active_location.id,
+                Recording.storage_location_id.is_(None),
+            )
+        elif active_location.config.get("path"):
+            active_path = active_location.config.get("path")
+            media_path = str(settings.MEDIA_DIR)
+            storage_filter = or_(
+                Recording.storage_location_id == active_location.id,
+                Recording.storage_location_id.is_(None),
+                Recording.file_path.startswith(active_path),
+                Recording.file_path.startswith(media_path),
+            )
 
     # Recording stats
     recording_query = select(
@@ -84,8 +95,8 @@ async def get_stats(
         func.sum(Recording.duration_seconds).label("total_duration"),
         func.avg(Recording.duration_seconds).label("avg_duration"),
     )
-    if active_path:
-        recording_query = recording_query.where(Recording.file_path.startswith(active_path))
+    if storage_filter is not None:
+        recording_query = recording_query.where(storage_filter)
     recording_result = await db.execute(recording_query)
     recording_row = recording_result.one()
 
@@ -94,15 +105,15 @@ async def get_stats(
         Recording.status,
         func.count(Recording.id).label("count"),
     ).group_by(Recording.status)
-    if active_path:
-        status_query = status_query.where(Recording.file_path.startswith(active_path))
+    if storage_filter is not None:
+        status_query = status_query.where(storage_filter)
     status_result = await db.execute(status_query)
     status_counts = {row.status: row.count for row in status_result.all()}
 
     # Get recording IDs for this storage location to filter transcripts/segments
-    if active_path:
+    if storage_filter is not None:
         rec_ids_result = await db.execute(
-            select(Recording.id).where(Recording.file_path.startswith(active_path))
+            select(Recording.id).where(storage_filter)
         )
         recording_ids = [row[0] for row in rec_ids_result.all()]
     else:

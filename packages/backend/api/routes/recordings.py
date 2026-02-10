@@ -269,13 +269,15 @@ async def list_recordings(
     # Build base query with template eager load
     query = select(Recording).options(selectinload(Recording.template))
 
-    # Filter by active storage location (also include live recordings)
+    # Filter by active storage location (also include live recordings
+    # and recordings with no storage location assigned for backward compat)
     active_location = await get_active_storage_location()
     if active_location:
         if active_location.type == "cloud":
             query = query.where(
                 or_(
                     Recording.storage_location_id == active_location.id,
+                    Recording.storage_location_id.is_(None),
                     Recording.file_path.startswith("live://"),
                 )
             )
@@ -285,6 +287,7 @@ async def list_recordings(
             query = query.where(
                 or_(
                     Recording.storage_location_id == active_location.id,
+                    Recording.storage_location_id.is_(None),
                     Recording.file_path.startswith(active_path),
                     Recording.file_path.startswith("live://"),
                     Recording.file_path.startswith(media_path),

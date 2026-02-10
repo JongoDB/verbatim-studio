@@ -164,30 +164,30 @@ async def browse(
         projects = folder_result.scalars().all()
 
         for project in projects:
-            # Count items in project (filtered by storage location)
+            # Count items in project (filtered by storage location, include unassigned)
             rec_count_query = select(func.count(Recording.id)).where(Recording.project_id == project.id)
             doc_count_query = select(func.count(Document.id)).where(Document.project_id == project.id)
             if is_cloud_location:
-                rec_count_query = rec_count_query.where(Recording.storage_location_id == active_location_id)
-                doc_count_query = doc_count_query.where(Document.storage_location_id == active_location_id)
+                rec_count_query = rec_count_query.where(or_(Recording.storage_location_id == active_location_id, Recording.storage_location_id.is_(None)))
+                doc_count_query = doc_count_query.where(or_(Document.storage_location_id == active_location_id, Document.storage_location_id.is_(None)))
             elif active_location_path:
                 rec_count_query = rec_count_query.where(
-                    or_(Recording.storage_location_id == active_location_id, Recording.file_path.startswith(active_location_path))
+                    or_(Recording.storage_location_id == active_location_id, Recording.storage_location_id.is_(None), Recording.file_path.startswith(active_location_path))
                 )
                 doc_count_query = doc_count_query.where(
-                    or_(Document.storage_location_id == active_location_id, Document.file_path.startswith(active_location_path))
+                    or_(Document.storage_location_id == active_location_id, Document.storage_location_id.is_(None), Document.file_path.startswith(active_location_path))
                 )
             rec_count = await db.scalar(rec_count_query)
             doc_count = await db.scalar(doc_count_query)
             items.append(_project_to_item(project, (rec_count or 0) + (doc_count or 0)))
 
-    # Get recordings in current folder (filtered by storage location)
+    # Get recordings in current folder (filtered by storage location, include unassigned)
     rec_query = select(Recording).where(Recording.project_id == parent_id)
     if is_cloud_location:
-        rec_query = rec_query.where(Recording.storage_location_id == active_location_id)
+        rec_query = rec_query.where(or_(Recording.storage_location_id == active_location_id, Recording.storage_location_id.is_(None)))
     elif active_location_path:
         rec_query = rec_query.where(
-            or_(Recording.storage_location_id == active_location_id, Recording.file_path.startswith(active_location_path))
+            or_(Recording.storage_location_id == active_location_id, Recording.storage_location_id.is_(None), Recording.file_path.startswith(active_location_path))
         )
     if search:
         rec_query = rec_query.where(Recording.title.ilike(f"%{search}%"))
@@ -196,13 +196,13 @@ async def browse(
     for rec in recordings:
         items.append(_recording_to_item(rec))
 
-    # Get documents in current folder (filtered by storage location)
+    # Get documents in current folder (filtered by storage location, include unassigned)
     doc_query = select(Document).where(Document.project_id == parent_id)
     if is_cloud_location:
-        doc_query = doc_query.where(Document.storage_location_id == active_location_id)
+        doc_query = doc_query.where(or_(Document.storage_location_id == active_location_id, Document.storage_location_id.is_(None)))
     elif active_location_path:
         doc_query = doc_query.where(
-            or_(Document.storage_location_id == active_location_id, Document.file_path.startswith(active_location_path))
+            or_(Document.storage_location_id == active_location_id, Document.storage_location_id.is_(None), Document.file_path.startswith(active_location_path))
         )
     if search:
         doc_query = doc_query.where(Document.title.ilike(f"%{search}%"))
@@ -246,18 +246,18 @@ async def get_folder_tree(
 
     children = []
     for project in projects:
-        # Count items (filtered by storage location)
+        # Count items (filtered by storage location, include unassigned)
         rec_count_query = select(func.count(Recording.id)).where(Recording.project_id == project.id)
         doc_count_query = select(func.count(Document.id)).where(Document.project_id == project.id)
         if is_cloud_location:
-            rec_count_query = rec_count_query.where(Recording.storage_location_id == active_location_id)
-            doc_count_query = doc_count_query.where(Document.storage_location_id == active_location_id)
+            rec_count_query = rec_count_query.where(or_(Recording.storage_location_id == active_location_id, Recording.storage_location_id.is_(None)))
+            doc_count_query = doc_count_query.where(or_(Document.storage_location_id == active_location_id, Document.storage_location_id.is_(None)))
         elif active_location_path:
             rec_count_query = rec_count_query.where(
-                or_(Recording.storage_location_id == active_location_id, Recording.file_path.startswith(active_location_path))
+                or_(Recording.storage_location_id == active_location_id, Recording.storage_location_id.is_(None), Recording.file_path.startswith(active_location_path))
             )
             doc_count_query = doc_count_query.where(
-                or_(Document.storage_location_id == active_location_id, Document.file_path.startswith(active_location_path))
+                or_(Document.storage_location_id == active_location_id, Document.storage_location_id.is_(None), Document.file_path.startswith(active_location_path))
             )
         rec_count = await db.scalar(rec_count_query)
         doc_count = await db.scalar(doc_count_query)
@@ -268,18 +268,18 @@ async def get_folder_tree(
             children=[],  # No nested folders yet
         ))
 
-    # Count root items (filtered by storage location)
+    # Count root items (filtered by storage location, include unassigned)
     root_rec_query = select(func.count(Recording.id)).where(Recording.project_id.is_(None))
     root_doc_query = select(func.count(Document.id)).where(Document.project_id.is_(None))
     if is_cloud_location:
-        root_rec_query = root_rec_query.where(Recording.storage_location_id == active_location_id)
-        root_doc_query = root_doc_query.where(Document.storage_location_id == active_location_id)
+        root_rec_query = root_rec_query.where(or_(Recording.storage_location_id == active_location_id, Recording.storage_location_id.is_(None)))
+        root_doc_query = root_doc_query.where(or_(Document.storage_location_id == active_location_id, Document.storage_location_id.is_(None)))
     elif active_location_path:
         root_rec_query = root_rec_query.where(
-            or_(Recording.storage_location_id == active_location_id, Recording.file_path.startswith(active_location_path))
+            or_(Recording.storage_location_id == active_location_id, Recording.storage_location_id.is_(None), Recording.file_path.startswith(active_location_path))
         )
         root_doc_query = root_doc_query.where(
-            or_(Document.storage_location_id == active_location_id, Document.file_path.startswith(active_location_path))
+            or_(Document.storage_location_id == active_location_id, Document.storage_location_id.is_(None), Document.file_path.startswith(active_location_path))
         )
     root_rec = await db.scalar(root_rec_query)
     root_doc = await db.scalar(root_doc_query)
