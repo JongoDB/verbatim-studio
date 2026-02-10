@@ -150,11 +150,13 @@ export const useDownloadStore = create<DownloadState>((set, get) => ({
   },
 }));
 
-// Derived selectors - compute directly from store state to avoid new array references
+// Derived selectors
+// Note: useActiveDownloads and useTotalDownloadProgress derive outside the
+// selector to avoid returning new array/object references that would cause
+// infinite re-renders (Zustand uses Object.is equality by default).
 export const useActiveDownloads = () => {
-  return useDownloadStore((state) =>
-    Array.from(state.downloads.values()).filter((d) => d.status === 'downloading')
-  );
+  const downloads = useDownloadStore((state) => state.downloads);
+  return Array.from(downloads.values()).filter((d) => d.status === 'downloading');
 };
 
 export const useHasActiveDownloads = () => {
@@ -164,18 +166,18 @@ export const useHasActiveDownloads = () => {
 };
 
 export const useTotalDownloadProgress = () => {
-  return useDownloadStore((state) => {
-    const active = Array.from(state.downloads.values()).filter((d) => d.status === 'downloading');
-    if (active.length === 0) return null;
+  const downloads = useDownloadStore((state) => state.downloads);
+  const active = Array.from(downloads.values()).filter((d) => d.status === 'downloading');
 
-    const totalBytes = active.reduce((sum, d) => sum + d.totalBytes, 0);
-    const downloadedBytes = active.reduce((sum, d) => sum + d.downloadedBytes, 0);
+  if (active.length === 0) return null;
 
-    return {
-      count: active.length,
-      downloadedBytes,
-      totalBytes,
-      percent: totalBytes > 0 ? Math.round((downloadedBytes / totalBytes) * 100) : 0,
-    };
-  });
+  const totalBytes = active.reduce((sum, d) => sum + d.totalBytes, 0);
+  const downloadedBytes = active.reduce((sum, d) => sum + d.downloadedBytes, 0);
+
+  return {
+    count: active.length,
+    downloadedBytes,
+    totalBytes,
+    percent: totalBytes > 0 ? Math.round((downloadedBytes / totalBytes) * 100) : 0,
+  };
 };
