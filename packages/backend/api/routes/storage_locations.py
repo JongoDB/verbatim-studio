@@ -30,6 +30,24 @@ _migration_progress: dict[str, dict] = {}
 _transfer_progress: dict[str, dict] = {}
 
 
+class TransferRequest(BaseModel):
+    """Request to transfer files between storage locations."""
+
+    from_location_id: str
+    to_location_id: str
+    mode: str  # "copy" or "move"
+
+
+class TransferStatus(BaseModel):
+    """Cross-location transfer progress status."""
+
+    status: str  # "running", "completed", "failed"
+    total_files: int
+    transferred_files: int
+    current_file: str | None
+    error: str | None
+
+
 class StorageLocationConfig(BaseModel):
     """Storage location configuration (varies by type)."""
 
@@ -511,24 +529,6 @@ class MigrationStatus(BaseModel):
     migrated_files: int
     total_bytes: int
     migrated_bytes: int
-    current_file: str | None
-    error: str | None
-
-
-class TransferRequest(BaseModel):
-    """Request to transfer files between storage locations."""
-
-    from_location_id: str
-    to_location_id: str
-    mode: str  # "copy" or "move"
-
-
-class TransferStatus(BaseModel):
-    """Cross-location transfer progress status."""
-
-    status: str  # "running", "completed", "failed"
-    total_files: int
-    transferred_files: int
     current_file: str | None
     error: str | None
 
