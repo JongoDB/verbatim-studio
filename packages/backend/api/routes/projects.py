@@ -330,9 +330,16 @@ async def update_project(
             )
             for rec in rec_result.scalars():
                 if rec.file_path:
-                    old_path = Path(rec.file_path)
-                    new_path = new_folder / old_path.name
-                    rec.file_path = str(new_path)
+                    if rec.storage_location_id and isinstance(new_folder, str):
+                        # Cloud: replace folder prefix in relative path
+                        parts = rec.file_path.split("/")
+                        if len(parts) >= 2:
+                            parts[0] = new_folder
+                            rec.file_path = "/".join(parts)
+                    else:
+                        old_path = Path(rec.file_path)
+                        new_path = Path(new_folder) / old_path.name
+                        rec.file_path = str(new_path)
 
             # Update file paths for all documents in this project
             doc_result = await db.execute(
@@ -340,9 +347,16 @@ async def update_project(
             )
             for doc in doc_result.scalars():
                 if doc.file_path:
-                    old_path = Path(doc.file_path)
-                    new_path = new_folder / old_path.name
-                    doc.file_path = str(new_path)
+                    if doc.storage_location_id and isinstance(new_folder, str):
+                        # Cloud: replace folder prefix in relative path
+                        parts = doc.file_path.split("/")
+                        if len(parts) >= 2:
+                            parts[0] = new_folder
+                            doc.file_path = "/".join(parts)
+                    else:
+                        old_path = Path(doc.file_path)
+                        new_path = Path(new_folder) / old_path.name
+                        doc.file_path = str(new_path)
 
         except Exception as e:
             logger.warning(f"Could not rename folder for project {project_id}: {e}")
@@ -426,7 +440,7 @@ async def delete_project(
         for rec in rec_result.scalars():
             if rec.file_path:
                 try:
-                    await storage_service.delete_file(rec.file_path)
+                    await storage_service.delete_file(rec.file_path, rec.storage_location_id)
                 except Exception as e:
                     logger.warning(f"Could not delete file for recording {rec.id}: {e}")
             await db.delete(rec)
@@ -438,7 +452,7 @@ async def delete_project(
         for doc in doc_result.scalars():
             if doc.file_path:
                 try:
-                    await storage_service.delete_file(doc.file_path)
+                    await storage_service.delete_file(doc.file_path, doc.storage_location_id)
                 except Exception as e:
                     logger.warning(f"Could not delete file for document {doc.id}: {e}")
             await db.delete(doc)
@@ -463,7 +477,9 @@ async def delete_project(
         for rec in rec_result.scalars():
             if rec.file_path:
                 try:
-                    new_path = await storage_service.move_to_project(rec.file_path, None)
+                    new_path = await storage_service.move_to_project(
+                        rec.file_path, None, rec.storage_location_id
+                    )
                     rec.file_path = str(new_path)
                 except Exception as e:
                     logger.warning(f"Could not move file for recording {rec.id}: {e}")
@@ -476,7 +492,9 @@ async def delete_project(
         for doc in doc_result.scalars():
             if doc.file_path:
                 try:
-                    new_path = await storage_service.move_to_project(doc.file_path, None)
+                    new_path = await storage_service.move_to_project(
+                        doc.file_path, None, doc.storage_location_id
+                    )
                     doc.file_path = str(new_path)
                 except Exception as e:
                     logger.warning(f"Could not move file for document {doc.id}: {e}")
@@ -522,7 +540,9 @@ async def add_recording_to_project(
     # Move file to project folder (works for both local and cloud storage)
     if recording.file_path:
         try:
-            new_path = await storage_service.move_to_project(recording.file_path, project.name)
+            new_path = await storage_service.move_to_project(
+                recording.file_path, project.name, recording.storage_location_id
+            )
             recording.file_path = str(new_path)
         except Exception as e:
             logger.warning(f"Could not move file for recording {recording_id}: {e}")
@@ -555,7 +575,9 @@ async def remove_recording_from_project(
     # Move file to root (works for both local and cloud storage)
     if recording.file_path:
         try:
-            new_path = await storage_service.move_to_project(recording.file_path, None)
+            new_path = await storage_service.move_to_project(
+                recording.file_path, None, recording.storage_location_id
+            )
             recording.file_path = str(new_path)
         except Exception as e:
             logger.warning(f"Could not move file for recording {recording_id}: {e}")

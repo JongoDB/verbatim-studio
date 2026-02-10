@@ -133,6 +133,29 @@ class StorageService:
         """Get the current storage adapter and type info."""
         return await get_storage_adapter()
 
+    async def _resolve_adapter(self, storage_location_id: str | None = None):
+        """Resolve adapter for an existing file by its storage_location_id.
+
+        Falls back to current default if location_id is None or resolution fails.
+        """
+        if storage_location_id:
+            from persistence.database import async_session
+            from persistence.models import StorageLocation
+            from storage.factory import get_adapter
+
+            async with async_session() as session:
+                location = await session.get(StorageLocation, storage_location_id)
+                if location:
+                    try:
+                        return get_adapter(location), location.type, location.subtype
+                    except Exception as e:
+                        logger.error(
+                            "Failed to get adapter for location %s: %s",
+                            storage_location_id,
+                            e,
+                        )
+        return await get_storage_adapter()
+
     async def _is_cloud_storage(self) -> bool:
         """Check if current storage is cloud-based."""
         _, storage_type, _ = await self._get_adapter_info()
@@ -242,56 +265,62 @@ class StorageService:
 
         if storage_type == "cloud":
             # Use cloud adapter
-            relative_path = self._get_relative_path(title, filename, project_name)
+            try:
+                relative_path = self._get_relative_path(title, filename, project_name)
 
-            # Ensure directory exists
-            if project_name:
-                await adapter.ensure_directory(self._pm.sanitize_name(project_name))
+                # Ensure directory exists
+                if project_name:
+                    await adapter.ensure_directory(self._pm.sanitize_name(project_name))
 
-            # Write file through adapter
-            await adapter.write_file(relative_path, content)
+                # Write file through adapter
+                await adapter.write_file(relative_path, content)
 
-            logger.info(f"Saved file to cloud storage: {relative_path}")
-            return relative_path
-        else:
-            # Local storage - use filesystem
-            storage_root = await get_active_storage_path()
-            if storage_root is None:
-                storage_root = self.media_dir
+                logger.info(f"Saved file to cloud storage: {relative_path}")
+                return relative_path
+            except Exception as e:
+                logger.error("Cloud storage write failed: %s. Falling back to local.", e)
+                # Fall through to local storage below
 
-            extension = Path(filename).suffix
-            desired_path = self._pm.get_item_path(storage_root, project_name, title, extension)
+        # Local storage (or cloud fallback)
+        storage_root = await get_active_storage_path()
+        if storage_root is None:
+            storage_root = self.media_dir
 
-            # Ensure parent directory exists
-            await aiofiles.os.makedirs(desired_path.parent, exist_ok=True)
+        extension = Path(filename).suffix
+        desired_path = self._pm.get_item_path(storage_root, project_name, title, extension)
 
-            # Generate unique path to handle collisions
-            actual_path = self._pm.generate_unique_path(desired_path.parent, desired_path.name)
+        # Ensure parent directory exists
+        await aiofiles.os.makedirs(desired_path.parent, exist_ok=True)
 
-            # Ensure directory exists (in case unique path has different parent)
-            await aiofiles.os.makedirs(actual_path.parent, exist_ok=True)
+        # Generate unique path to handle collisions
+        actual_path = self._pm.generate_unique_path(desired_path.parent, desired_path.name)
 
-            # Write the file
-            async with aiofiles.open(actual_path, "wb") as f:
-                await f.write(content)
+        # Ensure directory exists (in case unique path has different parent)
+        await aiofiles.os.makedirs(actual_path.parent, exist_ok=True)
 
-            return actual_path
+        # Write the file
+        async with aiofiles.open(actual_path, "wb") as f:
+            await f.write(content)
+
+        return actual_path
 
     async def move_to_project(
         self,
         current_path: Path | str,
         new_project_name: str | None,
+        storage_location_id: str | None = None,
     ) -> Path | str:
         """Move a file when project assignment changes.
 
         Args:
             current_path: Current file path (Path for local, string for cloud).
             new_project_name: New project name, or None to move to root.
+            storage_location_id: Storage location ID of the existing file.
 
         Returns:
             New path where the file is now located.
         """
-        adapter, storage_type, _ = await self._get_adapter_info()
+        adapter, storage_type, _ = await self._resolve_adapter(storage_location_id)
 
         if storage_type == "cloud":
             # For cloud storage: read file, write to new location, delete old
@@ -333,17 +362,23 @@ class StorageService:
 
             return await self._pm.move_file(source_path, new_parent)
 
-    async def rename_item(self, current_path: Path | str, new_title: str) -> Path | str:
+    async def rename_item(
+        self,
+        current_path: Path | str,
+        new_title: str,
+        storage_location_id: str | None = None,
+    ) -> Path | str:
         """Rename a file when its title changes.
 
         Args:
             current_path: Current file path (Path for local, string for cloud).
             new_title: New title for the item.
+            storage_location_id: Storage location ID of the existing file.
 
         Returns:
             New path with renamed file.
         """
-        adapter, storage_type, _ = await self._get_adapter_info()
+        adapter, storage_type, _ = await self._resolve_adapter(storage_location_id)
 
         if storage_type == "cloud":
             # For cloud storage: read file, write with new name, delete old
@@ -381,16 +416,21 @@ class StorageService:
             new_name = f"{self._pm.sanitize_name(new_title)}{extension}"
             return await self._pm.rename_file(path, new_name)
 
-    async def delete_file(self, file_path: Path | str) -> bool:
+    async def delete_file(
+        self,
+        file_path: Path | str,
+        storage_location_id: str | None = None,
+    ) -> bool:
         """Delete a file from storage.
 
         Args:
             file_path: Path to the file to delete (Path for local, string for cloud).
+            storage_location_id: Storage location ID of the existing file.
 
         Returns:
             True if file was deleted, False if it didn't exist.
         """
-        adapter, storage_type, _ = await self._get_adapter_info()
+        adapter, storage_type, _ = await self._resolve_adapter(storage_location_id)
 
         if storage_type == "cloud":
             # For cloud storage, file_path is a relative path string

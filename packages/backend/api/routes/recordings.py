@@ -269,18 +269,27 @@ async def list_recordings(
     # Build base query with template eager load
     query = select(Recording).options(selectinload(Recording.template))
 
-    # Filter by active storage location path (also include live recordings)
+    # Filter by active storage location (also include live recordings)
     active_location = await get_active_storage_location()
-    if active_location and active_location.config.get("path"):
-        active_path = active_location.config.get("path")
-        media_path = str(settings.MEDIA_DIR)
-        query = query.where(
-            or_(
-                Recording.file_path.startswith(active_path),
-                Recording.file_path.startswith("live://"),
-                Recording.file_path.startswith(media_path),
+    if active_location:
+        if active_location.type == "cloud":
+            query = query.where(
+                or_(
+                    Recording.storage_location_id == active_location.id,
+                    Recording.file_path.startswith("live://"),
+                )
             )
-        )
+        elif active_location.config.get("path"):
+            active_path = active_location.config.get("path")
+            media_path = str(settings.MEDIA_DIR)
+            query = query.where(
+                or_(
+                    Recording.storage_location_id == active_location.id,
+                    Recording.file_path.startswith(active_path),
+                    Recording.file_path.startswith("live://"),
+                    Recording.file_path.startswith(media_path),
+                )
+            )
 
     # Apply filters
     if project_id is not None:
@@ -666,14 +675,18 @@ async def update_recording(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Title cannot be empty",
             )
-        # Rename file on disk if title changed
+        # Rename file in storage if title changed
         if stripped != recording.title and recording.file_path:
             try:
-                old_path = Path(recording.file_path)
-                if old_path.exists():
-                    new_path = await storage_service.rename_item(old_path, stripped)
+                new_path = await storage_service.rename_item(
+                    recording.file_path, stripped, recording.storage_location_id
+                )
+                if str(new_path) != recording.file_path:
                     recording.file_path = str(new_path)
-                    recording.file_name = new_path.name
+                    if isinstance(new_path, Path):
+                        recording.file_name = new_path.name
+                    else:
+                        recording.file_name = str(new_path).split("/")[-1]
             except Exception as e:
                 logger.warning("Could not rename file for recording %s: %s", recording_id, e)
         recording.title = stripped
@@ -745,7 +758,10 @@ async def bulk_delete_recordings(
 
     for recording in recordings:
         if recording.file_path:
-            await storage_service.delete_file(recording.file_path)
+            try:
+                await storage_service.delete_file(recording.file_path, recording.storage_location_id)
+            except Exception as e:
+                logger.warning(f"Failed to delete file {recording.file_path}: {e}")
         await db.delete(recording)
 
     await db.commit()
@@ -779,25 +795,10 @@ async def bulk_assign_recordings(
         # Move file if project changed
         if recording.project_id != body.project_id and recording.file_path:
             try:
-                # Check if recording is in cloud storage
-                is_cloud = False
-                if recording.storage_location_id:
-                    loc_result = await db.execute(
-                        select(StorageLocation).where(StorageLocation.id == recording.storage_location_id)
-                    )
-                    storage_loc = loc_result.scalar_one_or_none()
-                    is_cloud = storage_loc and storage_loc.type == "cloud"
-
-                if is_cloud:
-                    # Cloud storage - move via adapter
-                    new_path = await storage_service.move_to_project(recording.file_path, new_project_name)
-                    recording.file_path = str(new_path)
-                else:
-                    # Local storage - check if file exists first
-                    old_path = Path(recording.file_path)
-                    if old_path.exists():
-                        new_path = await storage_service.move_to_project(old_path, new_project_name)
-                        recording.file_path = str(new_path)
+                new_path = await storage_service.move_to_project(
+                    recording.file_path, new_project_name, recording.storage_location_id
+                )
+                recording.file_path = str(new_path)
             except Exception as e:
                 logger.warning("Could not move file for recording %s: %s", recording.id, e)
         recording.project_id = body.project_id
@@ -1058,7 +1059,10 @@ async def delete_recording(
 
     # Delete the file from storage
     if recording.file_path:
-        await storage_service.delete_file(recording.file_path)
+        try:
+            await storage_service.delete_file(recording.file_path, recording.storage_location_id)
+        except Exception as e:
+            logger.warning(f"Failed to delete file {recording.file_path}: {e}")
 
     # Delete the database record
     await db.delete(recording)

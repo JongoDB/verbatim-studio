@@ -184,12 +184,19 @@ async def upload_document(
         doc_title = safe_filename.rsplit(".", 1)[0]
 
     # Save to storage with human-readable path
-    file_path = await storage_service.save_upload(
-        content=content,
-        title=doc_title,
-        filename=safe_filename,
-        project_name=project_name,
-    )
+    try:
+        file_path = await storage_service.save_upload(
+            content=content,
+            title=doc_title,
+            filename=safe_filename,
+            project_name=project_name,
+        )
+    except Exception:
+        logger.exception("Failed to save uploaded document file")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to save uploaded file. Please try again.",
+        )
 
     # Set storage_location_id AFTER saving, based on actual storage used.
     # save_upload returns Path for local, str for cloud.
@@ -261,11 +268,19 @@ async def list_documents(
     """List all documents with pagination and filtering."""
     query = select(Document)
 
-    # Filter by active storage location path
+    # Filter by active storage location
     active_location = await get_active_storage_location()
-    if active_location and active_location.config.get("path"):
-        active_path = active_location.config.get("path")
-        query = query.where(Document.file_path.startswith(active_path))
+    if active_location:
+        if active_location.type == "cloud":
+            query = query.where(Document.storage_location_id == active_location.id)
+        elif active_location.config.get("path"):
+            active_path = active_location.config.get("path")
+            query = query.where(
+                or_(
+                    Document.storage_location_id == active_location.id,
+                    Document.file_path.startswith(active_path),
+                )
+            )
 
     if project_id is not None:
         query = query.where(Document.project_id == project_id)
@@ -393,7 +408,7 @@ async def bulk_delete_documents(
     for doc in docs:
         if doc.file_path:
             try:
-                await storage_service.delete_file(doc.file_path)
+                await storage_service.delete_file(doc.file_path, doc.storage_location_id)
             except Exception as e:
                 logger.warning(f"Failed to delete file {doc.file_path}: {e}")
         await db.delete(doc)
@@ -430,22 +445,10 @@ async def bulk_assign_documents(
     for doc in docs:
         if doc.project_id != body.project_id and doc.file_path:
             try:
-                is_cloud = False
-                if doc.storage_location_id:
-                    loc_result = await db.execute(
-                        select(StorageLocation).where(StorageLocation.id == doc.storage_location_id)
-                    )
-                    storage_loc = loc_result.scalar_one_or_none()
-                    is_cloud = storage_loc and storage_loc.type == "cloud"
-
-                if is_cloud:
-                    new_path = await storage_service.move_to_project(doc.file_path, new_project_name)
-                    doc.file_path = str(new_path)
-                else:
-                    old_path = Path(doc.file_path)
-                    if old_path.exists():
-                        new_path = await storage_service.move_to_project(old_path, new_project_name)
-                        doc.file_path = str(new_path)
+                new_path = await storage_service.move_to_project(
+                    doc.file_path, new_project_name, doc.storage_location_id
+                )
+                doc.file_path = str(new_path)
             except Exception as e:
                 logger.warning("Could not move file for document %s: %s", doc.id, e)
         doc.project_id = body.project_id
@@ -479,16 +482,21 @@ async def update_document(
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    # Handle title change - rename file on disk
+    # Handle title change - rename file in storage
     if update.title is not None and update.title != doc.title:
-        try:
-            old_path = Path(doc.file_path)
-            if old_path.exists():
-                new_path = await storage_service.rename_item(old_path, update.title)
-                doc.file_path = str(new_path)
-                doc.filename = new_path.name
-        except Exception as e:
-            logger.warning(f"Could not rename file for document {document_id}: {e}")
+        if doc.file_path:
+            try:
+                new_path = await storage_service.rename_item(
+                    doc.file_path, update.title, doc.storage_location_id
+                )
+                if str(new_path) != doc.file_path:
+                    doc.file_path = str(new_path)
+                    if isinstance(new_path, Path):
+                        doc.filename = new_path.name
+                    else:
+                        doc.filename = str(new_path).split("/")[-1]
+            except Exception as e:
+                logger.warning(f"Could not rename file for document {document_id}: {e}")
         doc.title = update.title
 
     # Handle project change - move file to new project folder
@@ -500,13 +508,14 @@ async def update_document(
                 raise HTTPException(status_code=404, detail="Project not found")
             new_project_name = project.name
 
-        try:
-            old_path = Path(doc.file_path)
-            if old_path.exists():
-                new_path = await storage_service.move_to_project(old_path, new_project_name)
+        if doc.file_path:
+            try:
+                new_path = await storage_service.move_to_project(
+                    doc.file_path, new_project_name, doc.storage_location_id
+                )
                 doc.file_path = str(new_path)
-        except Exception as e:
-            logger.warning(f"Could not move file for document {document_id}: {e}")
+            except Exception as e:
+                logger.warning(f"Could not move file for document {document_id}: {e}")
 
         doc.project_id = update.project_id or None
 
@@ -528,7 +537,7 @@ async def delete_document(
 
     # Delete file from storage
     try:
-        await storage_service.delete_file(doc.file_path)
+        await storage_service.delete_file(doc.file_path, doc.storage_location_id)
     except Exception as e:
         logger.warning(f"Failed to delete file {doc.file_path}: {e}")
 

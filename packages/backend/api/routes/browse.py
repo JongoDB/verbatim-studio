@@ -5,7 +5,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import func, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -138,7 +138,8 @@ async def browse(
     # Get active storage location for filtering
     active_location = await get_active_storage_location()
     active_location_id = active_location.id if active_location else None
-    active_location_path = active_location.config.get("path") if active_location else None
+    active_location_path = active_location.config.get("path") if active_location and active_location.type != "cloud" else None
+    is_cloud_location = active_location.type == "cloud" if active_location else False
 
     # Build breadcrumb
     if parent_id:
@@ -163,21 +164,31 @@ async def browse(
         projects = folder_result.scalars().all()
 
         for project in projects:
-            # Count items in project (filtered by storage location path)
+            # Count items in project (filtered by storage location)
             rec_count_query = select(func.count(Recording.id)).where(Recording.project_id == project.id)
             doc_count_query = select(func.count(Document.id)).where(Document.project_id == project.id)
-            if active_location_path:
-                rec_count_query = rec_count_query.where(Recording.file_path.startswith(active_location_path))
-                doc_count_query = doc_count_query.where(Document.file_path.startswith(active_location_path))
+            if is_cloud_location:
+                rec_count_query = rec_count_query.where(Recording.storage_location_id == active_location_id)
+                doc_count_query = doc_count_query.where(Document.storage_location_id == active_location_id)
+            elif active_location_path:
+                rec_count_query = rec_count_query.where(
+                    or_(Recording.storage_location_id == active_location_id, Recording.file_path.startswith(active_location_path))
+                )
+                doc_count_query = doc_count_query.where(
+                    or_(Document.storage_location_id == active_location_id, Document.file_path.startswith(active_location_path))
+                )
             rec_count = await db.scalar(rec_count_query)
             doc_count = await db.scalar(doc_count_query)
             items.append(_project_to_item(project, (rec_count or 0) + (doc_count or 0)))
 
-    # Get recordings in current folder (filtered by storage location path)
+    # Get recordings in current folder (filtered by storage location)
     rec_query = select(Recording).where(Recording.project_id == parent_id)
-    if active_location_path:
-        # Filter by file_path starting with storage location path
-        rec_query = rec_query.where(Recording.file_path.startswith(active_location_path))
+    if is_cloud_location:
+        rec_query = rec_query.where(Recording.storage_location_id == active_location_id)
+    elif active_location_path:
+        rec_query = rec_query.where(
+            or_(Recording.storage_location_id == active_location_id, Recording.file_path.startswith(active_location_path))
+        )
     if search:
         rec_query = rec_query.where(Recording.title.ilike(f"%{search}%"))
     rec_result = await db.execute(rec_query)
@@ -185,11 +196,14 @@ async def browse(
     for rec in recordings:
         items.append(_recording_to_item(rec))
 
-    # Get documents in current folder (filtered by storage location path)
+    # Get documents in current folder (filtered by storage location)
     doc_query = select(Document).where(Document.project_id == parent_id)
-    if active_location_path:
-        # Filter by file_path starting with storage location path
-        doc_query = doc_query.where(Document.file_path.startswith(active_location_path))
+    if is_cloud_location:
+        doc_query = doc_query.where(Document.storage_location_id == active_location_id)
+    elif active_location_path:
+        doc_query = doc_query.where(
+            or_(Document.storage_location_id == active_location_id, Document.file_path.startswith(active_location_path))
+        )
     if search:
         doc_query = doc_query.where(Document.title.ilike(f"%{search}%"))
     doc_result = await db.execute(doc_query)
@@ -222,7 +236,9 @@ async def get_folder_tree(
     """Get folder hierarchy for sidebar navigation."""
     # Get active storage location for filtering
     active_location = await get_active_storage_location()
-    active_location_path = active_location.config.get("path") if active_location else None
+    active_location_id = active_location.id if active_location else None
+    active_location_path = active_location.config.get("path") if active_location and active_location.type != "cloud" else None
+    is_cloud_location = active_location.type == "cloud" if active_location else False
 
     # Get all projects
     result = await db.execute(select(Project).order_by(Project.name))
@@ -230,12 +246,19 @@ async def get_folder_tree(
 
     children = []
     for project in projects:
-        # Count items (filtered by storage location path)
+        # Count items (filtered by storage location)
         rec_count_query = select(func.count(Recording.id)).where(Recording.project_id == project.id)
         doc_count_query = select(func.count(Document.id)).where(Document.project_id == project.id)
-        if active_location_path:
-            rec_count_query = rec_count_query.where(Recording.file_path.startswith(active_location_path))
-            doc_count_query = doc_count_query.where(Document.file_path.startswith(active_location_path))
+        if is_cloud_location:
+            rec_count_query = rec_count_query.where(Recording.storage_location_id == active_location_id)
+            doc_count_query = doc_count_query.where(Document.storage_location_id == active_location_id)
+        elif active_location_path:
+            rec_count_query = rec_count_query.where(
+                or_(Recording.storage_location_id == active_location_id, Recording.file_path.startswith(active_location_path))
+            )
+            doc_count_query = doc_count_query.where(
+                or_(Document.storage_location_id == active_location_id, Document.file_path.startswith(active_location_path))
+            )
         rec_count = await db.scalar(rec_count_query)
         doc_count = await db.scalar(doc_count_query)
         children.append(FolderTreeNode(
@@ -245,12 +268,19 @@ async def get_folder_tree(
             children=[],  # No nested folders yet
         ))
 
-    # Count root items (filtered by storage location path)
+    # Count root items (filtered by storage location)
     root_rec_query = select(func.count(Recording.id)).where(Recording.project_id.is_(None))
     root_doc_query = select(func.count(Document.id)).where(Document.project_id.is_(None))
-    if active_location_path:
-        root_rec_query = root_rec_query.where(Recording.file_path.startswith(active_location_path))
-        root_doc_query = root_doc_query.where(Document.file_path.startswith(active_location_path))
+    if is_cloud_location:
+        root_rec_query = root_rec_query.where(Recording.storage_location_id == active_location_id)
+        root_doc_query = root_doc_query.where(Document.storage_location_id == active_location_id)
+    elif active_location_path:
+        root_rec_query = root_rec_query.where(
+            or_(Recording.storage_location_id == active_location_id, Recording.file_path.startswith(active_location_path))
+        )
+        root_doc_query = root_doc_query.where(
+            or_(Document.storage_location_id == active_location_id, Document.file_path.startswith(active_location_path))
+        )
     root_rec = await db.scalar(root_rec_query)
     root_doc = await db.scalar(root_doc_query)
 
@@ -285,14 +315,19 @@ async def move_item(
         if not item:
             raise HTTPException(status_code=404, detail="Recording not found")
 
-        # Move file on disk (works for both local and cloud storage)
+        # Move file in storage (works for both local and cloud storage)
         if item.file_path:
             try:
-                new_path = await storage_service.move_to_project(item.file_path, target_project_name)
+                new_path = await storage_service.move_to_project(
+                    item.file_path, target_project_name, item.storage_location_id
+                )
                 item.file_path = str(new_path)
-                item.file_name = new_path.name
+                if isinstance(new_path, Path):
+                    item.file_name = new_path.name
+                else:
+                    item.file_name = str(new_path).split("/")[-1]
             except Exception as e:
-                logger.warning(f"Failed to move file on disk: {e}")
+                logger.warning(f"Failed to move file: {e}")
 
         item.project_id = request.target_project_id
         await db.commit()
@@ -304,14 +339,19 @@ async def move_item(
         if not item:
             raise HTTPException(status_code=404, detail="Document not found")
 
-        # Move file on disk (works for both local and cloud storage)
+        # Move file in storage (works for both local and cloud storage)
         if item.file_path:
             try:
-                new_path = await storage_service.move_to_project(item.file_path, target_project_name)
+                new_path = await storage_service.move_to_project(
+                    item.file_path, target_project_name, item.storage_location_id
+                )
                 item.file_path = str(new_path)
-                item.filename = new_path.name
+                if isinstance(new_path, Path):
+                    item.filename = new_path.name
+                else:
+                    item.filename = str(new_path).split("/")[-1]
             except Exception as e:
-                logger.warning(f"Failed to move file on disk: {e}")
+                logger.warning(f"Failed to move file: {e}")
 
         item.project_id = request.target_project_id
         await db.commit()
@@ -564,7 +604,7 @@ async def rename_item(
 
         old_name = item.name
 
-        # Rename folder on disk and update all file paths
+        # Rename folder in storage and update all file paths
         try:
             new_folder = await storage_service.rename_project_folder(old_name, new_name)
 
@@ -574,21 +614,35 @@ async def rename_item(
             )
             for rec in recordings.scalars():
                 if rec.file_path:
-                    old_path = Path(rec.file_path)
-                    new_path = new_folder / old_path.name
-                    rec.file_path = str(new_path)
+                    if rec.storage_location_id and isinstance(new_folder, str):
+                        # Cloud: replace folder prefix in relative path
+                        parts = rec.file_path.split("/")
+                        if len(parts) >= 2:
+                            parts[0] = new_folder
+                            rec.file_path = "/".join(parts)
+                    else:
+                        old_path = Path(rec.file_path)
+                        new_path = Path(new_folder) / old_path.name
+                        rec.file_path = str(new_path)
 
             documents = await db.execute(
                 select(Document).where(Document.project_id == request.item_id)
             )
             for doc in documents.scalars():
                 if doc.file_path:
-                    old_path = Path(doc.file_path)
-                    new_path = new_folder / old_path.name
-                    doc.file_path = str(new_path)
+                    if doc.storage_location_id and isinstance(new_folder, str):
+                        # Cloud: replace folder prefix in relative path
+                        parts = doc.file_path.split("/")
+                        if len(parts) >= 2:
+                            parts[0] = new_folder
+                            doc.file_path = "/".join(parts)
+                    else:
+                        old_path = Path(doc.file_path)
+                        new_path = Path(new_folder) / old_path.name
+                        doc.file_path = str(new_path)
 
         except Exception as e:
-            logger.warning(f"Failed to rename folder on disk: {e}")
+            logger.warning(f"Failed to rename folder: {e}")
 
         item.name = new_name
         await db.commit()
@@ -600,16 +654,20 @@ async def rename_item(
         if not item:
             raise HTTPException(status_code=404, detail="Recording not found")
 
-        # Rename file on disk
+        # Rename file in storage
         if item.file_path:
             try:
-                old_path = Path(item.file_path)
-                if old_path.exists():
-                    new_path = await storage_service.rename_item(old_path, new_name)
+                new_path = await storage_service.rename_item(
+                    item.file_path, new_name, item.storage_location_id
+                )
+                if str(new_path) != item.file_path:
                     item.file_path = str(new_path)
-                    item.file_name = new_path.name
+                    if isinstance(new_path, Path):
+                        item.file_name = new_path.name
+                    else:
+                        item.file_name = str(new_path).split("/")[-1]
             except Exception as e:
-                logger.warning(f"Failed to rename file on disk: {e}")
+                logger.warning(f"Failed to rename file: {e}")
 
         item.title = new_name
         await db.commit()
@@ -621,16 +679,20 @@ async def rename_item(
         if not item:
             raise HTTPException(status_code=404, detail="Document not found")
 
-        # Rename file on disk
+        # Rename file in storage
         if item.file_path:
             try:
-                old_path = Path(item.file_path)
-                if old_path.exists():
-                    new_path = await storage_service.rename_item(old_path, new_name)
+                new_path = await storage_service.rename_item(
+                    item.file_path, new_name, item.storage_location_id
+                )
+                if str(new_path) != item.file_path:
                     item.file_path = str(new_path)
-                    item.filename = new_path.name
+                    if isinstance(new_path, Path):
+                        item.filename = new_path.name
+                    else:
+                        item.filename = str(new_path).split("/")[-1]
             except Exception as e:
-                logger.warning(f"Failed to rename file on disk: {e}")
+                logger.warning(f"Failed to rename file: {e}")
 
         item.title = new_name
         await db.commit()
@@ -680,7 +742,7 @@ async def delete_item(
             for rec in recordings:
                 if rec.file_path:
                     try:
-                        await storage_service.delete_file(rec.file_path)
+                        await storage_service.delete_file(rec.file_path, rec.storage_location_id)
                     except Exception as e:
                         logger.warning(f"Failed to delete recording file: {e}")
                 await db.delete(rec)
@@ -689,7 +751,7 @@ async def delete_item(
             for doc in documents:
                 if doc.file_path:
                     try:
-                        await storage_service.delete_file(doc.file_path)
+                        await storage_service.delete_file(doc.file_path, doc.storage_location_id)
                     except Exception as e:
                         logger.warning(f"Failed to delete document file: {e}")
                 await db.delete(doc)
@@ -706,13 +768,18 @@ async def delete_item(
 
             return MessageResponse(message="Folder and all files deleted")
         else:
-            # Move contents to root (both DB and disk)
+            # Move contents to root (both DB and storage)
             for rec in recordings:
                 if rec.file_path:
                     try:
-                        new_path = await storage_service.move_to_project(rec.file_path, None)
+                        new_path = await storage_service.move_to_project(
+                            rec.file_path, None, rec.storage_location_id
+                        )
                         rec.file_path = str(new_path)
-                        rec.file_name = new_path.name
+                        if isinstance(new_path, Path):
+                            rec.file_name = new_path.name
+                        else:
+                            rec.file_name = str(new_path).split("/")[-1]
                     except Exception as e:
                         logger.warning(f"Failed to move recording file to root: {e}")
                 rec.project_id = None
@@ -720,9 +787,14 @@ async def delete_item(
             for doc in documents:
                 if doc.file_path:
                     try:
-                        new_path = await storage_service.move_to_project(doc.file_path, None)
+                        new_path = await storage_service.move_to_project(
+                            doc.file_path, None, doc.storage_location_id
+                        )
                         doc.file_path = str(new_path)
-                        doc.filename = new_path.name
+                        if isinstance(new_path, Path):
+                            doc.filename = new_path.name
+                        else:
+                            doc.filename = str(new_path).split("/")[-1]
                     except Exception as e:
                         logger.warning(f"Failed to move document file to root: {e}")
                 doc.project_id = None
@@ -744,10 +816,10 @@ async def delete_item(
         if not recording:
             raise HTTPException(status_code=404, detail="Recording not found")
 
-        # Delete file from disk (file_path is already the full path)
+        # Delete file from storage
         if recording.file_path:
             try:
-                await storage_service.delete_file(recording.file_path)
+                await storage_service.delete_file(recording.file_path, recording.storage_location_id)
             except Exception as e:
                 logger.warning(f"Failed to delete file: {e}")
 
@@ -760,10 +832,10 @@ async def delete_item(
         if not document:
             raise HTTPException(status_code=404, detail="Document not found")
 
-        # Delete file from disk (file_path is already the full path)
+        # Delete file from storage
         if document.file_path:
             try:
-                await storage_service.delete_file(document.file_path)
+                await storage_service.delete_file(document.file_path, document.storage_location_id)
             except Exception as e:
                 logger.warning(f"Failed to delete file: {e}")
 
