@@ -67,7 +67,11 @@ async def get_storage_adapter():
         try:
             return get_adapter(location), location.type, location.subtype
         except Exception as e:
-            logger.error(f"Failed to get adapter for location {location.id}: {e}")
+            logger.error(
+                f"Failed to get adapter for {location.type}/{location.subtype} "
+                f"location '{location.name}' ({location.id}): {e}. "
+                f"Falling back to local storage."
+            )
             # Fall back to local
 
     # Default to local storage

@@ -183,10 +183,6 @@ async def upload_document(
     else:
         doc_title = safe_filename.rsplit(".", 1)[0]
 
-    # Get active storage location for storing location ID
-    storage_location = await get_active_storage_location()
-    storage_location_id = storage_location.id if storage_location else None
-
     # Save to storage with human-readable path
     file_path = await storage_service.save_upload(
         content=content,
@@ -194,6 +190,17 @@ async def upload_document(
         filename=safe_filename,
         project_name=project_name,
     )
+
+    # Set storage_location_id AFTER saving, based on actual storage used.
+    # save_upload returns Path for local, str for cloud.
+    storage_location = await get_active_storage_location()
+    storage_location_id = None
+    if storage_location:
+        if storage_location.type == "cloud" and isinstance(file_path, Path):
+            # Cloud was intended but file was saved locally (fallback)
+            pass
+        else:
+            storage_location_id = storage_location.id
 
     # Derive final title and filename from actual path
     # Handle both Path (local) and string (cloud) returns

@@ -314,9 +314,26 @@ async def update_storage_location(
                             status_code=status.HTTP_400_BAD_REQUEST,
                             detail=f"Cannot create directory: {e}",
                         )
-            # Encrypt sensitive fields before storing
+            # Encrypt sensitive fields before storing, preserving existing
+            # encrypted values when the frontend sends back masked placeholders
             raw_config = body.config.model_dump(exclude_none=True)
-            location.config = encrypt_config(raw_config)
+            existing_config = location.config or {}
+
+            # For each sensitive field, check if the frontend sent a masked
+            # placeholder ({"_masked": True}) — if so, preserve the existing
+            # encrypted value from the DB rather than re-encrypting the mask
+            preserved_encrypted = {}
+            for field_name in SENSITIVE_FIELDS:
+                new_value = raw_config.get(field_name)
+                if isinstance(new_value, dict) and new_value.get("_masked"):
+                    existing_value = existing_config.get(field_name)
+                    if existing_value is not None:
+                        preserved_encrypted[field_name] = existing_value
+                    raw_config.pop(field_name, None)
+
+            encrypted_config = encrypt_config(raw_config)
+            encrypted_config.update(preserved_encrypted)
+            location.config = encrypted_config
 
         if body.is_active is not None:
             location.is_active = body.is_active

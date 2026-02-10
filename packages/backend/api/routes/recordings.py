@@ -568,11 +568,6 @@ async def upload_recording(
 
     # Save file to storage with human-readable path
     try:
-        # Get active storage location for storing location ID
-        storage_location = await get_active_storage_location()
-        if storage_location:
-            recording.storage_location_id = storage_location.id
-
         file_path = await storage_service.save_upload(
             content=content,
             title=recording.title,
@@ -593,6 +588,18 @@ async def upload_recording(
                 recording.title = filename.rsplit(".", 1)[0]
             else:
                 recording.title = filename
+
+        # Set storage_location_id AFTER saving, based on actual storage used.
+        # save_upload returns Path for local, str for cloud. If cloud storage
+        # failed and silently fell back to local, we must not point at cloud.
+        storage_location = await get_active_storage_location()
+        if storage_location:
+            if storage_location.type == "cloud" and isinstance(file_path, Path):
+                # Cloud was intended but file was saved locally (fallback) —
+                # don't assign cloud location ID to a locally-stored file
+                pass
+            else:
+                recording.storage_location_id = storage_location.id
 
         await db.commit()
         await broadcast("recordings", "created", str(recording.id))
