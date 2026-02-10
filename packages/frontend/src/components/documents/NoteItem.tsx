@@ -3,7 +3,20 @@ import { MoreHorizontal, Pencil, Trash2 } from 'lucide-react'
 import { AnchorBadge } from './AnchorBadge'
 import { NoteEditor } from './NoteEditor'
 import { Note } from '@/lib/api'
-import { formatDistanceToNow } from 'date-fns'
+
+function formatTimeAgo(dateStr: string): string {
+  const seconds = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
+  const rtf = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
+  if (seconds < 60) return rtf.format(-seconds, 'second');
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return rtf.format(-minutes, 'minute');
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return rtf.format(-hours, 'hour');
+  const days = Math.floor(hours / 24);
+  if (days < 30) return rtf.format(-days, 'day');
+  const months = Math.floor(days / 30);
+  return rtf.format(-months, 'month');
+}
 
 interface NoteItemProps {
   note: Note
@@ -63,7 +76,7 @@ export function NoteItem({ note, onUpdate, onDelete, onNavigate }: NoteItemProps
           />
           <p className="text-sm line-clamp-3">{note.content}</p>
           <p className="text-xs text-muted-foreground mt-1">
-            {formatDistanceToNow(new Date(note.created_at), { addSuffix: true })}
+            {formatTimeAgo(note.created_at)}
           </p>
         </button>
 
