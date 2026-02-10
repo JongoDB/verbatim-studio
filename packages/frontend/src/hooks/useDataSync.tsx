@@ -143,7 +143,6 @@ export function DataSyncProvider({ children }: DataSyncProviderProps) {
   const [connected, setConnected] = useState(false);
   const reconnectAttempts = useRef(0);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const maxReconnectAttempts = 10;
 
   useEffect(() => {
     function connect() {
@@ -163,14 +162,15 @@ export function DataSyncProvider({ children }: DataSyncProviderProps) {
         console.log('[DataSync] Connected');
         setConnected(true);
 
-        // Only refetch stale data on reconnect (not all queries)
-        if (reconnectAttempts.current > 0) {
-          queryClient.invalidateQueries({ queryKey: queryKeys.recordings.all });
-          queryClient.invalidateQueries({ queryKey: queryKeys.projects.all });
-          queryClient.invalidateQueries({ queryKey: queryKeys.documents.all });
-          queryClient.invalidateQueries({ queryKey: queryKeys.jobs.all });
-          queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.stats });
-        }
+        // Invalidate core data queries to ensure fresh data.
+        // On initial connect this catches any stale/empty results from queries
+        // that fired before the WebSocket was ready (common in Electron where
+        // backend starts asynchronously). On reconnect it syncs missed updates.
+        queryClient.invalidateQueries({ queryKey: queryKeys.recordings.all });
+        queryClient.invalidateQueries({ queryKey: queryKeys.projects.all });
+        queryClient.invalidateQueries({ queryKey: queryKeys.documents.all });
+        queryClient.invalidateQueries({ queryKey: queryKeys.jobs.all });
+        queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.stats });
 
         reconnectAttempts.current = 0;
       };
@@ -180,15 +180,13 @@ export function DataSyncProvider({ children }: DataSyncProviderProps) {
         setConnected(false);
         wsRef.current = null;
 
-        // Attempt reconnect with exponential backoff
-        if (reconnectAttempts.current < maxReconnectAttempts) {
-          const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.current), 30000);
-          console.log(`[DataSync] Reconnecting in ${delay}ms (attempt ${reconnectAttempts.current + 1})`);
-          reconnectAttempts.current++;
-          reconnectTimeoutRef.current = setTimeout(connect, delay);
-        } else {
-          console.error('[DataSync] Max reconnect attempts reached');
-        }
+        // Reconnect with exponential backoff, capped at 30s.
+        // After maxReconnectAttempts fast retries, keep trying at 30s intervals
+        // so the connection recovers if the backend restarts.
+        const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.current), 30000);
+        console.log(`[DataSync] Reconnecting in ${delay}ms (attempt ${reconnectAttempts.current + 1})`);
+        reconnectAttempts.current++;
+        reconnectTimeoutRef.current = setTimeout(connect, delay);
       };
 
       ws.onerror = (error) => {

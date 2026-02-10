@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { api, type Recording, type Tag, type Project } from '@/lib/api';
 import { useRecordings, useDeleteRecording, useBulkDeleteRecordings, useTranscribeRecording, useCancelRecording, useRetryRecording, useRunningJobs } from '@/hooks';
-import type { RecordingFilters as RecordingQueryFilters } from '@/lib/queryKeys';
+import { queryKeys, type RecordingFilters as RecordingQueryFilters } from '@/lib/queryKeys';
 import { UploadDropzone } from '@/components/recordings/UploadDropzone';
 import { RecordingCard } from '@/components/recordings/RecordingCard';
 import { RecordingsTable } from '@/components/recordings/RecordingsTable';
@@ -97,6 +98,8 @@ function loadSavedViewMode(): ViewMode {
 }
 
 export function RecordingsPage({ onViewTranscript }: RecordingsPageProps) {
+  const queryClient = useQueryClient();
+
   // Local UI state
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -213,7 +216,9 @@ export function RecordingsPage({ onViewTranscript }: RecordingsPageProps) {
             console.error('Failed to start auto-transcription');
           }
         }
-        // WebSocket will trigger refetch automatically
+        // Explicitly refresh the list (WebSocket broadcast is also sent but may be delayed)
+        queryClient.invalidateQueries({ queryKey: queryKeys.recordings.all });
+        queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.stats });
       } catch (err) {
         setUploadError(err instanceof Error ? err.message : 'Failed to upload file');
       } finally {
@@ -232,14 +237,15 @@ export function RecordingsPage({ onViewTranscript }: RecordingsPageProps) {
         for (const file of Array.from(files)) {
           await api.recordings.upload(file);
         }
-        // WebSocket will trigger refetch automatically
+        queryClient.invalidateQueries({ queryKey: queryKeys.recordings.all });
+        queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.stats });
       } catch (err) {
         setUploadError(err instanceof Error ? err.message : 'Failed to import files');
       } finally {
         setIsUploading(false);
       }
     },
-    []
+    [queryClient]
   );
 
   const handleOpenTranscribeDialog = useCallback((recording: Recording) => {
@@ -310,7 +316,8 @@ export function RecordingsPage({ onViewTranscript }: RecordingsPageProps) {
             console.error('Failed to start auto-transcription');
           }
         }
-        // WebSocket will trigger refetch automatically
+        queryClient.invalidateQueries({ queryKey: queryKeys.recordings.all });
+        queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.stats });
       } catch (err) {
         setUploadError(err instanceof Error ? err.message : 'Failed to upload recording');
       } finally {

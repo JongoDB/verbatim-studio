@@ -1,5 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { queryKeys } from '@/lib/queryKeys';
 import { useDashboardStats, useRecentRecordings, useRecentProjects } from '@/hooks';
 import { formatRelativeTime } from '@/lib/utils';
 import { CreateProjectDialog } from '@/components/projects/CreateProjectDialog';
@@ -94,6 +96,7 @@ function StatCard({
 }
 
 export function Dashboard({ onNavigateToRecordings, onNavigateToProjects, onNavigateToDocuments, onViewRecording, onRecordingUploaded, onStartTour }: DashboardProps) {
+  const queryClient = useQueryClient();
   const { data: stats, isLoading: statsLoading, error: statsError } = useDashboardStats();
   const { data: recentRecordings = [] } = useRecentRecordings(5);
   const { data: recentProjects = [] } = useRecentProjects(5);
@@ -223,13 +226,15 @@ export function Dashboard({ onNavigateToRecordings, onNavigateToProjects, onNavi
         }
       }
 
+      queryClient.invalidateQueries({ queryKey: queryKeys.recordings.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.stats });
       onRecordingUploaded?.();
     } catch (err) {
       console.error('Failed to upload:', err);
     } finally {
       setIsUploading(false);
     }
-  }, [onRecordingUploaded, pendingUploadFile]);
+  }, [queryClient, onRecordingUploaded, pendingUploadFile]);
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -264,6 +269,8 @@ export function Dashboard({ onNavigateToRecordings, onNavigateToProjects, onNavi
         }
       }
 
+      queryClient.invalidateQueries({ queryKey: queryKeys.recordings.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.stats });
       onRecordingUploaded?.();
     } catch (err) {
       console.error('Failed to upload recording:', err);
@@ -271,7 +278,7 @@ export function Dashboard({ onNavigateToRecordings, onNavigateToProjects, onNavi
       setIsUploading(false);
       setRecordingSettings(null);
     }
-  }, [recordingSettings, onRecordingUploaded]);
+  }, [queryClient, recordingSettings, onRecordingUploaded]);
 
   const handleRecordingCancel = useCallback(() => {
     setRecordingPhase('none');
