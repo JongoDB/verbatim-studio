@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { api, type OAuthStatusResponse } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
@@ -70,6 +70,19 @@ export function OAuthConnectButton({
     }
   }, []);
 
+  // Track the active state so we can cancel on true unmount only
+  const activeStateRef = useRef<string | null>(null);
+  activeStateRef.current = pollState;
+
+  // Cancel OAuth on true component unmount only (not on effect re-runs)
+  useEffect(() => {
+    return () => {
+      if (activeStateRef.current) {
+        cancelOAuth(activeStateRef.current);
+      }
+    };
+  }, [cancelOAuth]);
+
   // Poll for OAuth completion
   useEffect(() => {
     if (!pollState) return;
@@ -111,10 +124,6 @@ export function OAuthConnectButton({
     return () => {
       clearInterval(pollInterval);
       clearTimeout(timeout);
-      // Cancel OAuth on unmount if still pending
-      if (pollState) {
-        cancelOAuth(pollState);
-      }
     };
   }, [pollState, onSuccess, onError, cancelOAuth]);
 
@@ -143,14 +152,14 @@ export function OAuthConnectButton({
       // Only start polling AFTER confirming window opened successfully
       setPollState(response.state);
 
-      // Monitor window close
+      // Monitor window close — use ref to avoid stale closure over isConnecting
       const checkClosed = setInterval(() => {
         if (authWindow.closed) {
           clearInterval(checkClosed);
           // Give polling a brief chance to catch the result, then cancel
           setTimeout(async () => {
-            // Check if we're still connecting (no result yet)
-            if (isConnecting && response.state) {
+            // activeStateRef tracks current pollState without stale closure issues
+            if (activeStateRef.current) {
               try {
                 const status = await api.oauth.status(response.state);
                 if (status.status === 'pending') {
@@ -172,7 +181,7 @@ export function OAuthConnectButton({
       setIsConnecting(false);
       onError?.(err instanceof Error ? err.message : 'Failed to start authentication');
     }
-  }, [provider, onError, pollState]);
+  }, [provider, onError]);
 
   return (
     <button
