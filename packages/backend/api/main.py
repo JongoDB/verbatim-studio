@@ -155,14 +155,14 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS - allow local frontend origins and Electron file:// (which sends Origin: null)
+# CORS - wide open. This API only binds to 127.0.0.1 and is accessed by
+# the local Electron app (file:// origin) or the Vite dev server.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "null"],
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
-    expose_headers=["Content-Length", "Content-Range", "Content-Type"],
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Routes
