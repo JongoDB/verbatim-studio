@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { api, type ArchiveInfo, type TranscriptionSettings, type AIModel, type AIModelDownloadEvent, type OCRModel, type OCRModelDownloadEvent, type WhisperModel, type WhisperModelDownloadEvent, type DiarizationModel, type DiarizationModelDownloadEvent, type SystemInfo, type MLStatus, type StorageLocation, type MigrationStatus, type SyncResult, type StorageType, type StorageSubtype, type StorageLocationConfig, type OAuthStatusResponse, type CategoryCount, type ClearableCategory } from '@/lib/api';
+import { api, type ArchiveInfo, type TranscriptionSettings, type AIModel, type AIModelDownloadEvent, type OCRModel, type OCRModelDownloadEvent, type WhisperModel, type WhisperModelDownloadEvent, type DiarizationModel, type DiarizationModelDownloadEvent, type SystemInfo, type MLStatus, type StorageLocation, type MigrationStatus, type TransferStatus, type SyncResult, type StorageType, type StorageSubtype, type StorageLocationConfig, type OAuthStatusResponse, type CategoryCount, type ClearableCategory } from '@/lib/api';
 import { useDownloadStore } from '@/stores/downloadStore';
 import { useKeybindingStore, DEFAULT_ACTIONS, formatCombo, type KeyCombo, type ActionCategory } from '@/stores/keybindingStore';
 import { StorageTypeSelector } from '@/components/storage/StorageTypeSelector';
@@ -299,6 +299,13 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
   const [migrationDest, setMigrationDest] = useState('');
   const [migrationStatus, setMigrationStatus] = useState<MigrationStatus | null>(null);
   const [pendingLocationUpdate, setPendingLocationUpdate] = useState<StorageLocation | null>(null);
+
+  // Cross-location transfer state (for default switch)
+  const [showTransferDialog, setShowTransferDialog] = useState(false);
+  const [transferFromLocation, setTransferFromLocation] = useState<StorageLocation | null>(null);
+  const [transferToLocationId, setTransferToLocationId] = useState<string | null>(null);
+  const [transferFileCount, setTransferFileCount] = useState<{ recordings: number; documents: number } | null>(null);
+  const [transferStatus, setTransferStatus] = useState<TransferStatus | null>(null);
 
   // Sync state
   const [syncing, setSyncing] = useState(false);
@@ -961,12 +968,11 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
     setMigrationStatus(null);
   }, []);
 
-  const handleSetDefaultLocation = useCallback(async (id: string) => {
+  const executeSetDefault = useCallback(async (id: string) => {
     setStorageError(null);
     try {
       await api.storageLocations.update(id, { is_default: true });
       loadStorageLocations();
-      // Notify other components that storage location changed
       window.dispatchEvent(new CustomEvent('storage-location-changed'));
 
       // Automatically sync workspace after switching default location
@@ -977,7 +983,6 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
         setSyncResult(result);
         window.dispatchEvent(new CustomEvent('storage-synced'));
       } catch (syncErr) {
-        // Sync errors are non-critical, just log them
         console.error('Auto-sync after default change failed:', syncErr);
       } finally {
         setSyncing(false);
@@ -986,6 +991,105 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
       setStorageError(err instanceof Error ? err.message : 'Failed to set default');
     }
   }, [loadStorageLocations]);
+
+  const handleSetDefaultLocation = useCallback(async (id: string) => {
+    setStorageError(null);
+
+    // Find the current default location
+    const currentDefault = storageLocations.find(l => l.is_default);
+    if (!currentDefault) {
+      // No current default, just switch directly
+      await executeSetDefault(id);
+      return;
+    }
+
+    try {
+      // Check if the current default has files
+      const fileCount = await api.storageLocations.getFileCount(currentDefault.id);
+      const totalFiles = (fileCount.recordings || 0) + (fileCount.documents || 0);
+
+      if (totalFiles === 0) {
+        // No files in current location, switch directly
+        await executeSetDefault(id);
+        return;
+      }
+
+      // Files exist - show transfer dialog
+      setTransferFromLocation(currentDefault);
+      setTransferToLocationId(id);
+      setTransferFileCount(fileCount);
+      setTransferStatus(null);
+      setShowTransferDialog(true);
+    } catch (err) {
+      // If file count check fails, fall back to direct switch
+      console.error('Failed to check file count:', err);
+      await executeSetDefault(id);
+    }
+  }, [storageLocations, executeSetDefault]);
+
+  const handleTransferFiles = useCallback(async (mode: 'copy' | 'move') => {
+    if (!transferFromLocation || !transferToLocationId) return;
+
+    try {
+      const result = await api.storageLocations.transfer({
+        from_location_id: transferFromLocation.id,
+        to_location_id: transferToLocationId,
+        mode,
+      });
+      setTransferStatus(result);
+
+      // Poll for status updates
+      const pollInterval = setInterval(async () => {
+        try {
+          const currentStatus = await api.storageLocations.getTransferStatus();
+          setTransferStatus(currentStatus);
+
+          if (currentStatus.status === 'completed' || currentStatus.status === 'failed') {
+            clearInterval(pollInterval);
+
+            if (currentStatus.status === 'completed') {
+              // Transfer complete, now set the default and sync
+              await executeSetDefault(transferToLocationId);
+              setTimeout(() => {
+                setShowTransferDialog(false);
+                setTransferStatus(null);
+                setTransferFromLocation(null);
+                setTransferToLocationId(null);
+                setTransferFileCount(null);
+              }, 2000);
+            }
+          }
+        } catch (err) {
+          console.error('Failed to get transfer status:', err);
+        }
+      }, 500);
+    } catch (err) {
+      setTransferStatus({
+        status: 'failed',
+        total_files: 0,
+        transferred_files: 0,
+        current_file: null,
+        error: err instanceof Error ? err.message : 'Failed to start transfer',
+      });
+    }
+  }, [transferFromLocation, transferToLocationId, executeSetDefault]);
+
+  const handleTransferSkip = useCallback(async () => {
+    if (!transferToLocationId) return;
+    setShowTransferDialog(false);
+    setTransferFromLocation(null);
+    setTransferFileCount(null);
+    await executeSetDefault(transferToLocationId);
+    setTransferToLocationId(null);
+  }, [transferToLocationId, executeSetDefault]);
+
+  const handleTransferCancel = useCallback(() => {
+    setShowTransferDialog(false);
+    setTransferFromLocation(null);
+    setTransferToLocationId(null);
+    setTransferFileCount(null);
+    setTransferStatus(null);
+  }, []);
 
   const handleDeleteStorageLocation = useCallback(async (id: string) => {
     if (!window.confirm('Are you sure you want to delete this storage location?')) return;
@@ -4032,6 +4136,120 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
                 </p>
                 <button
                   onClick={handleCancelMigration}
+                  className="px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 text-sm"
+                >
+                  Close
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Cross-Location Transfer Dialog */}
+      {showTransferDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
+              Transfer Files to New Location?
+            </h3>
+
+            {!transferStatus && transferFileCount && (
+              <>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                  Your current default location has{' '}
+                  <span className="font-medium">
+                    {transferFileCount.recordings} recording{transferFileCount.recordings !== 1 ? 's' : ''}
+                  </span>
+                  {transferFileCount.documents > 0 && (
+                    <>
+                      {' '}and{' '}
+                      <span className="font-medium">
+                        {transferFileCount.documents} document{transferFileCount.documents !== 1 ? 's' : ''}
+                      </span>
+                    </>
+                  )}
+                  . Would you like to transfer them?
+                </p>
+
+                <div className="text-xs text-gray-500 dark:text-gray-400 mb-4 space-y-1">
+                  <div><span className="font-medium">From:</span> {transferFromLocation?.name}</div>
+                  <div><span className="font-medium">To:</span> {storageLocations.find(l => l.id === transferToLocationId)?.name}</div>
+                </div>
+
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleTransferFiles('copy')}
+                    className="flex-1 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 text-sm font-medium"
+                  >
+                    Copy Files
+                  </button>
+                  <button
+                    onClick={() => handleTransferFiles('move')}
+                    className="flex-1 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 text-sm font-medium"
+                  >
+                    Move Files
+                  </button>
+                  <button
+                    onClick={handleTransferSkip}
+                    className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 text-sm font-medium"
+                  >
+                    Just Switch
+                  </button>
+                </div>
+              </>
+            )}
+
+            {transferStatus?.status === 'running' && (
+              <>
+                <div className="mb-4">
+                  <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400 mb-2">
+                    <span>Transferring files...</span>
+                    <span>{transferStatus.transferred_files} / {transferStatus.total_files}</span>
+                  </div>
+                  <div className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-blue-500 transition-all"
+                      style={{
+                        width: transferStatus.total_files > 0
+                          ? `${(transferStatus.transferred_files / transferStatus.total_files) * 100}%`
+                          : '0%'
+                      }}
+                    />
+                  </div>
+                  {transferStatus.current_file && (
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 truncate">
+                      {transferStatus.current_file}
+                    </p>
+                  )}
+                </div>
+              </>
+            )}
+
+            {transferStatus?.status === 'completed' && (
+              <div className="text-center py-4">
+                <svg className="w-12 h-12 text-green-500 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                <p className="text-gray-600 dark:text-gray-400">
+                  Transfer complete! {transferStatus.transferred_files} files transferred.
+                </p>
+              </div>
+            )}
+
+            {transferStatus?.status === 'failed' && (
+              <div className="text-center py-4">
+                <svg className="w-12 h-12 text-red-500 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+                <p className="text-red-600 dark:text-red-400 mb-2">
+                  Transfer failed
+                </p>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+                  {transferStatus.error}
+                </p>
+                <button
+                  onClick={handleTransferCancel}
                   className="px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 text-sm"
                 >
                   Close

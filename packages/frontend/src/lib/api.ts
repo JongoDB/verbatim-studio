@@ -1226,6 +1226,20 @@ export interface MigrationStatus {
   error: string | null;
 }
 
+export interface TransferRequest {
+  from_location_id: string;
+  to_location_id: string;
+  mode: 'copy' | 'move';
+}
+
+export interface TransferStatus {
+  status: 'running' | 'completed' | 'failed';
+  total_files: number;
+  transferred_files: number;
+  current_file: string | null;
+  error: string | null;
+}
+
 export interface SyncResult {
   recordings_in_db: number;
   recordings_on_disk: number;
@@ -2520,6 +2534,15 @@ class ApiClient {
       this.request<SyncResult>('/api/storage-locations/sync', {
         method: 'POST',
       }),
+    getFileCount: (id: string) =>
+      this.request<{ recordings: number; documents: number }>(`/api/storage-locations/${id}/file-count`),
+    transfer: (data: TransferRequest) =>
+      this.request<TransferStatus>('/api/storage-locations/transfer', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    getTransferStatus: () =>
+      this.request<TransferStatus>('/api/storage-locations/transfer/status'),
   };
 
   // OAuth API

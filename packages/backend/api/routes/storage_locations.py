@@ -9,7 +9,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,6 +25,9 @@ router = APIRouter(prefix="/storage-locations", tags=["storage-locations"])
 
 # Track migration progress in memory (for simplicity)
 _migration_progress: dict[str, dict] = {}
+
+# Track cross-location transfer progress
+_transfer_progress: dict[str, dict] = {}
 
 
 class StorageLocationConfig(BaseModel):
@@ -205,6 +208,106 @@ async def list_storage_locations() -> StorageLocationListResponse:
             items=[StorageLocationResponse.from_model(loc) for loc in locations],
             total=len(locations),
         )
+
+
+@router.post("/transfer", response_model=TransferStatus)
+async def start_transfer(body: TransferRequest) -> TransferStatus:
+    """Start transferring files between storage locations.
+
+    Uses storage adapters so this works across any combination of
+    local, GDrive, OneDrive, Dropbox locations.
+    """
+    if body.mode not in ("copy", "move"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Mode must be 'copy' or 'move'",
+        )
+
+    # Check if transfer already running
+    if _transfer_progress.get("current", {}).get("status") == "running":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Transfer already in progress",
+        )
+
+    async with async_session() as session:
+        from_loc = await session.get(StorageLocation, body.from_location_id)
+        to_loc = await session.get(StorageLocation, body.to_location_id)
+
+        if not from_loc:
+            raise HTTPException(status_code=404, detail="Source location not found")
+        if not to_loc:
+            raise HTTPException(status_code=404, detail="Destination location not found")
+
+        # Count files to transfer
+        rec_count = await session.scalar(
+            select(func.count(Recording.id)).where(
+                Recording.storage_location_id == body.from_location_id
+            )
+        ) or 0
+        doc_count = await session.scalar(
+            select(func.count(Document.id)).where(
+                Document.storage_location_id == body.from_location_id
+            )
+        ) or 0
+
+    total_files = rec_count + doc_count
+
+    if total_files == 0:
+        return TransferStatus(
+            status="completed",
+            total_files=0,
+            transferred_files=0,
+            current_file=None,
+            error=None,
+        )
+
+    # Initialize progress
+    _transfer_progress["current"] = {
+        "status": "running",
+        "total_files": total_files,
+        "transferred_files": 0,
+        "current_file": None,
+        "error": None,
+    }
+
+    # Start background transfer
+    asyncio.create_task(
+        _run_cross_location_transfer(
+            body.from_location_id, body.to_location_id, body.mode
+        )
+    )
+
+    return TransferStatus(
+        status="running",
+        total_files=total_files,
+        transferred_files=0,
+        current_file=None,
+        error=None,
+    )
+
+
+@router.get("/transfer/status", response_model=TransferStatus)
+async def get_transfer_status() -> TransferStatus:
+    """Get current cross-location transfer status."""
+    progress = _transfer_progress.get("current", {})
+
+    if not progress:
+        return TransferStatus(
+            status="completed",
+            total_files=0,
+            transferred_files=0,
+            current_file=None,
+            error=None,
+        )
+
+    return TransferStatus(
+        status=progress.get("status", "completed"),
+        total_files=progress.get("total_files", 0),
+        transferred_files=progress.get("transferred_files", 0),
+        current_file=progress.get("current_file"),
+        error=progress.get("error"),
+    )
 
 
 @router.get("/{location_id}", response_model=StorageLocationResponse)
@@ -412,6 +515,24 @@ class MigrationStatus(BaseModel):
     error: str | None
 
 
+class TransferRequest(BaseModel):
+    """Request to transfer files between storage locations."""
+
+    from_location_id: str
+    to_location_id: str
+    mode: str  # "copy" or "move"
+
+
+class TransferStatus(BaseModel):
+    """Cross-location transfer progress status."""
+
+    status: str  # "running", "completed", "failed"
+    total_files: int
+    transferred_files: int
+    current_file: str | None
+    error: str | None
+
+
 @router.post("/migrate", response_model=MigrationStatus)
 async def start_migration(body: MigrationRequest) -> MigrationStatus:
     """Start migrating files from source to destination path.
@@ -614,6 +735,169 @@ async def get_migration_status() -> MigrationStatus:
         current_file=progress.get("current_file"),
         error=progress.get("error"),
     )
+
+
+@router.get("/{location_id}/file-count")
+async def get_location_file_count(location_id: str) -> dict:
+    """Get count of files stored in a specific location."""
+    async with async_session() as session:
+        rec_count = await session.scalar(
+            select(func.count(Recording.id)).where(
+                Recording.storage_location_id == location_id
+            )
+        )
+        doc_count = await session.scalar(
+            select(func.count(Document.id)).where(
+                Document.storage_location_id == location_id
+            )
+        )
+    return {"recordings": rec_count or 0, "documents": doc_count or 0}
+
+
+async def _run_cross_location_transfer(
+    from_location_id: str, to_location_id: str, mode: str
+) -> None:
+    """Transfer files between storage locations using adapters.
+
+    Works across any combination of local/cloud locations.
+    """
+    progress = _transfer_progress["current"]
+
+    try:
+        async with async_session() as session:
+            from_loc = await session.get(StorageLocation, from_location_id)
+            to_loc = await session.get(StorageLocation, to_location_id)
+
+            if not from_loc or not to_loc:
+                progress["status"] = "failed"
+                progress["error"] = "Storage location not found"
+                return
+
+            from_adapter = get_adapter(from_loc)
+            to_adapter = get_adapter(to_loc)
+
+            from_base_path = from_loc.config.get("path", "") if from_loc.type == "local" else ""
+            to_base_path = to_loc.config.get("path", "") if to_loc.type == "local" else ""
+
+            # Get all recordings from source location
+            rec_result = await session.execute(
+                select(Recording).where(
+                    Recording.storage_location_id == from_location_id
+                )
+            )
+            recordings = list(rec_result.scalars().all())
+
+            # Get all documents from source location
+            doc_result = await session.execute(
+                select(Document).where(
+                    Document.storage_location_id == from_location_id
+                )
+            )
+            documents = list(doc_result.scalars().all())
+
+            # Transfer recordings
+            for rec in recordings:
+                try:
+                    progress["current_file"] = rec.file_name
+
+                    # Compute source and destination paths
+                    src_path = rec.file_path
+                    relative_path = _compute_relative_path(src_path, from_loc)
+                    dest_path = _compute_dest_path(relative_path, to_loc, to_base_path)
+
+                    # Read from source, write to destination
+                    data = await from_adapter.read_file(src_path if from_loc.type == "cloud" else src_path)
+                    await to_adapter.write_file(dest_path if to_loc.type == "cloud" else dest_path, data)
+
+                    # Update DB record
+                    rec.file_path = dest_path
+                    rec.storage_location_id = to_location_id
+
+                    # Delete source if moving
+                    if mode == "move":
+                        try:
+                            await from_adapter.delete_file(src_path if from_loc.type == "cloud" else src_path)
+                        except Exception as e:
+                            logger.warning(f"Could not delete source file {src_path}: {e}")
+
+                    progress["transferred_files"] += 1
+                    await asyncio.sleep(0.01)
+
+                except Exception as e:
+                    logger.error(f"Failed to transfer recording {rec.file_name}: {e}")
+                    progress["status"] = "failed"
+                    progress["error"] = f"Failed to transfer {rec.file_name}: {e}"
+                    await session.commit()
+                    return
+
+            # Transfer documents
+            for doc in documents:
+                try:
+                    progress["current_file"] = doc.filename
+
+                    src_path = doc.file_path
+                    relative_path = _compute_relative_path(src_path, from_loc)
+                    dest_path = _compute_dest_path(relative_path, to_loc, to_base_path)
+
+                    data = await from_adapter.read_file(src_path if from_loc.type == "cloud" else src_path)
+                    await to_adapter.write_file(dest_path if to_loc.type == "cloud" else dest_path, data)
+
+                    doc.file_path = dest_path
+                    doc.storage_location_id = to_location_id
+
+                    if mode == "move":
+                        try:
+                            await from_adapter.delete_file(src_path if from_loc.type == "cloud" else src_path)
+                        except Exception as e:
+                            logger.warning(f"Could not delete source file {src_path}: {e}")
+
+                    progress["transferred_files"] += 1
+                    await asyncio.sleep(0.01)
+
+                except Exception as e:
+                    logger.error(f"Failed to transfer document {doc.filename}: {e}")
+                    progress["status"] = "failed"
+                    progress["error"] = f"Failed to transfer {doc.filename}: {e}"
+                    await session.commit()
+                    return
+
+            await session.commit()
+
+        progress["status"] = "completed"
+        progress["current_file"] = None
+        logger.info(
+            f"Transfer completed: {progress['transferred_files']} files "
+            f"({'moved' if mode == 'move' else 'copied'})"
+        )
+
+    except Exception as e:
+        progress["status"] = "failed"
+        progress["error"] = str(e)
+        logger.exception("Cross-location transfer failed")
+
+
+def _compute_relative_path(file_path: str, location: StorageLocation) -> str:
+    """Extract relative path from an absolute/cloud file path."""
+    if location.type == "local":
+        base = location.config.get("path", "")
+        if base and file_path.startswith(base):
+            rel = file_path[len(base):]
+            return rel.lstrip("/").lstrip("\\")
+        return Path(file_path).name
+    else:
+        # Cloud paths are already relative
+        return file_path
+
+
+def _compute_dest_path(
+    relative_path: str, to_location: StorageLocation, to_base_path: str
+) -> str:
+    """Compute destination path from a relative path."""
+    if to_location.type == "local":
+        return str(Path(to_base_path) / relative_path)
+    else:
+        # Cloud destinations use relative paths directly
+        return relative_path
 
 
 class SyncResult(BaseModel):
