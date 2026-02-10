@@ -6,7 +6,8 @@
  */
 
 import { app } from 'electron';
-import * as fs from 'fs';
+import * as fs from 'fs/promises';
+import { existsSync, readdirSync } from 'fs';
 import * as path from 'path';
 
 // Model definitions - which models are bundled and where they go
@@ -27,23 +28,20 @@ function getCacheDir(): string {
 }
 
 /**
- * Recursively copy a directory.
+ * Recursively copy a directory using async operations.
  */
-function copyDirSync(src: string, dest: string): void {
-  // Create destination directory
-  fs.mkdirSync(dest, { recursive: true });
-
-  // Read source directory
-  const entries = fs.readdirSync(src, { withFileTypes: true });
+async function copyDir(src: string, dest: string): Promise<void> {
+  await fs.mkdir(dest, { recursive: true });
+  const entries = await fs.readdir(src, { withFileTypes: true });
 
   for (const entry of entries) {
     const srcPath = path.join(src, entry.name);
     const destPath = path.join(dest, entry.name);
 
     if (entry.isDirectory()) {
-      copyDirSync(srcPath, destPath);
+      await copyDir(srcPath, destPath);
     } else {
-      fs.copyFileSync(srcPath, destPath);
+      await fs.copyFile(srcPath, destPath);
     }
   }
 }
@@ -52,19 +50,19 @@ function copyDirSync(src: string, dest: string): void {
  * Check if a model is already installed.
  */
 function isModelInstalled(destDir: string): boolean {
-  if (!fs.existsSync(destDir)) {
+  if (!existsSync(destDir)) {
     return false;
   }
 
   // For HuggingFace models, check for snapshots directory with content
   const snapshotsDir = path.join(destDir, 'snapshots');
-  if (fs.existsSync(snapshotsDir)) {
-    const snapshots = fs.readdirSync(snapshotsDir);
+  if (existsSync(snapshotsDir)) {
+    const snapshots = readdirSync(snapshotsDir);
     return snapshots.length > 0;
   }
 
   // For torch/pyannote models, just check if directory has files
-  const files = fs.readdirSync(destDir);
+  const files = readdirSync(destDir);
   return files.length > 0;
 }
 
@@ -103,7 +101,7 @@ export async function bootstrapBundledModels(): Promise<{
 
     try {
       // Check if source exists in bundled resources
-      if (!fs.existsSync(srcDir)) {
+      if (!existsSync(srcDir)) {
         console.log(`[Bootstrap] Bundled model not found: ${model.name} (expected at ${srcDir})`);
         continue;
       }
@@ -120,7 +118,7 @@ export async function bootstrapBundledModels(): Promise<{
       console.log(`[Bootstrap]   From: ${srcDir}`);
       console.log(`[Bootstrap]   To: ${destDir}`);
 
-      copyDirSync(srcDir, destDir);
+      await copyDir(srcDir, destDir);
 
       console.log(`[Bootstrap] Successfully copied: ${model.name}`);
       results.copied.push(model.name);

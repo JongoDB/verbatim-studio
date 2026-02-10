@@ -57,18 +57,26 @@ async function bootstrap(): Promise<void> {
 app.on('ready', bootstrap);
 
 app.on('activate', () => {
-  // Only create window if app is ready and no windows exist
   if (app.isReady() && BrowserWindow.getAllWindows().length === 0) {
+    if (!backendManager.isRunning()) {
+      console.error('[Main] Backend not running on activate, cannot create window');
+      return;
+    }
     mainWindow = createMainWindow();
   }
 });
 
 let isQuitting = false;
+let cleanupDone = false;
 
 app.on('before-quit', async (event) => {
-  if (isQuitting) return;
+  if (cleanupDone) return; // Let quit proceed after cleanup
 
-  // Prevent default to handle async cleanup
+  if (isQuitting) {
+    event.preventDefault();
+    return; // Cleanup already in progress
+  }
+
   event.preventDefault();
   isQuitting = true;
 
@@ -79,14 +87,11 @@ app.on('before-quit', async (event) => {
     console.error('[Main] Error stopping backend:', error);
   }
 
-  // Now actually quit
-  app.quit();
+  cleanupDone = true;
+  setImmediate(() => app.quit());
 });
 
 app.on('window-all-closed', () => {
-  // Quit the app on all platforms, including macOS
-  // Since we have a backend process, we should quit when all windows are closed
-  // to avoid leaving orphaned Python processes
   app.quit();
 });
 
@@ -101,15 +106,53 @@ app.on('second-instance', () => {
   }
 });
 
-// Handle backend events
+// Handle backend health failures with recovery
+let healthFailures = 0;
+const MAX_HEALTH_FAILURES = 3;
+
 backendManager.on('unhealthy', () => {
-  console.warn('[Main] Backend unhealthy');
+  healthFailures++;
+  console.warn(`[Main] Backend unhealthy (${healthFailures}/${MAX_HEALTH_FAILURES})`);
+
+  if (healthFailures >= MAX_HEALTH_FAILURES && mainWindow && !mainWindow.isDestroyed() && !isQuitting) {
+    healthFailures = 0; // Reset so we don't show multiple dialogs
+    dialog.showMessageBox(mainWindow, {
+      type: 'error',
+      title: 'Backend Unresponsive',
+      message: 'The backend has become unresponsive.',
+      detail: 'Please restart the application.',
+      buttons: ['Restart', 'Quit'],
+    }).then((result) => {
+      if (result.response === 0) {
+        app.relaunch();
+      }
+      app.quit();
+    });
+  }
+});
+
+// Reset health failure counter on successful backend output
+backendManager.on('log', () => {
+  if (healthFailures > 0) healthFailures = 0;
 });
 
 backendManager.on('exit', (code: number | null) => {
   console.warn(`[Main] Backend exited with code ${code}`);
-  if (code !== 0 && code !== null) {
-    // Unexpected exit, could show error dialog
+  if (code !== 0 && code !== null && !isQuitting) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      dialog.showMessageBox(mainWindow, {
+        type: 'error',
+        title: 'Backend Stopped',
+        message: 'The backend process has stopped unexpectedly.',
+        detail: `Exit code: ${code}\n\nPlease restart the application.`,
+        buttons: ['Restart', 'Quit'],
+      }).then((result) => {
+        if (result.response === 0) {
+          app.relaunch();
+        }
+        app.quit();
+      });
+    }
   }
 });
 
@@ -117,16 +160,15 @@ backendManager.on('exit', (code: number | null) => {
 process.on('exit', () => {
   if (backendManager.isRunning()) {
     console.log('[Main] Process exiting, force-stopping backend');
-    // Can't use async here, so force kill synchronously
     try {
-      (backendManager as any).process?.kill('SIGKILL');
+      backendManager.forceKill();
     } catch {
       // Ignore errors during cleanup
     }
   }
 });
 
-// Handle uncaught exceptions - try to clean up
+// Handle uncaught exceptions
 process.on('uncaughtException', async (error) => {
   console.error('[Main] Uncaught exception:', error);
   try {
@@ -135,4 +177,9 @@ process.on('uncaughtException', async (error) => {
     // Ignore cleanup errors
   }
   process.exit(1);
+});
+
+// Handle unhandled promise rejections
+process.on('unhandledRejection', (reason) => {
+  console.error('[Main] Unhandled promise rejection:', reason);
 });

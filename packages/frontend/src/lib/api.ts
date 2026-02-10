@@ -34,7 +34,7 @@ export async function initializeApiUrl(): Promise<string> {
     // Debug: log what we see
     console.log('[API] Checking electronAPI:', {
       electronAPI: typeof window.electronAPI,
-      hasGetApiUrl: !!(window.electronAPI as any)?.getApiUrl,
+      hasGetApiUrl: !!window.electronAPI?.getApiUrl,
       protocol: window.location.protocol,
       keys: window.electronAPI ? Object.keys(window.electronAPI) : 'N/A'
     });
@@ -52,9 +52,10 @@ export async function initializeApiUrl(): Promise<string> {
             cachedApiBaseUrl = url;
             return url;
           }
-          // URL was null, wait and retry
+          // URL was null, wait and retry with exponential backoff
           if (attempt < 4) {
-            await new Promise(resolve => setTimeout(resolve, 200));
+            const delay = 200 * Math.pow(2, attempt); // 200, 400, 800, 1600ms
+            await new Promise(resolve => setTimeout(resolve, delay));
           }
         } catch (err) {
           console.warn('[API] Failed to get URL from preload:', err);

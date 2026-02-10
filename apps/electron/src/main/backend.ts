@@ -161,6 +161,11 @@ class BackendManager extends EventEmitter {
     return this.process !== null;
   }
 
+  /** Synchronously force-kill the backend process (for use in process.on('exit')) */
+  forceKill(): void {
+    this.process?.kill('SIGKILL');
+  }
+
   private getPythonPath(): string {
     if (app.isPackaged) {
       // Bundled Python in resources
