@@ -43,40 +43,37 @@ echo "--- Downloading $REPO (CTranslate2 format) ---"
 if [ -d "$DEST_DIR" ] && [ "$(ls -A "$DEST_DIR" 2>/dev/null)" ]; then
     echo "Model already exists at $DEST_DIR, skipping..."
 else
-    # Use a project-relative temp dir instead of mktemp, because Git Bash's
-    # /tmp/ maps differently than Windows Python interprets it
-    TEMP_CACHE="$PROJECT_ROOT/build/temp-hf-cache"
-    mkdir -p "$TEMP_CACHE"
+    # Download directly to the output directory's HF cache structure.
+    # This avoids temp dir + move which breaks on Windows due to Git Bash vs
+    # native Python path separator mismatches.
+    CACHE_DIR="$OUTPUT_DIR/huggingface/hub"
 
-    HF_HOME="$TEMP_CACHE" "$PYTHON_BIN" -c "
+    "$PYTHON_BIN" -c "
+import os, sys
 from huggingface_hub import snapshot_download
 
 repo_id = '$REPO'
-cache_dir = '$TEMP_CACHE/hub'
+cache_dir = r'$CACHE_DIR'
 
-print(f'Downloading {repo_id}...')
+print(f'Downloading {repo_id} to {cache_dir}...')
 local_dir = snapshot_download(
     repo_id=repo_id,
     cache_dir=cache_dir,
     local_dir=None,
 )
 print(f'Downloaded to: {local_dir}')
+
+# Verify model files exist
+model_bin = os.path.join(local_dir, 'model.bin')
+if os.path.exists(model_bin):
+    print(f'Verified: model.bin exists ({os.path.getsize(model_bin)} bytes)')
+else:
+    print(f'WARNING: model.bin not found in {local_dir}')
+    print(f'Contents: {os.listdir(local_dir)}')
+    sys.exit(1)
 "
 
-    REPO_DASHED=$(echo "$REPO" | sed 's/\//--/g')
-    TEMP_MODEL_DIR="$TEMP_CACHE/hub/models--$REPO_DASHED"
-
-    if [ -d "$TEMP_MODEL_DIR" ]; then
-        mkdir -p "$(dirname "$DEST_DIR")"
-        mv "$TEMP_MODEL_DIR" "$DEST_DIR"
-        echo "Moved to: $DEST_DIR"
-    else
-        echo "ERROR: Could not find downloaded model"
-        rm -rf "$TEMP_CACHE"
-        exit 1
-    fi
-
-    rm -rf "$TEMP_CACHE"
+    echo "Download complete."
 fi
 
 echo ""
