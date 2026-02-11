@@ -43,32 +43,41 @@ echo "--- Downloading $REPO (CTranslate2 format) ---"
 if [ -d "$DEST_DIR" ] && [ "$(ls -A "$DEST_DIR" 2>/dev/null)" ]; then
     echo "Model already exists at $DEST_DIR, skipping..."
 else
-    # Download directly to the output directory's HF cache structure.
-    # This avoids temp dir + move which breaks on Windows due to Git Bash vs
-    # native Python path separator mismatches.
-    CACHE_DIR="$OUTPUT_DIR/huggingface/hub"
+    # Use local_dir to download files directly (no HF cache symlinks).
+    # On Windows, HF's cache_dir mode creates symlinks that Git Bash can't
+    # follow, causing "not found" errors in subsequent shell steps.
+    # Using local_dir writes regular files to a snapshot-like structure.
+    SNAPSHOT_DIR="$DEST_DIR/snapshots/main"
+    mkdir -p "$SNAPSHOT_DIR"
+
+    # Convert Git Bash path to Windows path for native Python
+    if command -v cygpath &>/dev/null; then
+        WIN_SNAPSHOT_DIR=$(cygpath -w "$SNAPSHOT_DIR")
+    else
+        WIN_SNAPSHOT_DIR="$SNAPSHOT_DIR"
+    fi
 
     "$PYTHON_BIN" -c "
 import os, sys
 from huggingface_hub import snapshot_download
 
 repo_id = '$REPO'
-cache_dir = r'$CACHE_DIR'
+local_dir = r'$WIN_SNAPSHOT_DIR'
 
-print(f'Downloading {repo_id} to {cache_dir}...')
-local_dir = snapshot_download(
+print(f'Downloading {repo_id} to {local_dir}...')
+snapshot_download(
     repo_id=repo_id,
-    cache_dir=cache_dir,
-    local_dir=None,
+    local_dir=local_dir,
 )
 print(f'Downloaded to: {local_dir}')
 
 # Verify model files exist
 model_bin = os.path.join(local_dir, 'model.bin')
 if os.path.exists(model_bin):
-    print(f'Verified: model.bin exists ({os.path.getsize(model_bin)} bytes)')
+    size_mb = os.path.getsize(model_bin) / (1024 * 1024)
+    print(f'Verified: model.bin exists ({size_mb:.1f} MB)')
 else:
-    print(f'WARNING: model.bin not found in {local_dir}')
+    print(f'ERROR: model.bin not found in {local_dir}')
     print(f'Contents: {os.listdir(local_dir)}')
     sys.exit(1)
 "
@@ -79,4 +88,4 @@ fi
 echo ""
 echo "=== Model Preparation Complete ==="
 echo "Models prepared in: $OUTPUT_DIR"
-du -sh "$OUTPUT_DIR"
+ls -la "$DEST_DIR/snapshots/" 2>/dev/null || echo "(could not list snapshots)"
