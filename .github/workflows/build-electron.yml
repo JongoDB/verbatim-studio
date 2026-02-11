@@ -179,10 +179,13 @@ jobs:
           fi
           echo "=== All versions verified ✓ ==="
 
-      - name: Bundle CUDA runtime libraries
+      - name: Create CUDA directory placeholder
         if: matrix.platform == 'win32'
         shell: bash
-        run: ./scripts/bundle-cuda-libs.sh
+        run: |
+          # PyTorch bundles its own CUDA runtime DLLs in torch/lib/
+          # No need to separately bundle from CUDA toolkit (saves ~1GB)
+          mkdir -p build/resources/cuda
 
       # Cache whisper models to avoid re-downloading every build (~145MB for whisper-base)
       - name: Cache Whisper models
@@ -356,6 +359,7 @@ jobs:
             dist/*.dmg
             dist/*.exe
             dist/*.zip
+            dist/*.7z
           if-no-files-found: error
 
   release:
