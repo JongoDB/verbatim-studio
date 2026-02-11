@@ -43,7 +43,10 @@ echo "--- Downloading $REPO (CTranslate2 format) ---"
 if [ -d "$DEST_DIR" ] && [ "$(ls -A "$DEST_DIR" 2>/dev/null)" ]; then
     echo "Model already exists at $DEST_DIR, skipping..."
 else
-    TEMP_CACHE=$(mktemp -d)
+    # Use a project-relative temp dir instead of mktemp, because Git Bash's
+    # /tmp/ maps differently than Windows Python interprets it
+    TEMP_CACHE="$PROJECT_ROOT/build/temp-hf-cache"
+    mkdir -p "$TEMP_CACHE"
 
     HF_HOME="$TEMP_CACHE" "$PYTHON_BIN" -c "
 from huggingface_hub import snapshot_download
