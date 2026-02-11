@@ -71,7 +71,7 @@ jobs:
         id: python-cache
         with:
           path: build/python-standalone
-          key: ${{ runner.os }}-${{ matrix.arch }}-python-ml-${{ hashFiles('scripts/requirements-core.txt', 'scripts/requirements-ml.txt', 'scripts/requirements-ml-windows.txt', 'scripts/install-bundled-deps.sh') }}
+          key: ${{ runner.os }}-${{ matrix.arch }}-python-ml-v2-${{ hashFiles('scripts/requirements-core.txt', 'scripts/requirements-ml.txt', 'scripts/requirements-ml-windows.txt', 'scripts/install-bundled-deps.sh') }}
 
       - name: Install dependencies
         run: pnpm install
@@ -310,8 +310,8 @@ jobs:
           # ---------------------------------------------------------------
           # __pycache__ directories
           find "$SITE_PACKAGES" -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
-          # .dist-info directories (not needed at runtime)
-          find "$SITE_PACKAGES" -type d -name "*.dist-info" -exec rm -rf {} + 2>/dev/null || true
+          # NOTE: Keep .dist-info directories — pip list needs them, and they're
+          # included in the cached Python environment used by subsequent builds
 
           echo "=== After cleanup ==="
           du -sh "$SITE_PACKAGES" || true
