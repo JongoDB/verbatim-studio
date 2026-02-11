@@ -1,7 +1,7 @@
 """Whisper model management API routes.
 
 Provides endpoints for listing, downloading, activating, and deleting
-MLX Whisper models for transcription.
+Whisper models for transcription (MLX on macOS, CTranslate2 on Windows).
 """
 
 import asyncio
@@ -17,7 +17,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from core.whisper_catalog import (
-    WHISPER_MODELS,
+    get_platform_models,
     get_model_cache_path,
     get_whisper_model,
     is_model_downloaded,
@@ -69,7 +69,7 @@ async def list_whisper_models() -> WhisperModelsResponse:
     active_model_id = f"whisper-{active_size}"
 
     models = []
-    for model in WHISPER_MODELS:
+    for model in get_platform_models():
         downloaded = is_model_downloaded(model["id"])
         models.append(
             WhisperModelResponse(
@@ -234,7 +234,7 @@ async def delete_whisper_model(model_id: str) -> dict[str, Any]:
     if model["bundled"]:
         # Check if there are other downloaded models
         other_downloaded = False
-        for m in WHISPER_MODELS:
+        for m in get_platform_models():
             if m["id"] != model_id and is_model_downloaded(m["id"]):
                 other_downloaded = True
                 break
@@ -261,7 +261,7 @@ async def delete_whisper_model(model_id: str) -> dict[str, Any]:
     active_size = current_settings.get("model", "base")
     if f"whisper-{active_size}" == model_id:
         # Find another downloaded model to activate
-        for m in WHISPER_MODELS:
+        for m in get_platform_models():
             if m["id"] != model_id and is_model_downloaded(m["id"]):
                 new_size = m["id"].replace("whisper-", "")
                 await save_transcription_settings({"model": new_size})

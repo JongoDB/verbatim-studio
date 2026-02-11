@@ -1,8 +1,10 @@
-"""Whisper model catalog for MLX Whisper transcription.
+"""Whisper model catalog for transcription.
 
 Defines available whisper models that can be downloaded and used for transcription.
+Supports MLX-format models (macOS) and CTranslate2-format models (Windows/Linux).
 """
 
+import sys
 from pathlib import Path
 from typing import TypedDict
 
@@ -68,10 +70,66 @@ WHISPER_MODELS: list[WhisperModel] = [
     },
 ]
 
+# Available CTranslate2 Whisper models (faster-whisper) for Windows/Linux
+WHISPER_MODELS_CT2: list[WhisperModel] = [
+    {
+        "id": "whisper-tiny",
+        "label": "Whisper Tiny",
+        "description": "Fastest, lowest accuracy. Good for quick drafts.",
+        "repo": "Systran/faster-whisper-tiny",
+        "size_bytes": 74_000_000,
+        "is_default": False,
+        "bundled": False,
+    },
+    {
+        "id": "whisper-base",
+        "label": "Whisper Base",
+        "description": "Good balance of speed and accuracy. Bundled with app.",
+        "repo": "Systran/faster-whisper-base",
+        "size_bytes": 145_000_000,
+        "is_default": True,
+        "bundled": True,
+    },
+    {
+        "id": "whisper-small",
+        "label": "Whisper Small",
+        "description": "Better accuracy, slower processing.",
+        "repo": "Systran/faster-whisper-small",
+        "size_bytes": 484_000_000,
+        "is_default": False,
+        "bundled": False,
+    },
+    {
+        "id": "whisper-medium",
+        "label": "Whisper Medium",
+        "description": "High accuracy for difficult audio.",
+        "repo": "Systran/faster-whisper-medium",
+        "size_bytes": 1_530_000_000,
+        "is_default": False,
+        "bundled": False,
+    },
+    {
+        "id": "whisper-large-v3",
+        "label": "Whisper Large v3",
+        "description": "Best accuracy. Requires 8GB+ RAM.",
+        "repo": "Systran/faster-whisper-large-v3",
+        "size_bytes": 3_100_000_000,
+        "is_default": False,
+        "bundled": False,
+    },
+]
+
+
+def get_platform_models() -> list[WhisperModel]:
+    """Get the model list appropriate for this platform."""
+    if sys.platform == "darwin":
+        return WHISPER_MODELS
+    return WHISPER_MODELS_CT2
+
 
 def get_whisper_model(model_id: str) -> WhisperModel | None:
     """Get a whisper model by ID."""
-    for model in WHISPER_MODELS:
+    for model in get_platform_models():
         if model["id"] == model_id:
             return model
     return None
@@ -79,10 +137,11 @@ def get_whisper_model(model_id: str) -> WhisperModel | None:
 
 def get_default_whisper_model() -> WhisperModel:
     """Get the default whisper model."""
-    for model in WHISPER_MODELS:
+    models = get_platform_models()
+    for model in models:
         if model["is_default"]:
             return model
-    return WHISPER_MODELS[1]  # whisper-base as fallback
+    return models[1]  # whisper-base as fallback
 
 
 def get_hf_cache_dir() -> Path:
@@ -104,7 +163,7 @@ def get_model_cache_path(repo: str) -> Path:
 def is_model_downloaded(model_id: str) -> bool:
     """Check if a whisper model is downloaded.
 
-    Looks for the weights.npz file in the HuggingFace cache.
+    Looks for weights.npz (MLX) or model.bin (CTranslate2) in the HuggingFace cache.
     """
     model = get_whisper_model(model_id)
     if not model:
@@ -115,16 +174,15 @@ def is_model_downloaded(model_id: str) -> bool:
     if not cache_path.exists():
         return False
 
-    # Look for weights.npz in snapshots directory
+    # Look for model weights in snapshots directory
     snapshots_dir = cache_path / "snapshots"
     if not snapshots_dir.exists():
         return False
 
-    # Check any snapshot for weights.npz
+    # Check any snapshot for weights.npz (MLX) or model.bin (CTranslate2)
     for snapshot in snapshots_dir.iterdir():
         if snapshot.is_dir():
-            weights_file = snapshot / "weights.npz"
-            if weights_file.exists():
+            if (snapshot / "weights.npz").exists() or (snapshot / "model.bin").exists():
                 return True
 
     return False
@@ -151,10 +209,10 @@ def get_model_size_on_disk(model_id: str) -> int | None:
 
 def model_id_to_mlx_repo(model_id: str) -> str | None:
     """Convert a model ID to its MLX HuggingFace repo path."""
-    model = get_whisper_model(model_id)
-    if not model:
-        return None
-    return model["repo"]
+    for model in WHISPER_MODELS:
+        if model["id"] == model_id:
+            return model["repo"]
+    return None
 
 
 def mlx_size_to_model_id(size: str) -> str:

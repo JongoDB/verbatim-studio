@@ -74,6 +74,17 @@
         "filter": [
           "**/*"
         ]
+      },
+      {
+        "from": "../../build/resources/cuda",
+        "to": "cuda",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "../../scripts/requirements-ml-windows.txt",
+        "to": "requirements-ml-windows.txt"
       }
     ],
     "mac": {
@@ -102,6 +113,12 @@
           ]
         }
       ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "deleteAppDataOnUninstall": false
     },
     "linux": {
       "icon": "assets/icon.png",

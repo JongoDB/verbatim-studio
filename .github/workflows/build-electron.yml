@@ -23,15 +23,9 @@ jobs:
           - os: macos-14
             arch: arm64
             platform: darwin
-          # Note: macOS x64 builds skipped - all GitHub macOS runners are ARM64 now
-          # Intel Mac users can use ARM64 builds via Rosetta 2
-          # TODO: Re-enable these when ready for multi-platform releases
-          # - os: ubuntu-latest
-          #   arch: x64
-          #   platform: linux
-          # - os: windows-latest
-          #   arch: x64
-          #   platform: win32
+          - os: windows-latest
+            arch: x64
+            platform: win32
 
     runs-on: ${{ matrix.os }}
 
@@ -62,13 +56,22 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pnpm-store-
 
+      - name: Install CUDA Toolkit
+        if: matrix.platform == 'win32'
+        uses: Jimver/cuda-toolkit@v0.2.19
+        id: cuda-toolkit
+        with:
+          cuda: '12.1.0'
+          method: 'network'
+          sub-packages: '["cudart", "cublas", "cufft", "curand", "cusparse", "nvrtc", "cudnn"]'
+
       # Cache Python standalone + dependencies to speed up builds
       - name: Cache Python environment
         uses: actions/cache@v4
         id: python-cache
         with:
           path: build/python-standalone
-          key: ${{ runner.os }}-${{ matrix.arch }}-python-ml-${{ hashFiles('scripts/requirements-core.txt', 'scripts/requirements-ml.txt', 'scripts/install-bundled-deps.sh') }}
+          key: ${{ runner.os }}-${{ matrix.arch }}-python-ml-${{ hashFiles('scripts/requirements-core.txt', 'scripts/requirements-ml.txt', 'scripts/requirements-ml-windows.txt', 'scripts/install-bundled-deps.sh') }}
 
       - name: Install dependencies
         run: pnpm install
@@ -91,24 +94,26 @@ jobs:
       - name: Verify Python dependencies (strict version check)
         shell: bash
         run: |
-          PYTHON_BIN="build/python-standalone/python-macos-arm64/bin/python3"
-          SITE_PACKAGES="build/python-standalone/python-macos-arm64/lib/python3.12/site-packages"
+          if [ "${{ matrix.platform }}" = "win32" ]; then
+            PYTHON_BIN="build/python-standalone/python-windows-x64/python.exe"
+            SITE_PACKAGES="build/python-standalone/python-windows-x64/Lib/site-packages"
+          else
+            PYTHON_BIN="build/python-standalone/python-macos-arm64/bin/python3"
+            SITE_PACKAGES="build/python-standalone/python-macos-arm64/lib/python3.12/site-packages"
+          fi
           echo "=== Installed ML packages ==="
           "$PYTHON_BIN" -m pip list --path "$SITE_PACKAGES" | grep -E "torch|whisper|pyannote|mlx|transformers|huggingface|sentence|numpy" || true
           echo ""
           echo "=== STRICT Version Verification ==="
 
-          # Get package list once
           PACKAGE_LIST=$("$PYTHON_BIN" -m pip list --path "$SITE_PACKAGES" --format=freeze 2>/dev/null)
           FAILED=0
 
-          # Check if a package is installed (any version)
           check_installed() {
             local pkg=$1
             local pattern=$(echo "$pkg" | sed 's/-/_/g; s/\./_/g')
             local version=$(echo "$PACKAGE_LIST" | grep -i "^${pattern}==" | cut -d'=' -f3 | head -1)
             if [ -z "$version" ]; then
-              # Try original name
               version=$(echo "$PACKAGE_LIST" | grep -i "^${pkg}==" | cut -d'=' -f3 | head -1)
             fi
             if [ -n "$version" ]; then
@@ -122,10 +127,8 @@ jobs:
           check_version() {
             local pkg=$1
             local expected=$2
-            # Normalize package name (pip uses underscores/hyphens interchangeably)
             local actual=$(echo "$PACKAGE_LIST" | grep -i "^${pkg}==" | cut -d'=' -f3 | head -1)
             if [ -z "$actual" ]; then
-              # Try with underscores
               local pkg_underscore=$(echo "$pkg" | sed 's/-/_/g; s/\./_/g')
               actual=$(echo "$PACKAGE_LIST" | grep -i "^${pkg_underscore}==" | cut -d'=' -f3 | head -1)
             fi
@@ -138,7 +141,7 @@ jobs:
             fi
           }
 
-          # Core document processing packages (verify installed)
+          # Core document processing packages
           check_installed "PyMuPDF" || FAILED=1
           check_installed "python-docx" || FAILED=1
           check_installed "openpyxl" || FAILED=1
@@ -156,7 +159,11 @@ jobs:
           check_version "pyannote.database" "5.1.3" || FAILED=1
           check_version "pyannote.pipeline" "3.0.1" || FAILED=1
           check_version "pyannote.metrics" "3.2.1" || FAILED=1
-          check_version "mlx-whisper" "0.4.3" || FAILED=1
+
+          # Platform-specific checks
+          if [ "${{ matrix.platform }}" = "darwin" ]; then
+            check_version "mlx-whisper" "0.4.3" || FAILED=1
+          fi
 
           echo ""
           if [ $FAILED -eq 1 ]; then
@@ -167,16 +174,21 @@ jobs:
           fi
           echo "=== All versions verified ✓ ==="
 
+      - name: Bundle CUDA runtime libraries
+        if: matrix.platform == 'win32'
+        shell: bash
+        run: ./scripts/bundle-cuda-libs.sh
+
       # Cache whisper models to avoid re-downloading every build (~145MB for whisper-base)
       - name: Cache Whisper models
         uses: actions/cache@v4
         id: whisper-cache
         with:
           path: build/resources/whisper-models
-          key: whisper-models-v3-${{ hashFiles('scripts/prepare-whisper-models.sh') }}
+          key: whisper-models-v3-${{ runner.os }}-${{ hashFiles('scripts/prepare-whisper-models.sh', 'scripts/prepare-whisper-models-windows.sh') }}
 
       - name: Prepare Whisper models for bundling
-        if: steps.whisper-cache.outputs.cache-hit != 'true'
+        if: matrix.platform == 'darwin' && steps.whisper-cache.outputs.cache-hit != 'true'
         shell: bash
         run: |
           echo "Downloading Whisper models for offline transcription..."
@@ -184,10 +196,23 @@ jobs:
         env:
           HF_HUB_DISABLE_PROGRESS_BARS: 1
 
+      - name: Prepare Whisper models for bundling (Windows)
+        if: matrix.platform == 'win32' && steps.whisper-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          echo "Downloading CTranslate2 Whisper models..."
+          ./scripts/prepare-whisper-models-windows.sh
+        env:
+          HF_HUB_DISABLE_PROGRESS_BARS: 1
+
       - name: Verify Whisper models are present
         shell: bash
         run: |
-          WHISPER_DIR="build/resources/whisper-models/huggingface/hub/models--mlx-community--whisper-base-mlx"
+          if [ "${{ matrix.platform }}" = "win32" ]; then
+            WHISPER_DIR="build/resources/whisper-models/huggingface/hub/models--Systran--faster-whisper-base"
+          else
+            WHISPER_DIR="build/resources/whisper-models/huggingface/hub/models--mlx-community--whisper-base-mlx"
+          fi
           if [ ! -d "$WHISPER_DIR" ]; then
             echo "ERROR: Whisper models directory not found at $WHISPER_DIR"
             echo "Contents of build/resources/whisper-models:"
@@ -252,6 +277,7 @@ jobs:
           name: verbatim-studio-${{ matrix.platform }}-${{ matrix.arch }}
           path: |
             dist/*.dmg
+            dist/*.exe
           if-no-files-found: error
 
   release:

@@ -46,9 +46,12 @@ async function bootstrap(): Promise<void> {
     initAutoUpdater(mainWindow);
   } catch (error) {
     console.error('[Main] Failed to start:', error);
+    const logHint = process.platform === 'darwin'
+      ? 'Check Console.app for more details.'
+      : 'Check the application logs for more details.';
     dialog.showErrorBox(
       'Verbatim Studio - Startup Failed',
-      `Failed to start backend:\n\n${error instanceof Error ? error.message : String(error)}\n\nCheck Console.app for more details.`
+      `Failed to start backend:\n\n${error instanceof Error ? error.message : String(error)}\n\n${logHint}`
     );
     app.quit();
   }

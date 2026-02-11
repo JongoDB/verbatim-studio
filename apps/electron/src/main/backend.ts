@@ -53,18 +53,26 @@ class BackendManager extends EventEmitter {
     console.log(`[Backend] Python exists: ${fs.existsSync(pythonPath)}`);
     console.log(`[Backend] Backend dir exists: ${fs.existsSync(backendPath)}`);
 
-    // Ensure common binary paths are in PATH (Homebrew, MacPorts, etc.)
-    // Electron apps don't inherit the user's shell PATH
-    const additionalPaths = [
-      '/opt/homebrew/bin',      // Homebrew on Apple Silicon
-      '/opt/homebrew/sbin',
-      '/usr/local/bin',         // Homebrew on Intel / common installs
-      '/usr/local/sbin',
-      '/opt/local/bin',         // MacPorts
-      '/opt/local/sbin',
-    ];
-    const currentPath = process.env.PATH || '/usr/bin:/bin';
-    const extendedPath = [...additionalPaths, currentPath].join(':');
+    // Build PATH based on platform
+    let extendedPath: string;
+    if (process.platform === 'win32') {
+      // Windows: prepend bundled CUDA DLLs directory so PyTorch/llama.cpp find them
+      const cudaPath = path.join(process.resourcesPath, 'cuda');
+      extendedPath = [cudaPath, process.env.PATH || ''].join(';');
+    } else {
+      // macOS/Linux: add common binary paths (Homebrew, MacPorts, etc.)
+      // Electron apps don't inherit the user's shell PATH
+      const additionalPaths = [
+        '/opt/homebrew/bin',
+        '/opt/homebrew/sbin',
+        '/usr/local/bin',
+        '/usr/local/sbin',
+        '/opt/local/bin',
+        '/opt/local/sbin',
+      ];
+      const currentPath = process.env.PATH || '/usr/bin:/bin';
+      extendedPath = [...additionalPaths, currentPath].join(':');
+    }
 
     // Use user data directory for database to persist across updates
     // The app bundle gets replaced on update, so storing db there causes data loss
@@ -118,7 +126,7 @@ class BackendManager extends EventEmitter {
       console.log('[Backend] Started successfully');
     } catch (error) {
       console.error('[Backend] Health check failed:', error);
-      this.process?.kill('SIGKILL');
+      this.killProcess(true);
       this.process = null;
       this._port = null;
       throw error;
@@ -138,7 +146,7 @@ class BackendManager extends EventEmitter {
       const timeout = setTimeout(() => {
         if (this.process) {
           console.log('[Backend] Force killing');
-          this.process.kill('SIGKILL');
+          this.killProcess(true);
         }
         this.isStopping = false;
         this._port = null;
@@ -152,8 +160,8 @@ class BackendManager extends EventEmitter {
         resolve();
       });
 
-      console.log('[Backend] Sending SIGTERM');
-      this.process!.kill('SIGTERM');
+      console.log('[Backend] Stopping process');
+      this.killProcess(false);
     });
   }
 
@@ -161,9 +169,28 @@ class BackendManager extends EventEmitter {
     return this.process !== null;
   }
 
+  /** Platform-aware process termination. */
+  private killProcess(force: boolean): void {
+    if (!this.process?.pid) return;
+
+    if (process.platform === 'win32') {
+      // Windows: use taskkill to kill the process tree
+      try {
+        const args = ['/T', '/PID', String(this.process.pid)];
+        if (force) args.unshift('/F');
+        spawn('taskkill', args, { stdio: 'ignore' });
+      } catch (err) {
+        console.error('[Backend] taskkill failed:', err);
+        this.process.kill();
+      }
+    } else {
+      this.process.kill(force ? 'SIGKILL' : 'SIGTERM');
+    }
+  }
+
   /** Synchronously force-kill the backend process (for use in process.on('exit')) */
   forceKill(): void {
-    this.process?.kill('SIGKILL');
+    this.killProcess(true);
   }
 
   private getPythonPath(): string {

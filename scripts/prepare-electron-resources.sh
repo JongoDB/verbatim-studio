@@ -58,6 +58,13 @@ if [ -d "$RESOURCES_DIR/ffmpeg" ]; then
   PRESERVED_ITEMS+=("ffmpeg")
 fi
 
+# Preserve cuda libs if they exist (Windows CUDA DLLs)
+if [ -d "$RESOURCES_DIR/cuda" ]; then
+  echo "Preserving cuda directory..."
+  mv "$RESOURCES_DIR/cuda" "$TEMP_PRESERVE/"
+  PRESERVED_ITEMS+=("cuda")
+fi
+
 rm -rf "$RESOURCES_DIR"
 mkdir -p "$RESOURCES_DIR"
 

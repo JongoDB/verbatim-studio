@@ -6,6 +6,7 @@ Enterprise tier uses external services (PostgreSQL, Ollama, Redis queue).
 """
 
 import logging
+import sys
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -147,6 +148,11 @@ class AdapterFactory:
 
         # Create engine based on selection
         if engine == "mlx-whisper":
+            if sys.platform != "darwin":
+                raise RuntimeError(
+                    "MLX Whisper is only available on macOS. "
+                    "Use engine='whisperx' or engine='auto' on Windows/Linux."
+                )
             from adapters.transcription.mlx_whisper import MlxWhisperTranscriptionEngine
 
             logger.info(
@@ -324,6 +330,11 @@ def create_transcription_engine_from_settings(settings_dict: dict) -> "ITranscri
         logger.info("Auto-detected transcription engine: %s", engine)
 
     if engine == "mlx-whisper":
+        if sys.platform != "darwin":
+            raise RuntimeError(
+                "MLX Whisper is only available on macOS. "
+                "Use engine='whisperx' or engine='auto' on Windows/Linux."
+            )
         from adapters.transcription.mlx_whisper import MlxWhisperTranscriptionEngine
 
         logger.info(

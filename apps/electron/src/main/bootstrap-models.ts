@@ -12,13 +12,22 @@ import * as path from 'path';
 
 // Model definitions - which models are bundled and where they go
 // Note: Only whisper-base is bundled. Pyannote models require HF auth and are downloaded on first use.
-const BUNDLED_MODELS = [
-  {
-    name: 'whisper-base-mlx',
-    source: 'whisper-models/huggingface/hub/models--mlx-community--whisper-base-mlx',
-    destination: 'huggingface/hub/models--mlx-community--whisper-base-mlx',
-  },
-];
+// macOS uses MLX-format models, Windows uses CTranslate2-format models
+const BUNDLED_MODELS = process.platform === 'win32'
+  ? [
+      {
+        name: 'whisper-base-ct2',
+        source: 'whisper-models/huggingface/hub/models--Systran--faster-whisper-base',
+        destination: 'huggingface/hub/models--Systran--faster-whisper-base',
+      },
+    ]
+  : [
+      {
+        name: 'whisper-base-mlx',
+        source: 'whisper-models/huggingface/hub/models--mlx-community--whisper-base-mlx',
+        destination: 'huggingface/hub/models--mlx-community--whisper-base-mlx',
+      },
+    ];
 
 /**
  * Get the user's cache directory for models.

@@ -101,6 +101,26 @@ if [ "$PLATFORM" = "macos" ] && [ "$ARCH" = "arm64" ]; then
     --constraint "$REQUIREMENTS_ML" \
     -r "$REQUIREMENTS_ML"
 
+elif [ "$PLATFORM" = "windows" ]; then
+  echo "Installing for Windows x64 (CUDA PyTorch)..."
+
+  REQUIREMENTS_ML_WIN="$SCRIPT_DIR/requirements-ml-windows.txt"
+  CUDA_INDEX="https://download.pytorch.org/whl/cu121"
+
+  # Step 1: Install the pinned packages without their dependencies
+  "$PYTHON_BIN" -m pip install \
+    --target "$SITE_PACKAGES" \
+    --no-deps \
+    --extra-index-url "$CUDA_INDEX" \
+    -r "$REQUIREMENTS_ML_WIN"
+
+  # Step 2: Install missing sub-dependencies with constraints
+  "$PYTHON_BIN" -m pip install \
+    --target "$SITE_PACKAGES" \
+    --constraint "$REQUIREMENTS_ML_WIN" \
+    --extra-index-url "$CUDA_INDEX" \
+    -r "$REQUIREMENTS_ML_WIN"
+
 else
   echo "Installing for ${PLATFORM}-${ARCH} (excludes mlx-whisper)..."
 
