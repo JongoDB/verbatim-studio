@@ -1,15 +1,15 @@
 # ML dependencies for Windows x64 + CUDA
 # Fork of requirements-ml.txt:
 # - Removes mlx-whisper (Apple Silicon only)
-# - Sources PyTorch from CUDA 12.1 index
-# Install with: --extra-index-url https://download.pytorch.org/whl/cu121
+# - Sources PyTorch from CUDA 12.6 index
+# Install with: --extra-index-url https://download.pytorch.org/whl/cu126
 
 # =============================================================================
-# PyTorch ecosystem - CUDA 12.1
+# PyTorch ecosystem - CUDA 12.6
 # =============================================================================
-torch==2.8.0+cu121
-torchaudio==2.8.0+cu121
-torchvision==0.23.0+cu121
+torch==2.8.0+cu126
+torchaudio==2.8.0+cu126
+torchvision==0.23.0+cu126
 
 # =============================================================================
 # HuggingFace ecosystem - version-critical for whisperx compatibility

@@ -39,7 +39,6 @@ DLL_PATTERNS=(
   "cublas64_*.dll"
   "cublasLt64_*.dll"
   "cudart64_*.dll"
-  "cudnn*.dll"
   "cufft64_*.dll"
   "curand64_*.dll"
   "cusparse64_*.dll"

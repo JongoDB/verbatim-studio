@@ -105,7 +105,7 @@ elif [ "$PLATFORM" = "windows" ]; then
   echo "Installing for Windows x64 (CUDA PyTorch)..."
 
   REQUIREMENTS_ML_WIN="$SCRIPT_DIR/requirements-ml-windows.txt"
-  CUDA_INDEX="https://download.pytorch.org/whl/cu121"
+  CUDA_INDEX="https://download.pytorch.org/whl/cu126"
 
   # Step 1: Install the pinned packages without their dependencies
   "$PYTHON_BIN" -m pip install \

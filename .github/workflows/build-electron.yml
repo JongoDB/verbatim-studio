@@ -61,7 +61,7 @@ jobs:
         uses: Jimver/cuda-toolkit@v0.2.19
         id: cuda-toolkit
         with:
-          cuda: '12.1.0'
+          cuda: '12.6.3'
           method: 'network'
           sub-packages: '["cudart", "cublas", "cufft", "curand", "cusparse", "nvrtc"]'
 
@@ -148,8 +148,13 @@ jobs:
           check_installed "python-pptx" || FAILED=1
 
           # ML packages (verify exact versions)
-          check_version "torch" "2.8.0" || FAILED=1
-          check_version "torchaudio" "2.8.0" || FAILED=1
+          if [ "${{ matrix.platform }}" = "win32" ]; then
+            check_version "torch" "2.8.0+cu126" || FAILED=1
+            check_version "torchaudio" "2.8.0+cu126" || FAILED=1
+          else
+            check_version "torch" "2.8.0" || FAILED=1
+            check_version "torchaudio" "2.8.0" || FAILED=1
+          fi
           check_version "huggingface-hub" "0.36.1" || FAILED=1
           check_version "transformers" "4.48.0" || FAILED=1
           check_version "numpy" "2.0.2" || FAILED=1
