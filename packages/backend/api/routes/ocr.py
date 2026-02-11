@@ -226,12 +226,15 @@ def _do_download_sync(model_id: str, repo: str, dest_path: Path, marker_file: Pa
         )
         logger.info("OCR model download complete: %s -> %s", model_id, result)
 
-        # Verify the model.safetensors file exists
+        # Verify essential model files exist (weights + processor config)
         safetensors_path = dest_path / "model.safetensors"
         if not safetensors_path.exists():
             raise RuntimeError(f"Download completed but model.safetensors not found at {safetensors_path}")
         logger.info("Verified model.safetensors exists: %s (%.2f GB)",
                     safetensors_path, safetensors_path.stat().st_size / 1e9)
+        preprocessor_path = dest_path / "preprocessor_config.json"
+        if not preprocessor_path.exists():
+            raise RuntimeError(f"Download completed but preprocessor_config.json not found at {preprocessor_path}")
     except Exception as exc:
         logger.exception("OCR model download failed: %s - %s", model_id, exc)
         # Clean up partial download on failure

@@ -54,9 +54,10 @@ def is_model_downloaded(model_id: str) -> bool:
     if is_model_downloading(model_id):
         return False
 
-    # Check for key model files (safetensors or pytorch files)
-    model_files = list(path.glob("*.safetensors")) + list(path.glob("*.bin"))
-    return len(model_files) > 0
+    # Check for model weights AND processor files required by AutoProcessor
+    has_weights = list(path.glob("*.safetensors")) or list(path.glob("*.bin"))
+    has_processor = (path / "preprocessor_config.json").exists()
+    return bool(has_weights) and has_processor
 
 
 def get_model_size_on_disk(model_id: str) -> int | None:
