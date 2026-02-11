@@ -1,7 +1,3 @@
-<p align="center">
-  <img src="docs/screenshots/dashboard-dark.png" alt="Verbatim Studio Dashboard" width="100%">
-</p>
-
 <h1 align="center">
   <img src="docs/screenshots/logo.png" alt="Verbatim Studio Logo" width="120"><br>
   Verbatim Studio
@@ -23,6 +19,10 @@
   <img src="https://img.shields.io/github/v/tag/JongoDB/verbatim-studio?label=version&color=blue" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License">
   <img src="https://img.shields.io/badge/platform-macOS-lightgrey.svg" alt="Platform">
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/dashboard-dark.png" alt="Verbatim Studio Dashboard" width="100%">
 </p>
 
 ---
@@ -77,7 +77,15 @@ Verbatim Studio works just as well for everyday use:
 - **Video support** — Drop in MP4, MOV, WebM, or MKV files and get transcripts automatically
 
 <p align="center">
-  <img src="docs/screenshots/live-transcription.png" alt="Live Transcription" width="80%">
+  <img src="docs/screenshots/transcript-editor.png" alt="Transcript Editor with Speaker Diarization and AI Analysis" width="100%">
+</p>
+
+### Live Transcription
+
+Record directly from your microphone with real-time speech-to-text. Choose your language, enable speaker diarization, and watch the transcript appear as you speak. Save sessions as recordings for later editing and export.
+
+<p align="center">
+  <img src="docs/screenshots/live-transcription.png" alt="Live Transcription" width="100%">
 </p>
 
 ### Max: Your AI-Powered Verbatim Assistant
@@ -93,7 +101,25 @@ Max isn't just a chatbot—it's a research tool that actually understands your c
 All powered by IBM Granite, running 100% locally. No API keys. No usage limits. No data leaving your machine.
 
 <p align="center">
-  <img src="docs/screenshots/ai-assistant.png" alt="Max AI Assistant" width="80%">
+  <img src="docs/screenshots/ai-assistant.png" alt="Max AI Assistant" width="100%">
+</p>
+
+### Documents & OCR
+
+Upload PDFs and images for automatic text extraction. The built-in OCR model (Qwen2-VL) reads printed text and handwriting alike — all processed locally on your machine.
+
+<p align="center">
+  <img src="docs/screenshots/document-ocr.png" alt="Document OCR - Handwriting Recognition" width="100%">
+</p>
+
+### Find Anything, Instantly
+
+- **Semantic search** — Find content by meaning, not just exact keywords
+- **Search everything** — Files, transcripts, documents, notes, and chat history in one place
+- **Smart results** — See context snippets with keyword highlighting and semantic match indicators
+
+<p align="center">
+  <img src="docs/screenshots/search-semantic.png" alt="Semantic and Keyword Search" width="100%">
 </p>
 
 ### Professional Editing Tools
@@ -104,12 +130,6 @@ All powered by IBM Granite, running 100% locally. No API keys. No usage limits. 
 - **Keyboard-first workflow** — Control playback without leaving your keyboard
 - **Inline annotations** — Add notes directly to your documents and transcripts
 
-### Find Anything, Instantly
-
-- **Semantic search** — Find content by meaning, not just exact keywords
-- **Search everything** — Files, transcripts, documents, notes, and chat history in one place
-- **Smart results** — See context snippets so you know exactly what you're clicking into
-
 ### Organize Your Way
 
 - **Real folders** — Projects map to actual directories on your filesystem
@@ -117,8 +137,12 @@ All powered by IBM Granite, running 100% locally. No API keys. No usage limits. 
 - **Flexible storage** — Keep files local, on network drives, or synced with Google Drive, OneDrive, and Dropbox
 - **Full exports** — TXT, SRT, VTT, JSON, or complete backup archives
 
+### Local AI Models
+
+All AI runs on your machine. Download and manage models directly from the settings page — no API keys, no cloud dependencies. Deactivate models when you don't need them to reclaim memory.
+
 <p align="center">
-  <img src="docs/screenshots/settings.png" alt="Settings" width="80%">
+  <img src="docs/screenshots/settings-ai.png" alt="AI Model Management" width="100%">
 </p>
 
 ---
