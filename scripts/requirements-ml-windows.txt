@@ -9,7 +9,8 @@
 # =============================================================================
 torch==2.8.0+cu126
 torchaudio==2.8.0+cu126
-torchvision==0.23.0+cu126
+# torchvision excluded from bundle to reduce size (~1GB)
+# OCR feature installs it on-demand when user downloads OCR models
 
 # =============================================================================
 # HuggingFace ecosystem - version-critical for whisperx compatibility

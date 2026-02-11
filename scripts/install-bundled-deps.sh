@@ -197,9 +197,14 @@ check_installed "python_docx" || FAILED=1
 check_installed "openpyxl" || FAILED=1
 check_installed "python_pptx" || FAILED=1
 
-# Critical ML version checks
-verify_version "torch" "2.8.0" || FAILED=1
-verify_version "torchaudio" "2.8.0" || FAILED=1
+# Critical ML version checks (CUDA builds have +cu126 suffix)
+if [ "$PLATFORM" = "windows" ]; then
+  verify_version "torch" "2.8.0+cu126" || FAILED=1
+  verify_version "torchaudio" "2.8.0+cu126" || FAILED=1
+else
+  verify_version "torch" "2.8.0" || FAILED=1
+  verify_version "torchaudio" "2.8.0" || FAILED=1
+fi
 verify_version "huggingface_hub" "0.36.1" || FAILED=1
 verify_version "transformers" "4.48.0" || FAILED=1
 verify_version "pyannote.audio" "3.3.2" || FAILED=1

@@ -253,31 +253,69 @@ jobs:
           echo "=== Before cleanup ==="
           du -sh "$SITE_PACKAGES" || true
 
-          # Remove PyTorch test files (~300MB)
+          # ---------------------------------------------------------------
+          # 1. Remove torchvision entirely (~500MB-1GB)
+          #    Only needed by optional OCR feature, which installs on-demand
+          # ---------------------------------------------------------------
+          rm -rf "$SITE_PACKAGES/torchvision"
+          rm -rf "$SITE_PACKAGES/torchvision-"*.dist-info
+
+          # ---------------------------------------------------------------
+          # 2. Remove PyTorch development/build files (~1-2GB)
+          # ---------------------------------------------------------------
+          # C++ headers (only needed for torch C++ extensions)
+          rm -rf "$SITE_PACKAGES/torch/include"
+          # CMake configs
+          rm -rf "$SITE_PACKAGES/torch/share"
+          rm -rf "$SITE_PACKAGES/torch/lib/cmake"
+          # Static import libraries (.lib) - only .dll needed at runtime
+          find "$SITE_PACKAGES/torch" -name "*.lib" -delete 2>/dev/null || true
+          # Debug symbols
+          find "$SITE_PACKAGES/torch" -name "*.pdb" -delete 2>/dev/null || true
+
+          # ---------------------------------------------------------------
+          # 3. Remove PyTorch subsystems not needed for inference
+          # ---------------------------------------------------------------
+          # Test files (~300MB)
           rm -rf "$SITE_PACKAGES/torch/test"
           rm -rf "$SITE_PACKAGES/torch/testing/_internal"
+          # JIT compiler backend (torch.compile) - not used for inference
+          rm -rf "$SITE_PACKAGES/torch/_inductor"
+          # Distributed training - not needed in desktop app
+          rm -rf "$SITE_PACKAGES/torch/distributed"
+          # ONNX export - not used
+          rm -rf "$SITE_PACKAGES/torch/onnx"
+          # Profiling tools
+          rm -rf "$SITE_PACKAGES/torch/profiler"
+          # Benchmark utilities
+          rm -rf "$SITE_PACKAGES/torch/utils/benchmark"
 
-          # Remove debug symbols and cmake files
-          find "$SITE_PACKAGES/torch" -name "*.pdb" -delete 2>/dev/null || true
-          rm -rf "$SITE_PACKAGES/torch/lib/cmake"
-
-          # Remove duplicate NVIDIA CUDA libraries bundled by PyTorch
-          # (we bundle our own from the CUDA toolkit in build/resources/cuda/)
+          # ---------------------------------------------------------------
+          # 4. Remove duplicate NVIDIA CUDA libraries
+          #    (we bundle our own from the CUDA toolkit)
+          # ---------------------------------------------------------------
           rm -rf "$SITE_PACKAGES/nvidia"
 
-          # Remove unnecessary data files
-          rm -rf "$SITE_PACKAGES/torchvision/datasets"
+          # ---------------------------------------------------------------
+          # 5. Remove unnecessary files from other packages
+          # ---------------------------------------------------------------
           rm -rf "$SITE_PACKAGES/speechbrain/tests"
           rm -rf "$SITE_PACKAGES/lightning/fabric/test_utilities"
 
-          # Remove __pycache__ directories
+          # ---------------------------------------------------------------
+          # 6. General cleanup
+          # ---------------------------------------------------------------
+          # __pycache__ directories
           find "$SITE_PACKAGES" -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
-
-          # Remove .dist-info directories (not needed at runtime)
+          # .dist-info directories (not needed at runtime)
           find "$SITE_PACKAGES" -type d -name "*.dist-info" -exec rm -rf {} + 2>/dev/null || true
 
           echo "=== After cleanup ==="
           du -sh "$SITE_PACKAGES" || true
+          echo "=== Largest remaining directories ==="
+          du -sh "$SITE_PACKAGES"/torch/lib 2>/dev/null || true
+          du -sh "$SITE_PACKAGES"/torch 2>/dev/null || true
+          du -sh "$SITE_PACKAGES"/torchaudio 2>/dev/null || true
 
       - name: Update version from git tag
         shell: bash
