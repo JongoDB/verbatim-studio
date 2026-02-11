@@ -185,7 +185,7 @@ jobs:
         id: whisper-cache
         with:
           path: build/resources/whisper-models
-          key: whisper-models-v3-${{ hashFiles('scripts/prepare-whisper-models.sh', 'scripts/prepare-whisper-models-windows.sh') }}
+          key: whisper-models-v3-${{ runner.os }}-${{ hashFiles('scripts/prepare-whisper-models.sh', 'scripts/prepare-whisper-models-windows.sh') }}
 
       - name: Prepare Whisper models for bundling
         if: matrix.platform == 'darwin' && steps.whisper-cache.outputs.cache-hit != 'true'
