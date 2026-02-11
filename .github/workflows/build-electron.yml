@@ -245,6 +245,40 @@ jobs:
         shell: bash
         run: ./scripts/prepare-electron-resources.sh
 
+      - name: Strip Python environment (reduce bundle size)
+        if: matrix.platform == 'win32'
+        shell: bash
+        run: |
+          SITE_PACKAGES="build/python-standalone/python-windows-x64/Lib/site-packages"
+          echo "=== Before cleanup ==="
+          du -sh "$SITE_PACKAGES" || true
+
+          # Remove PyTorch test files (~300MB)
+          rm -rf "$SITE_PACKAGES/torch/test"
+          rm -rf "$SITE_PACKAGES/torch/testing/_internal"
+
+          # Remove debug symbols and cmake files
+          find "$SITE_PACKAGES/torch" -name "*.pdb" -delete 2>/dev/null || true
+          rm -rf "$SITE_PACKAGES/torch/lib/cmake"
+
+          # Remove duplicate NVIDIA CUDA libraries bundled by PyTorch
+          # (we bundle our own from the CUDA toolkit in build/resources/cuda/)
+          rm -rf "$SITE_PACKAGES/nvidia"
+
+          # Remove unnecessary data files
+          rm -rf "$SITE_PACKAGES/torchvision/datasets"
+          rm -rf "$SITE_PACKAGES/speechbrain/tests"
+          rm -rf "$SITE_PACKAGES/lightning/fabric/test_utilities"
+
+          # Remove __pycache__ directories
+          find "$SITE_PACKAGES" -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+
+          # Remove .dist-info directories (not needed at runtime)
+          find "$SITE_PACKAGES" -type d -name "*.dist-info" -exec rm -rf {} + 2>/dev/null || true
+
+          echo "=== After cleanup ==="
+          du -sh "$SITE_PACKAGES" || true
+
       - name: Update version from git tag
         shell: bash
         run: ./scripts/update-version.sh
