@@ -51,6 +51,21 @@ Verbatim Studio works just as well for everyday use:
 
 ---
 
+## System Requirements
+
+|  | Minimum | Recommended |
+|---|---|---|
+| **RAM** | 8 GB | 16 GB |
+| **Disk** | ~2 GB | ~8 GB |
+| **macOS** | Apple Silicon (M1/M2/M3/M4) | Apple Silicon (M1/M2/M3/M4) |
+| **Windows** | Coming soon | Coming soon |
+
+**Minimum** covers transcription and basic editing. **Recommended** includes the full AI suite (Max assistant, semantic search, OCR).
+
+> **Memory note:** When the AI model (IBM Granite 8B) is active, it uses approximately 5 GB of resident memory. If you're on a memory-constrained machine, you can deactivate the model in **Settings > AI** to reclaim that memory when you don't need the assistant or AI summaries.
+
+---
+
 ## Features
 
 ### Transcription That Actually Works

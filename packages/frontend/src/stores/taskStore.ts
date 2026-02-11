@@ -120,6 +120,13 @@ export const useHasActiveTasks = () => {
   return Array.from(tasks.values()).some((t) => t.status === 'running');
 };
 
+export const useSummarizeTaskForTranscript = (transcriptId: string) => {
+  const tasks = useTaskStore((state) => state.tasks);
+  return Array.from(tasks.values()).find(
+    (t) => t.taskType === 'summarize' && t.transcriptId === transcriptId && t.status === 'running'
+  ) ?? null;
+};
+
 export const useTotalTaskProgress = () => {
   const tasks = useTaskStore((state) => state.tasks);
   const active = Array.from(tasks.values()).filter((t) => t.status === 'running');

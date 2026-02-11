@@ -1,14 +1,16 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { api, type SummarizationResponse, type AIChatResponse } from '@/lib/api';
+import { useSummarizeTaskForTranscript } from '@/stores/taskStore';
 
 interface AIAnalysisPanelProps {
   transcriptId: string;
   existingSummary?: SummarizationResponse | null;
+  onSummaryComplete?: () => void;
 }
 
 type TabType = 'summary' | 'ask';
 
-export function AIAnalysisPanel({ transcriptId, existingSummary }: AIAnalysisPanelProps) {
+export function AIAnalysisPanel({ transcriptId, existingSummary, onSummaryComplete }: AIAnalysisPanelProps) {
   const [aiAvailable, setAiAvailable] = useState<boolean | null>(null); // null = loading
   const [activeTab, setActiveTab] = useState<TabType>('summary');
   const [isLoading, setIsLoading] = useState(false);
@@ -42,6 +44,18 @@ export function AIAnalysisPanel({ transcriptId, existingSummary }: AIAnalysisPan
     window.addEventListener('ai-status-changed', handleAiStatusChange);
     return () => window.removeEventListener('ai-status-changed', handleAiStatusChange);
   }, [checkAiStatus]);
+
+  // Background summary task tracking
+  const backgroundSummaryTask = useSummarizeTaskForTranscript(transcriptId);
+  const prevBackgroundTask = useRef(backgroundSummaryTask);
+
+  // When background task completes (transitions from running to gone), trigger parent refetch
+  useEffect(() => {
+    if (prevBackgroundTask.current && !backgroundSummaryTask) {
+      onSummaryComplete?.();
+    }
+    prevBackgroundTask.current = backgroundSummaryTask;
+  }, [backgroundSummaryTask, onSummaryComplete]);
 
   // Summary state - initialize with existing summary if provided
   const [summary, setSummary] = useState<SummarizationResponse | null>(existingSummary ?? null);
@@ -177,26 +191,45 @@ export function AIAnalysisPanel({ transcriptId, existingSummary }: AIAnalysisPan
           <div className="space-y-4">
             {!summary ? (
               <div className="text-center py-6">
-                <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-                  Generate an AI-powered summary of this transcript including key points, action items, and topics.
-                </p>
-                <button
-                  onClick={handleSummarize}
-                  disabled={isLoading}
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium disabled:opacity-50 transition-colors"
-                >
-                  {isLoading ? (
-                    <>
-                      <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                      </svg>
-                      Generating...
-                    </>
-                  ) : (
-                    'Generate Summary'
-                  )}
-                </button>
+                {backgroundSummaryTask ? (
+                  <>
+                    <svg className="w-6 h-6 mx-auto animate-spin text-purple-500 mb-3" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      AI summary in progress...
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      {backgroundSummaryTask.progress > 0
+                        ? `${backgroundSummaryTask.progress}% complete`
+                        : 'Starting...'}
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+                      Generate an AI-powered summary of this transcript including key points, action items, and topics.
+                    </p>
+                    <button
+                      onClick={handleSummarize}
+                      disabled={isLoading}
+                      className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium disabled:opacity-50 transition-colors"
+                    >
+                      {isLoading ? (
+                        <>
+                          <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                          </svg>
+                          Generating...
+                        </>
+                      ) : (
+                        'Generate Summary'
+                      )}
+                    </button>
+                  </>
+                )}
               </div>
             ) : (
               <div className="space-y-4">

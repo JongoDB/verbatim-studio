@@ -452,6 +452,33 @@ async def activate_model(model_id: str):
     return {"status": "activated", "model_id": model_id, "path": str(file_path)}
 
 
+@router.post("/models/{model_id}/deactivate")
+async def deactivate_model(model_id: str):
+    """Deactivate the active model and unload it from memory.
+
+    This frees the ~5 GB of RAM used by the LLM without deleting the model file.
+    The model can be re-activated later via the activate endpoint.
+    """
+    entry = MODEL_CATALOG.get(model_id)
+    if not entry:
+        raise HTTPException(status_code=404, detail="Model not in catalog")
+
+    active_id = _read_active_model()
+    if model_id != active_id:
+        raise HTTPException(status_code=400, detail="Model is not currently active")
+
+    # Clear active model state
+    _active_model_path().unlink(missing_ok=True)
+    settings.AI_MODEL_PATH = None
+
+    # Unload from memory
+    from adapters.ai.llama_cpp import cleanup_llama_service
+    cleanup_llama_service()
+
+    logger.info("Deactivated and unloaded model %s", model_id)
+    return {"status": "deactivated", "model_id": model_id}
+
+
 @router.delete("/models/{model_id}")
 async def delete_model(model_id: str):
     """Delete a downloaded model file. If it's the active model, deactivate first."""

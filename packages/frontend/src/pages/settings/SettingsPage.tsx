@@ -588,6 +588,16 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
     }
   }, [refreshAiModels]);
 
+  const handleDeactivateModel = useCallback(async (modelId: string) => {
+    try {
+      await api.ai.deactivateModel(modelId);
+      refreshAiModels();
+      window.dispatchEvent(new Event('ai-status-changed'));
+    } catch (err) {
+      setAiError(err instanceof Error ? err.message : 'Deactivation failed');
+    }
+  }, [refreshAiModels]);
+
   const handleDeleteModel = useCallback(async (modelId: string) => {
     try {
       await api.ai.deleteModel(modelId);
@@ -2603,6 +2613,15 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
                           className="px-3 py-1.5 text-xs font-medium rounded-lg bg-success text-success-foreground hover:bg-success/90 transition-colors"
                         >
                           Activate
+                        </button>
+                      )}
+
+                      {model.downloaded && model.active && aiDownloading !== model.id && (
+                        <button
+                          onClick={() => handleDeactivateModel(model.id)}
+                          className="px-3 py-1.5 text-xs font-medium rounded-lg border border-amber-500/50 text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 transition-colors"
+                        >
+                          Deactivate
                         </button>
                       )}
 

@@ -78,6 +78,37 @@ def get_llama_service(
     return _cached_service
 
 
+def cleanup_llama_service() -> None:
+    """Unload the cached LLM service to free memory.
+
+    Deletes the llama.cpp model from memory, clears the singleton cache,
+    and runs garbage collection. Frees ~4-5 GB for an 8B Q4 model.
+    """
+    import gc
+
+    global _cached_service, _cached_model_path
+
+    if _cached_service is not None:
+        logger.info("Unloading llama.cpp model to free memory")
+        if _cached_service._llm is not None:
+            del _cached_service._llm
+            _cached_service._llm = None
+        del _cached_service
+        _cached_service = None
+    _cached_model_path = None
+
+    gc.collect()
+
+    try:
+        import torch
+        if torch.backends.mps.is_available():
+            torch.mps.empty_cache()
+        elif torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    except ImportError:
+        pass
+
+
 class LlamaCppAIService(IAIService):
     """Llama.cpp-based AI service for local LLM inference.
 

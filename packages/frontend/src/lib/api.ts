@@ -1841,6 +1841,12 @@ class ApiClient {
         { method: 'POST' }
       ),
 
+    deactivateModel: (modelId: string) =>
+      this.request<{ status: string; model_id: string }>(
+        `/api/ai/models/${modelId}/deactivate`,
+        { method: 'POST' }
+      ),
+
     deleteModel: (modelId: string) =>
       this.request<{ status: string; model_id: string }>(
         `/api/ai/models/${modelId}`,
