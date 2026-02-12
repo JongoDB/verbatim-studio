@@ -22,6 +22,16 @@ fi
 NUMERIC_VERSION="${VERSION#v}"
 NUMERIC_VERSION="${NUMERIC_VERSION%+*}"
 
+# If version isn't valid semver (e.g. bare commit SHA on PR builds),
+# fall back to the version already in package.json
+if ! [[ "$NUMERIC_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    ELECTRON_PKG="$REPO_ROOT/apps/electron/package.json"
+    FALLBACK=$(grep -o '"version": *"[^"]*"' "$ELECTRON_PKG" | head -1 | sed 's/"version": *"//;s/"//')
+    echo "WARNING: '$NUMERIC_VERSION' is not valid semver, falling back to package.json version: $FALLBACK"
+    NUMERIC_VERSION="$FALLBACK"
+    VERSION="v$FALLBACK"
+fi
+
 # Update frontend version.ts
 VERSION_FILE="$REPO_ROOT/packages/frontend/src/version.ts"
 cat > "$VERSION_FILE" << EOF
