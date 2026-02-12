@@ -44,12 +44,14 @@ def _get_ffmpeg_path() -> str:
     # When running in Electron, VERBATIM_ELECTRON=1 is set
     if os.environ.get("VERBATIM_ELECTRON") == "1":
         # Try to find the resources path from the Python path
-        # The bundled Python is at resources/python/bin/python3
-        # FFmpeg should be at resources/ffmpeg/ffmpeg
+        #   macOS:   resources/python/bin/python3  (3 levels up)
+        #   Windows: resources/python/python.exe   (2 levels up)
         import sys
         python_path = Path(sys.executable)
-        # Go up from python/bin/python3 to resources, then into ffmpeg
-        resources_path = python_path.parent.parent.parent
+        if sys.platform == "win32":
+            resources_path = python_path.parent.parent          # resources/python/python.exe
+        else:
+            resources_path = python_path.parent.parent.parent   # resources/python/bin/python3
 
         if sys.platform == "win32":
             bundled_ffmpeg = resources_path / "ffmpeg" / "ffmpeg.exe"

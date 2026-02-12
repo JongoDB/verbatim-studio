@@ -76,13 +76,6 @@
         ]
       },
       {
-        "from": "../../build/resources/cuda",
-        "to": "cuda",
-        "filter": [
-          "**/*"
-        ]
-      },
-      {
         "from": "../../scripts/requirements-ml-windows.txt",
         "to": "requirements-ml-windows.txt"
       }
@@ -107,12 +100,20 @@
       "icon": "assets/icon.png",
       "target": [
         {
-          "target": "dir",
+          "target": "nsis",
           "arch": [
             "x64"
           ]
         }
       ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico",
+      "deleteAppDataOnUninstall": false
     },
     "linux": {
       "icon": "assets/icon.png",

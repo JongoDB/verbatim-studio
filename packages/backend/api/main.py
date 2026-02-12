@@ -13,13 +13,15 @@ def _setup_ffmpeg_path():
 
     from pathlib import Path
 
-    # In Electron, we're running from resources/python/bin/python3
-    # FFmpeg is at resources/ffmpeg/ffmpeg
+    # In Electron, we're running from:
+    #   macOS:   resources/python/bin/python3  (3 levels up to resources)
+    #   Windows: resources/python/python.exe   (2 levels up to resources)
     python_exe = Path(sys.executable)
 
-    # Go up from python/bin/python3 to resources, then into ffmpeg
-    # resources/python/bin/python3 -> resources/python/bin -> resources/python -> resources -> resources/ffmpeg
-    resources_path = python_exe.parent.parent.parent
+    if sys.platform == "win32":
+        resources_path = python_exe.parent.parent          # resources/python/python.exe
+    else:
+        resources_path = python_exe.parent.parent.parent   # resources/python/bin/python3
     ffmpeg_dir = resources_path / "ffmpeg"
 
     if ffmpeg_dir.exists():

@@ -41,8 +41,8 @@ export async function initializeApiUrl(): Promise<string> {
 
     // Check if running in Electron via preload
     if (window.electronAPI?.getApiUrl) {
-      // Retry a few times in case backend isn't ready yet (e.g., on reload)
-      for (let attempt = 0; attempt < 5; attempt++) {
+      // Retry with exponential backoff — first launch on Windows can take 30-60s
+      for (let attempt = 0; attempt < 10; attempt++) {
         try {
           console.log('[API] Calling electronAPI.getApiUrl() attempt', attempt + 1);
           const url = await window.electronAPI.getApiUrl();
@@ -53,8 +53,8 @@ export async function initializeApiUrl(): Promise<string> {
             return url;
           }
           // URL was null, wait and retry with exponential backoff
-          if (attempt < 4) {
-            const delay = 200 * Math.pow(2, attempt); // 200, 400, 800, 1600ms
+          if (attempt < 9) {
+            const delay = 500 * Math.pow(1.5, attempt); // 500, 750, 1125, 1687, ...
             await new Promise(resolve => setTimeout(resolve, delay));
           }
         } catch (err) {
@@ -71,11 +71,12 @@ export async function initializeApiUrl(): Promise<string> {
       return window.__VERBATIM_API_URL__;
     }
 
-    // If running in Electron (file:// protocol) but no URL yet, wait briefly for injection
-    if (window.location.protocol === 'file:') {
+    // Wait for injection regardless of protocol (file:// or custom://)
+    // On Windows, Electron may use a custom protocol instead of file://
+    if (typeof window.electronAPI !== 'undefined') {
       console.log('[API] Running in Electron, waiting for API URL injection...');
-      for (let i = 0; i < 10; i++) {
-        await new Promise(resolve => setTimeout(resolve, 100));
+      for (let i = 0; i < 20; i++) {
+        await new Promise(resolve => setTimeout(resolve, 200));
         if (window.__VERBATIM_API_URL__) {
           console.log('[API] Using injected backend URL (after wait):', window.__VERBATIM_API_URL__);
           cachedApiBaseUrl = window.__VERBATIM_API_URL__;

@@ -387,7 +387,10 @@ def _check_ffmpeg() -> tuple[bool, str | None, bool]:
     # Check for bundled ffmpeg first
     if os.environ.get("VERBATIM_ELECTRON") == "1":
         python_path = Path(sys.executable)
-        resources_path = python_path.parent.parent.parent
+        if sys.platform == "win32":
+            resources_path = python_path.parent.parent          # resources/python/python.exe
+        else:
+            resources_path = python_path.parent.parent.parent   # resources/python/bin/python3
 
         if sys.platform == "win32":
             bundled_ffmpeg = resources_path / "ffmpeg" / "ffmpeg.exe"

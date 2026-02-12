@@ -78,6 +78,7 @@ def _check_ocr_deps_installed() -> bool:
         import transformers
         from qwen_vl_utils import process_vision_info
         import accelerate
+        import torchvision
         return True
     except ImportError:
         return False
@@ -92,7 +93,11 @@ def _install_ocr_deps_sync() -> tuple[bool, str]:
 
     try:
         python_exe = sys.executable
-        pip_cmd = [python_exe, "-m", "pip", "install", "--upgrade"] + OCR_PYTHON_DEPS
+        pip_cmd = [python_exe, "-m", "pip", "install", "--upgrade"]
+        # On Windows, use PyTorch CUDA index to get compatible torchvision
+        if sys.platform == "win32":
+            pip_cmd += ["--extra-index-url", "https://download.pytorch.org/whl/cu126"]
+        pip_cmd += OCR_PYTHON_DEPS
 
         result = subprocess.run(
             pip_cmd,

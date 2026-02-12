@@ -318,29 +318,46 @@ export async function checkForUpdates(manual = false): Promise<void> {
       return;
     }
 
-    // Find the correct DMG asset for this architecture
-    const arch = process.arch === 'arm64' ? 'arm64' : 'x64';
-    const dmgAsset = latestRelease.assets.find((asset) => {
-      const name = asset.name.toLowerCase();
-      return name.endsWith('.dmg') && name.includes(arch);
-    });
+    // Find the correct asset for this platform and architecture
+    let updateAsset: GitHubAsset | undefined;
 
-    if (!dmgAsset) {
-      console.error('[Updater] No DMG asset found for architecture:', arch);
-      safeSend('update-error', {
-        message: `No download available for your Mac (${arch})`,
+    if (process.platform === 'win32') {
+      // Windows: look for NSIS Setup .exe
+      updateAsset = latestRelease.assets.find((asset) => {
+        const name = asset.name.toLowerCase();
+        return name.endsWith('.exe') && name.includes('setup');
       });
-      return;
+      if (!updateAsset) {
+        console.error('[Updater] No Windows installer asset found');
+        safeSend('update-error', {
+          message: 'No Windows installer available for this release',
+        });
+        return;
+      }
+    } else {
+      // macOS: look for DMG matching architecture
+      const arch = process.arch === 'arm64' ? 'arm64' : 'x64';
+      updateAsset = latestRelease.assets.find((asset) => {
+        const name = asset.name.toLowerCase();
+        return name.endsWith('.dmg') && name.includes(arch);
+      });
+      if (!updateAsset) {
+        console.error('[Updater] No DMG asset found for architecture:', arch);
+        safeSend('update-error', {
+          message: `No download available for your Mac (${arch})`,
+        });
+        return;
+      }
     }
 
-    console.log('[Updater] Update available:', latestVersion, dmgAsset.name);
+    console.log('[Updater] Update available:', latestVersion, updateAsset.name);
 
     safeSend('update-available', {
       version: latestVersion,
       releaseNotes: latestRelease.body,
       releaseName: latestRelease.name,
-      downloadUrl: dmgAsset.browser_download_url,
-      downloadSize: dmgAsset.size,
+      downloadUrl: updateAsset.browser_download_url,
+      downloadSize: updateAsset.size,
     });
 
     setLastUpdateCheck(Date.now());
@@ -368,55 +385,84 @@ export async function startUpdate(downloadUrl: string, version: string): Promise
     // Create temp directory
     await mkdir(UPDATE_DIR, { recursive: true });
 
-    const dmgPath = path.join(UPDATE_DIR, `update-${version}.dmg`);
+    if (process.platform === 'win32') {
+      // Windows: download NSIS installer and run it
+      const installerPath = path.join(UPDATE_DIR, `update-${version}.exe`);
 
-    // Download the DMG with progress reporting
-    console.log('[Updater] Downloading DMG...');
-    await downloadFile(downloadUrl, dmgPath, (percent) => {
-      safeSend('update-downloading', { percent });
-    });
+      console.log('[Updater] Downloading Windows installer...');
+      await downloadFile(downloadUrl, installerPath, (percent) => {
+        safeSend('update-downloading', { percent });
+      });
 
-    console.log('[Updater] Download complete, removing quarantine...');
+      console.log('[Updater] Download complete, launching installer...');
 
-    // Remove quarantine attribute
-    try {
-      await execFileAsync('xattr', ['-c', dmgPath]);
-    } catch (err) {
-      console.warn('[Updater] Failed to remove quarantine (non-fatal):', err);
+      // Notify the UI that the update is ready
+      safeSend('update-ready', { version });
+
+      // Launch the NSIS installer silently and detached
+      const child = spawn(installerPath, ['/S'], {
+        detached: true,
+        stdio: 'ignore',
+      });
+      child.unref();
+
+      // Quit the app after a short delay to allow the installer to start
+      setTimeout(() => {
+        console.log('[Updater] Quitting app for update...');
+        app.quit();
+      }, 500);
+    } else {
+      // macOS: download DMG and use updater script
+      const dmgPath = path.join(UPDATE_DIR, `update-${version}.dmg`);
+
+      // Download the DMG with progress reporting
+      console.log('[Updater] Downloading DMG...');
+      await downloadFile(downloadUrl, dmgPath, (percent) => {
+        safeSend('update-downloading', { percent });
+      });
+
+      console.log('[Updater] Download complete, removing quarantine...');
+
+      // Remove quarantine attribute
+      try {
+        await execFileAsync('xattr', ['-c', dmgPath]);
+      } catch (err) {
+        console.warn('[Updater] Failed to remove quarantine (non-fatal):', err);
+      }
+
+      // Mount the DMG
+      console.log('[Updater] Mounting DMG...');
+      const { stdout: mountOutput } = await execFileAsync('hdiutil', [
+        'attach',
+        '-nobrowse',
+        dmgPath,
+      ]);
+
+      // Parse the volume path
+      const volumePath = parseVolumePath(mountOutput);
+      console.log('[Updater] Mounted at:', volumePath);
+
+      // Write the updater script
+      console.log('[Updater] Writing updater script...');
+      const scriptPath = await writeUpdaterScript(volumePath, APP_NAME);
+
+      // Notify the UI that the update is ready
+      safeSend('update-ready', { version, scriptPath });
+
+      // Spawn the updater script detached
+      console.log('[Updater] Spawning updater script...');
+      const child = spawn(scriptPath, [], {
+        detached: true,
+        stdio: 'ignore',
+      });
+      child.unref();
+
+      // Quit the app after a short delay to allow the script to start
+      setTimeout(() => {
+        console.log('[Updater] Quitting app for update...');
+        app.quit();
+      }, 500);
     }
-
-    // Mount the DMG
-    console.log('[Updater] Mounting DMG...');
-    const { stdout: mountOutput } = await execFileAsync('hdiutil', [
-      'attach',
-      '-nobrowse',
-      dmgPath,
-    ]);
-
-    // Parse the volume path
-    const volumePath = parseVolumePath(mountOutput);
-    console.log('[Updater] Mounted at:', volumePath);
-
-    // Write the updater script
-    console.log('[Updater] Writing updater script...');
-    const scriptPath = await writeUpdaterScript(volumePath, APP_NAME);
-
-    // Notify the UI that the update is ready
-    safeSend('update-ready', { version, scriptPath });
-
-    // Spawn the updater script detached
-    console.log('[Updater] Spawning updater script...');
-    const child = spawn(scriptPath, [], {
-      detached: true,
-      stdio: 'ignore',
-    });
-    child.unref();
-
-    // Quit the app after a short delay to allow the script to start
-    setTimeout(() => {
-      console.log('[Updater] Quitting app for update...');
-      app.quit();
-    }, 500);
   } catch (err) {
     console.error('[Updater] Update failed:', err);
 

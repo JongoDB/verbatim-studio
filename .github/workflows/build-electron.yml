@@ -179,14 +179,6 @@ jobs:
           fi
           echo "=== All versions verified ✓ ==="
 
-      - name: Create CUDA directory placeholder
-        if: matrix.platform == 'win32'
-        shell: bash
-        run: |
-          # PyTorch bundles its own CUDA runtime DLLs in torch/lib/
-          # No need to separately bundle from CUDA toolkit (saves ~1GB)
-          mkdir -p build/resources/cuda
-
       # Cache whisper models to avoid re-downloading every build (~145MB for whisper-base)
       - name: Cache Whisper models
         uses: actions/cache@v4
@@ -294,10 +286,10 @@ jobs:
           rm -rf "$SITE_PACKAGES/torch/utils/benchmark"
 
           # ---------------------------------------------------------------
-          # 4. Remove duplicate NVIDIA CUDA libraries
-          #    (we bundle our own from the CUDA toolkit)
+          # 4. NVIDIA CUDA libraries — KEEP these!
+          #    nvidia-cudnn, nvidia-cublas, nvidia-nvjitlink etc. are needed
+          #    for GPU inference. PyTorch's torch/lib/ alone is not sufficient.
           # ---------------------------------------------------------------
-          rm -rf "$SITE_PACKAGES/nvidia"
 
           # ---------------------------------------------------------------
           # 5. Remove unnecessary files from other packages
@@ -319,6 +311,22 @@ jobs:
           du -sh "$SITE_PACKAGES"/torch/lib 2>/dev/null || true
           du -sh "$SITE_PACKAGES"/torch 2>/dev/null || true
           du -sh "$SITE_PACKAGES"/torchaudio 2>/dev/null || true
+
+      - name: Verify PyTorch and CUDA after stripping
+        if: matrix.platform == 'win32'
+        shell: bash
+        run: |
+          PYTHON_BIN="build/python-standalone/python-windows-x64/python.exe"
+          SITE_PACKAGES="build/python-standalone/python-windows-x64/Lib/site-packages"
+          echo "=== Verifying PyTorch imports after strip ==="
+          "$PYTHON_BIN" -c "
+          import torch
+          print('PyTorch version:', torch.__version__)
+          print('CUDA available:', torch.cuda.is_available())
+          import torchaudio
+          print('torchaudio version:', torchaudio.__version__)
+          print('All imports OK')
+          "
 
       - name: Update version from git tag
         shell: bash
@@ -351,28 +359,6 @@ jobs:
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
 
-      - name: Create Windows archive (ultra compression)
-        if: matrix.platform == 'win32'
-        shell: bash
-        run: |
-          cd dist/win-unpacked
-          echo "=== Unpacked app size ==="
-          du -sh . || true
-          # Use 7z ultra compression (LZMA2, dict=256MB) to fit under GitHub's 2GB limit
-          7z a -t7z -mx=9 -m0=lzma2 -md=256m -mfb=273 "../Verbatim Studio-0.39.0-win.7z" .
-          cd ..
-          echo "=== Archive size ==="
-          ls -lh "Verbatim Studio-0.39.0-win.7z"
-          FILE_SIZE=$(stat -c%s "Verbatim Studio-0.39.0-win.7z" 2>/dev/null || stat -f%z "Verbatim Studio-0.39.0-win.7z")
-          echo "Size in bytes: $FILE_SIZE"
-          if [ "$FILE_SIZE" -gt 2147483648 ]; then
-            echo "WARNING: Archive exceeds GitHub's 2GB limit ($FILE_SIZE bytes)"
-            echo "Splitting into volumes..."
-            rm "Verbatim Studio-0.39.0-win.7z"
-            7z a -t7z -mx=9 -m0=lzma2 -md=256m -mfb=273 -v1900m "../Verbatim Studio-0.39.0-win.7z" .
-            ls -lh ../Verbatim\ Studio-0.39.0-win.7z.*
-          fi
-
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -380,9 +366,6 @@ jobs:
           path: |
             dist/*.dmg
             dist/*.exe
-            dist/*.zip
-            dist/*.7z
-            dist/*.7z.*
           if-no-files-found: error
 
   release:

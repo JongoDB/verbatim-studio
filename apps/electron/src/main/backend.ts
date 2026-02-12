@@ -59,8 +59,7 @@ class BackendManager extends EventEmitter {
       // Windows: prepend PyTorch's bundled CUDA DLLs to PATH
       // PyTorch includes CUDA runtime in its torch/lib/ directory
       const torchLibPath = path.join(process.resourcesPath, 'python', 'Lib', 'site-packages', 'torch', 'lib');
-      const cudaPath = path.join(process.resourcesPath, 'cuda');
-      extendedPath = [torchLibPath, cudaPath, process.env.PATH || ''].join(';');
+      extendedPath = [torchLibPath, process.env.PATH || ''].join(';');
     } else {
       // macOS/Linux: add common binary paths (Homebrew, MacPorts, etc.)
       // Electron apps don't inherit the user's shell PATH
@@ -223,7 +222,7 @@ class BackendManager extends EventEmitter {
     }
   }
 
-  private async waitForHealth(timeout = 30000): Promise<void> {
+  private async waitForHealth(timeout = 60000): Promise<void> {
     const startTime = Date.now();
     const url = `http://127.0.0.1:${this._port}/health`;
 
