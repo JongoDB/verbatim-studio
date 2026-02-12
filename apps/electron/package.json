@@ -107,7 +107,7 @@
       "icon": "assets/icon.png",
       "target": [
         {
-          "target": "7z",
+          "target": "dir",
           "arch": [
             "x64"
           ]
