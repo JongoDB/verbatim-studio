@@ -102,23 +102,22 @@ if [ "$PLATFORM" = "macos" ] && [ "$ARCH" = "arm64" ]; then
     -r "$REQUIREMENTS_ML"
 
 elif [ "$PLATFORM" = "windows" ]; then
-  echo "Installing for Windows x64 (CUDA PyTorch)..."
+  echo "Installing for Windows x64 (CPU PyTorch + CTranslate2 GPU)..."
 
   REQUIREMENTS_ML_WIN="$SCRIPT_DIR/requirements-ml-windows.txt"
-  CUDA_INDEX="https://download.pytorch.org/whl/cu126"
 
   # Step 1: Install the pinned packages without their dependencies
+  # No --extra-index-url needed: CPU torch comes from standard PyPI
+  # GPU transcription uses CTranslate2's native CUDA bindings (not PyTorch CUDA)
   "$PYTHON_BIN" -m pip install \
     --target "$SITE_PACKAGES" \
     --no-deps \
-    --extra-index-url "$CUDA_INDEX" \
     -r "$REQUIREMENTS_ML_WIN"
 
   # Step 2: Install missing sub-dependencies with constraints
   "$PYTHON_BIN" -m pip install \
     --target "$SITE_PACKAGES" \
     --constraint "$REQUIREMENTS_ML_WIN" \
-    --extra-index-url "$CUDA_INDEX" \
     -r "$REQUIREMENTS_ML_WIN"
 
 else
@@ -197,23 +196,20 @@ check_installed "python_docx" || FAILED=1
 check_installed "openpyxl" || FAILED=1
 check_installed "python_pptx" || FAILED=1
 
-# Critical ML version checks (CUDA builds have +cu126 suffix)
-if [ "$PLATFORM" = "windows" ]; then
-  verify_version "torch" "2.8.0+cu126" || FAILED=1
-  verify_version "torchaudio" "2.8.0+cu126" || FAILED=1
-else
-  verify_version "torch" "2.8.0" || FAILED=1
-  verify_version "torchaudio" "2.8.0" || FAILED=1
-fi
+# Critical ML version checks
+verify_version "torch" "2.8.0" || FAILED=1
+verify_version "torchaudio" "2.8.0" || FAILED=1
 verify_version "huggingface_hub" "0.36.1" || FAILED=1
 verify_version "transformers" "4.48.0" || FAILED=1
+verify_version "whisperx" "3.3.4" || FAILED=1
+verify_version "numpy" "2.0.2" || FAILED=1
+
+# pyannote — bundled on all platforms
 verify_version "pyannote.audio" "3.3.2" || FAILED=1
 verify_version "pyannote.core" "5.0.0" || FAILED=1
 verify_version "pyannote.database" "5.1.3" || FAILED=1
 verify_version "pyannote.pipeline" "3.0.1" || FAILED=1
 verify_version "pyannote.metrics" "3.2.1" || FAILED=1
-verify_version "whisperx" "3.3.4" || FAILED=1
-verify_version "numpy" "2.0.2" || FAILED=1
 
 # Apple Silicon specific
 if [ "$PLATFORM" = "macos" ] && [ "$ARCH" = "arm64" ]; then

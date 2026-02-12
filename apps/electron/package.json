@@ -78,6 +78,20 @@
       {
         "from": "../../scripts/requirements-ml-windows.txt",
         "to": "requirements-ml-windows.txt"
+      },
+      {
+        "from": "../../build/resources/cuda",
+        "to": "cuda",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "../../build/resources/embedding-models",
+        "to": "embedding-models",
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "mac": {
@@ -100,12 +114,18 @@
       "icon": "assets/icon.png",
       "target": [
         {
-          "target": "dir",
+          "target": "nsis",
           "arch": [
             "x64"
           ]
         }
       ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "deleteAppDataOnUninstall": false
     },
     "linux": {
       "icon": "assets/icon.png",

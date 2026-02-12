@@ -56,10 +56,10 @@ class BackendManager extends EventEmitter {
     // Build PATH based on platform
     let extendedPath: string;
     if (process.platform === 'win32') {
-      // Windows: prepend PyTorch's bundled CUDA DLLs to PATH
-      // PyTorch includes CUDA runtime in its torch/lib/ directory
-      const torchLibPath = path.join(process.resourcesPath, 'python', 'Lib', 'site-packages', 'torch', 'lib');
-      extendedPath = [torchLibPath, process.env.PATH || ''].join(';');
+      // Windows: prepend bundled CUDA DLLs to PATH for CTranslate2 GPU inference.
+      // CTranslate2 dynamically loads cublas, cudart, and cuDNN DLLs from PATH.
+      const cudaPath = path.join(process.resourcesPath, 'cuda');
+      extendedPath = [cudaPath, process.env.PATH || ''].join(';');
     } else {
       // macOS/Linux: add common binary paths (Homebrew, MacPorts, etc.)
       // Electron apps don't inherit the user's shell PATH

@@ -358,14 +358,23 @@ class WhisperXTranscriptionEngine(ITranscriptionEngine):
         }
 
         if available:
+            # CTranslate2 CUDA detection (independent of PyTorch CUDA)
+            try:
+                import ctranslate2
+                cuda_count = ctranslate2.get_cuda_device_count()
+                info["ctranslate2_cuda_devices"] = cuda_count
+                info["cuda_available"] = cuda_count > 0
+            except (ImportError, Exception):
+                info["cuda_available"] = False
+
+            # MPS detection (Apple Silicon)
             try:
                 import torch
-                info["cuda_available"] = torch.cuda.is_available()
-                info["mps_available"] = torch.backends.mps.is_available()
-                if torch.cuda.is_available():
-                    info["cuda_device_name"] = torch.cuda.get_device_name(0)
+                info["mps_available"] = (
+                    hasattr(torch.backends, "mps") and torch.backends.mps.is_available()
+                )
             except (ImportError, AttributeError):
-                pass
+                info["mps_available"] = False
 
         return info
 

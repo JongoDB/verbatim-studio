@@ -11,7 +11,7 @@ import { existsSync, readdirSync } from 'fs';
 import * as path from 'path';
 
 // Model definitions - which models are bundled and where they go
-// Note: Only whisper-base is bundled. Pyannote models require HF auth and are downloaded on first use.
+// Pyannote/diarization models require HF auth and are downloaded on first use.
 // macOS uses MLX-format models, Windows uses CTranslate2-format models
 const BUNDLED_MODELS = process.platform === 'win32'
   ? [
@@ -19,6 +19,11 @@ const BUNDLED_MODELS = process.platform === 'win32'
         name: 'whisper-base-ct2',
         source: 'whisper-models/huggingface/hub/models--Systran--faster-whisper-base',
         destination: 'huggingface/hub/models--Systran--faster-whisper-base',
+      },
+      {
+        name: 'nomic-embed-text-v1.5',
+        source: 'embedding-models/huggingface/hub/models--nomic-ai--nomic-embed-text-v1.5',
+        destination: 'huggingface/hub/models--nomic-ai--nomic-embed-text-v1.5',
       },
     ]
   : [

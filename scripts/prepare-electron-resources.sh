@@ -65,6 +65,13 @@ if [ -d "$RESOURCES_DIR/cuda" ]; then
   PRESERVED_ITEMS+=("cuda")
 fi
 
+# Preserve embedding-models if they exist
+if [ -d "$RESOURCES_DIR/embedding-models" ]; then
+  echo "Preserving embedding-models directory..."
+  mv "$RESOURCES_DIR/embedding-models" "$TEMP_PRESERVE/"
+  PRESERVED_ITEMS+=("embedding-models")
+fi
+
 rm -rf "$RESOURCES_DIR"
 mkdir -p "$RESOURCES_DIR"
 
