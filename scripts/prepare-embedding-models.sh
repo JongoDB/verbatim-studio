@@ -53,48 +53,35 @@ echo "--- Downloading $REPO ---"
 if [ -d "$DEST_DIR" ] && [ "$(ls -A "$DEST_DIR" 2>/dev/null)" ]; then
     echo "Model already exists at $DEST_DIR, skipping..."
 else
-    echo "Downloading to temporary cache..."
+    echo "Downloading model..."
 
-    # Create a temporary cache directory
-    temp_cache=$(mktemp -d)
-
-    # Download using huggingface_hub
-    HF_HOME="$temp_cache" "$PYTHON_BIN" -c "
-from huggingface_hub import snapshot_download
-import os
+    # Do download + move entirely in Python to avoid Git Bash ↔ Windows path issues
+    "$PYTHON_BIN" -c "
+import tempfile, shutil, os, sys
 
 repo_id = '$REPO'
-cache_dir = '$temp_cache/hub'
+dest_dir = os.path.normpath('$DEST_DIR')
 
-print(f'Downloading {repo_id}...')
-local_dir = snapshot_download(
-    repo_id=repo_id,
-    cache_dir=cache_dir,
-    local_dir=None,
-)
-print(f'Downloaded to: {local_dir}')
+temp_dir = tempfile.mkdtemp()
+cache_dir = os.path.join(temp_dir, 'hub')
+
+try:
+    from huggingface_hub import snapshot_download
+    print(f'Downloading {repo_id}...')
+    snapshot_download(repo_id=repo_id, cache_dir=cache_dir, local_dir=None)
+
+    model_dir = os.path.join(cache_dir, 'models--nomic-ai--nomic-embed-text-v1.5')
+    if os.path.isdir(model_dir):
+        os.makedirs(os.path.dirname(dest_dir), exist_ok=True)
+        shutil.copytree(model_dir, dest_dir)
+        print(f'Model copied to: {dest_dir}')
+    else:
+        print(f'ERROR: Model not found at {model_dir}', file=sys.stderr)
+        print(f'Contents: {os.listdir(cache_dir) if os.path.isdir(cache_dir) else \"cache_dir missing\"}', file=sys.stderr)
+        sys.exit(1)
+finally:
+    shutil.rmtree(temp_dir, ignore_errors=True)
 "
-
-    # Move from temp cache to output directory
-    repo_dashed=$(echo "$REPO" | sed 's/\//--/g')
-    temp_model_dir="$temp_cache/hub/models--$repo_dashed"
-    echo "Looking for model at: $temp_model_dir"
-
-    if [ -d "$temp_model_dir" ]; then
-        mkdir -p "$(dirname "$DEST_DIR")"
-        mv "$temp_model_dir" "$DEST_DIR"
-        echo "Moved to: $DEST_DIR"
-    else
-        echo "ERROR: Could not find downloaded model at expected path"
-        echo "Expected: $temp_model_dir"
-        echo "Temp cache contents:"
-        find "$temp_cache" -type d
-        rm -rf "$temp_cache"
-        exit 1
-    fi
-
-    # Cleanup temp cache
-    rm -rf "$temp_cache"
 
     echo "Done: $REPO"
 fi
