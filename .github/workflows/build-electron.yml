@@ -276,8 +276,7 @@ jobs:
           rm -rf "$SITE_PACKAGES/torch/testing/_internal"
           # JIT compiler backend (torch.compile) - not used for inference
           rm -rf "$SITE_PACKAGES/torch/_inductor"
-          # Distributed training - not needed in desktop app
-          rm -rf "$SITE_PACKAGES/torch/distributed"
+          # NOTE: torch/distributed must be kept — torch.utils.data.dataloader imports it
           # ONNX export - not used
           rm -rf "$SITE_PACKAGES/torch/onnx"
           # Profiling tools
