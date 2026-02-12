@@ -58,9 +58,9 @@ echo "Platform: $PLATFORM"
 echo "Architecture: $ARCH"
 echo ""
 
-# Upgrade pip first
-echo "Upgrading pip..."
-"$PYTHON_BIN" -m pip install --upgrade pip --quiet
+# Upgrade pip and setuptools first (without --target so pkg_resources installs properly)
+echo "Upgrading pip and setuptools..."
+"$PYTHON_BIN" -m pip install --upgrade pip setuptools --quiet
 
 # =============================================================================
 # Install core dependencies
@@ -197,13 +197,9 @@ check_installed "openpyxl" || FAILED=1
 check_installed "python_pptx" || FAILED=1
 
 # Critical ML version checks (CUDA builds have +cu126 suffix)
-if [ "$PLATFORM" = "windows" ]; then
-  verify_version "torch" "2.8.0+cu126" || FAILED=1
-  verify_version "torchaudio" "2.8.0+cu126" || FAILED=1
-else
-  verify_version "torch" "2.8.0" || FAILED=1
-  verify_version "torchaudio" "2.8.0" || FAILED=1
-fi
+# CPU PyTorch on all platforms (GPU via CTranslate2 CUDA, not PyTorch CUDA)
+verify_version "torch" "2.8.0" || FAILED=1
+verify_version "torchaudio" "2.8.0" || FAILED=1
 verify_version "huggingface_hub" "0.36.1" || FAILED=1
 verify_version "transformers" "4.48.0" || FAILED=1
 verify_version "pyannote.audio" "3.3.2" || FAILED=1
