@@ -58,9 +58,12 @@ echo "Platform: $PLATFORM"
 echo "Architecture: $ARCH"
 echo ""
 
-# Upgrade pip and setuptools first (without --target so pkg_resources installs properly)
-echo "Upgrading pip and setuptools..."
-"$PYTHON_BIN" -m pip install --upgrade pip setuptools --quiet
+# Upgrade pip first, then pin setuptools <72 (82.0 dropped pkg_resources top-level module)
+# ctranslate2 needs `import pkg_resources` at import time
+echo "Upgrading pip..."
+"$PYTHON_BIN" -m pip install --upgrade pip --quiet
+echo "Installing setuptools with pkg_resources..."
+"$PYTHON_BIN" -m pip install 'setuptools>=69,<72' --quiet
 
 # =============================================================================
 # Install core dependencies
@@ -143,17 +146,16 @@ else
 fi
 
 # =============================================================================
-# Fix pkg_resources: --target installs of setuptools (pulled by torch) strip
-# the pkg_resources top-level module. Force-reinstall without --target to
-# restore it. This must happen AFTER all --target installs.
+# Restore setuptools <72 if --target installs overwrote it with a newer version
+# (torch depends on setuptools, --target may pull 82.0+ which lacks pkg_resources)
 # =============================================================================
 echo ""
 echo "=== Ensuring pkg_resources is available ==="
 "$PYTHON_BIN" -c "import pkg_resources; print('pkg_resources OK')" 2>/dev/null || {
-  echo "pkg_resources missing, force-reinstalling setuptools..."
-  "$PYTHON_BIN" -m pip install --force-reinstall setuptools --quiet
+  echo "pkg_resources missing, reinstalling setuptools <72..."
+  "$PYTHON_BIN" -m pip install 'setuptools>=69,<72' --force-reinstall --quiet
+  "$PYTHON_BIN" -c "import pkg_resources; print('pkg_resources restored')" || echo "WARNING: pkg_resources still unavailable"
 }
-"$PYTHON_BIN" -c "import pkg_resources; print('pkg_resources verified')"
 
 # =============================================================================
 # Verify critical version constraints using pip list (reliable with --path)
