@@ -11,8 +11,9 @@ import { existsSync, readdirSync } from 'fs';
 import * as path from 'path';
 
 // Model definitions - which models are bundled and where they go
-// Note: Only whisper-base is bundled. Pyannote models require HF auth and are downloaded on first use.
-// macOS uses MLX-format models, Windows uses CTranslate2-format models
+// Note: Whisper-base and embedding model are bundled. Pyannote models require HF auth and are downloaded on first use.
+// macOS uses MLX-format models, Windows uses CTranslate2-format models.
+// Embedding model is platform-agnostic (CPU-based sentence-transformers).
 const BUNDLED_MODELS = process.platform === 'win32'
   ? [
       {
@@ -20,12 +21,22 @@ const BUNDLED_MODELS = process.platform === 'win32'
         source: 'whisper-models/huggingface/hub/models--Systran--faster-whisper-base',
         destination: 'huggingface/hub/models--Systran--faster-whisper-base',
       },
+      {
+        name: 'nomic-embed-text',
+        source: 'embedding-models/huggingface/hub/models--nomic-ai--nomic-embed-text-v1.5',
+        destination: 'huggingface/hub/models--nomic-ai--nomic-embed-text-v1.5',
+      },
     ]
   : [
       {
         name: 'whisper-base-mlx',
         source: 'whisper-models/huggingface/hub/models--mlx-community--whisper-base-mlx',
         destination: 'huggingface/hub/models--mlx-community--whisper-base-mlx',
+      },
+      {
+        name: 'nomic-embed-text',
+        source: 'embedding-models/huggingface/hub/models--nomic-ai--nomic-embed-text-v1.5',
+        destination: 'huggingface/hub/models--nomic-ai--nomic-embed-text-v1.5',
       },
     ];
 

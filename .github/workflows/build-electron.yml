@@ -228,6 +228,41 @@ jobs:
           du -sh "$WHISPER_DIR"
           ls -la "$SNAPSHOTS_DIR"
 
+      # Cache embedding models to avoid re-downloading every build (~550MB for nomic-embed-text)
+      - name: Cache Embedding models
+        uses: actions/cache@v4
+        id: embedding-cache
+        with:
+          path: build/resources/embedding-models
+          key: embedding-models-v1-${{ runner.os }}-${{ hashFiles('scripts/prepare-embedding-models.sh') }}
+
+      - name: Prepare Embedding models for bundling
+        if: steps.embedding-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          echo "Downloading embedding model for semantic search..."
+          ./scripts/prepare-embedding-models.sh
+        env:
+          HF_HUB_DISABLE_PROGRESS_BARS: 1
+
+      - name: Verify Embedding models are present
+        shell: bash
+        run: |
+          EMBED_DIR="build/resources/embedding-models/huggingface/hub/models--nomic-ai--nomic-embed-text-v1.5"
+          if [ ! -d "$EMBED_DIR" ]; then
+            echo "ERROR: Embedding model directory not found at $EMBED_DIR"
+            echo "Contents of build/resources/embedding-models:"
+            find build/resources/embedding-models -type f 2>/dev/null | head -20 || echo "(empty)"
+            exit 1
+          fi
+          SNAPSHOTS_DIR="$EMBED_DIR/snapshots"
+          if [ ! -d "$SNAPSHOTS_DIR" ] || [ -z "$(ls -A $SNAPSHOTS_DIR 2>/dev/null)" ]; then
+            echo "ERROR: Embedding model snapshots directory is empty or missing"
+            exit 1
+          fi
+          echo "Embedding model verified:"
+          du -sh "$EMBED_DIR"
+
       # Cache FFmpeg binaries to avoid re-downloading every build (~50MB)
       - name: Cache FFmpeg
         uses: actions/cache@v4

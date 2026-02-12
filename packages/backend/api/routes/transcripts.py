@@ -133,7 +133,7 @@ async def _load_segment_comments(
         return {}
 
     result = await db.execute(
-        select(SegmentComment.segment_id, SegmentComment.content)
+        select(SegmentComment.segment_id, SegmentComment.text)
         .where(SegmentComment.segment_id.in_(segment_ids))
         .order_by(SegmentComment.created_at)
     )

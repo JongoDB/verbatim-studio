@@ -76,6 +76,13 @@
         ]
       },
       {
+        "from": "../../build/resources/embedding-models",
+        "to": "embedding-models",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
         "from": "../../scripts/requirements-ml-windows.txt",
         "to": "requirements-ml-windows.txt"
       }
