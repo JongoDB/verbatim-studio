@@ -1,6 +1,6 @@
 {
   "name": "@verbatim/electron",
-  "version": "0.39.2",
+  "version": "0.39.3",
   "description": "Verbatim Studio - Transcription you can trust",
   "author": "Verbatim Studio",
   "private": true,
@@ -83,6 +83,13 @@
         ]
       },
       {
+        "from": "../../build/resources/cuda",
+        "to": "cuda",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
         "from": "../../scripts/requirements-ml-windows.txt",
         "to": "requirements-ml-windows.txt"
       }
@@ -107,12 +114,18 @@
       "icon": "assets/icon.png",
       "target": [
         {
-          "target": "dir",
+          "target": "nsis",
           "arch": [
             "x64"
           ]
         }
       ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "deleteAppDataOnUninstall": false
     },
     "linux": {
       "icon": "assets/icon.png",
