@@ -2,8 +2,9 @@
 # ML dependencies are downloaded on first use (not bundled)
 # Use >= constraints to match pyproject.toml
 
-# Required by ctranslate2 and other packages that use pkg_resources
-setuptools>=75.0.0
+# NOTE: setuptools is installed separately in install-bundled-deps.sh
+# (without --target) so pkg_resources is properly available.
+# Do NOT add it here — --target install breaks pkg_resources.
 
 # Web framework
 fastapi>=0.115.0
