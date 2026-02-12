@@ -269,14 +269,14 @@ jobs:
           find "$SITE_PACKAGES/torch" -name "*.pdb" -delete 2>/dev/null || true
 
           # ---------------------------------------------------------------
-          # 3. Remove PyTorch test files (safe — not imported at init)
+          # 3. Remove PyTorch test *scripts* only (torch/test is standalone
+          #    test runner scripts, NOT importable modules)
           # ---------------------------------------------------------------
           rm -rf "$SITE_PACKAGES/torch/test"
-          rm -rf "$SITE_PACKAGES/torch/testing/_internal"
-          rm -rf "$SITE_PACKAGES/torch/utils/benchmark"
-          # NOTE: Do NOT remove torch submodules (_inductor, onnx, profiler,
-          # distributed, etc.) — torch/__init__.py imports them at init time
-          # and removal causes ImportError at runtime.
+          # NOTE: Do NOT remove any torch Python packages (testing/_internal,
+          # _inductor, onnx, profiler, distributed, utils/benchmark, etc.)
+          # PyTorch 2.8 has deep cross-module imports at init time and
+          # removing ANY of these causes ImportError at runtime.
 
           # ---------------------------------------------------------------
           # 4. NVIDIA CUDA libraries — KEEP these!
