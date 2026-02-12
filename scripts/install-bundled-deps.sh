@@ -102,23 +102,22 @@ if [ "$PLATFORM" = "macos" ] && [ "$ARCH" = "arm64" ]; then
     -r "$REQUIREMENTS_ML"
 
 elif [ "$PLATFORM" = "windows" ]; then
-  echo "Installing for Windows x64 (CUDA PyTorch)..."
+  echo "Installing for Windows x64 (CPU PyTorch + CTranslate2 GPU)..."
 
   REQUIREMENTS_ML_WIN="$SCRIPT_DIR/requirements-ml-windows.txt"
-  CUDA_INDEX="https://download.pytorch.org/whl/cu126"
 
   # Step 1: Install the pinned packages without their dependencies
+  # No --extra-index-url needed: CPU torch comes from standard PyPI
+  # GPU transcription uses CTranslate2's native CUDA bindings (not PyTorch CUDA)
   "$PYTHON_BIN" -m pip install \
     --target "$SITE_PACKAGES" \
     --no-deps \
-    --extra-index-url "$CUDA_INDEX" \
     -r "$REQUIREMENTS_ML_WIN"
 
   # Step 2: Install missing sub-dependencies with constraints
   "$PYTHON_BIN" -m pip install \
     --target "$SITE_PACKAGES" \
     --constraint "$REQUIREMENTS_ML_WIN" \
-    --extra-index-url "$CUDA_INDEX" \
     -r "$REQUIREMENTS_ML_WIN"
 
 else

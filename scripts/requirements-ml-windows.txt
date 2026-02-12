@@ -1,14 +1,16 @@
-# ML dependencies for Windows x64 + CUDA
+# ML dependencies for Windows x64
 # Fork of requirements-ml.txt:
 # - Removes mlx-whisper (Apple Silicon only)
-# - Sources PyTorch from CUDA 12.6 index
-# Install with: --extra-index-url https://download.pytorch.org/whl/cu126
+# - Uses CPU-only PyTorch (GPU transcription via CTranslate2's native CUDA)
+# - Bundles pyannote for diarization (same as macOS)
 
 # =============================================================================
-# PyTorch ecosystem - CUDA 12.6
+# PyTorch ecosystem - CPU only
+# GPU transcription uses CTranslate2's own CUDA bindings, not PyTorch CUDA.
+# CUDA runtime DLLs (cublas, cudnn, cudart) are bundled as extraResources.
 # =============================================================================
-torch==2.8.0+cu126
-torchaudio==2.8.0+cu126
+torch==2.8.0
+torchaudio==2.8.0
 # torchvision excluded from bundle to reduce size (~1GB)
 # OCR feature installs it on-demand when user downloads OCR models
 

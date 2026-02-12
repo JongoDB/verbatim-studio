@@ -92,13 +92,13 @@ def get_devices_for_engine(engine: str) -> list[str]:
     """
     if engine == "mlx-whisper":
         return ["mps"]
-    # whisperx supports cpu and cuda
+    # whisperx supports cpu and cuda (via CTranslate2's own CUDA bindings)
     devices = ["cpu"]
     try:
-        import torch
-        if torch.cuda.is_available():
+        import ctranslate2
+        if ctranslate2.get_cuda_device_count() > 0:
             devices.append("cuda")
-    except ImportError:
+    except (ImportError, Exception):
         pass
     return devices
 
@@ -166,12 +166,14 @@ def detect_available_devices() -> list[str]:
         return _available_devices
 
     devices = ["cpu"]
-    try:
-        import torch
 
-        if torch.cuda.is_available():
+    # Check CTranslate2 CUDA support (used by WhisperX/faster-whisper)
+    try:
+        import ctranslate2
+
+        if ctranslate2.get_cuda_device_count() > 0:
             devices.append("cuda")
-    except ImportError:
+    except (ImportError, Exception):
         pass
 
     # MPS is only available with mlx-whisper on Apple Silicon
@@ -205,14 +207,15 @@ def detect_whisperx_device() -> str:
     """Detect the best device for WhisperX transcription.
 
     WhisperX (ctranslate2) supports cpu and cuda only.
+    Uses CTranslate2's native CUDA detection (independent of PyTorch CUDA).
     MPS is handled by engine auto-detect selecting mlx-whisper instead.
     """
     try:
-        import torch
+        import ctranslate2
 
-        if torch.cuda.is_available():
+        if ctranslate2.get_cuda_device_count() > 0:
             return "cuda"
-    except ImportError:
+    except (ImportError, Exception):
         pass
     return "cpu"
 
@@ -242,12 +245,12 @@ def detect_llm_gpu_layers() -> int:
         logger.info("Apple Silicon detected — defaulting to full GPU offload for llama.cpp")
         return -1
     try:
-        import torch
+        import ctranslate2
 
-        if torch.cuda.is_available():
+        if ctranslate2.get_cuda_device_count() > 0:
             logger.info("CUDA detected — defaulting to full GPU offload for llama.cpp")
             return -1
-    except ImportError:
+    except (ImportError, Exception):
         pass
     return 0
 

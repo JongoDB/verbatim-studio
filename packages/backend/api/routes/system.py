@@ -631,6 +631,16 @@ async def get_memory_info() -> MemoryInfo:
     gpu_allocated = None
     gpu_reserved = None
 
+    # Check CTranslate2 CUDA first (used by WhisperX, independent of PyTorch CUDA)
+    try:
+        import ctranslate2
+        if ctranslate2.get_cuda_device_count() > 0:
+            gpu_available = True
+            gpu_type = "cuda"
+    except (ImportError, Exception):
+        pass
+
+    # Check PyTorch GPU (for detailed memory reporting and MPS)
     try:
         import torch
         if torch.cuda.is_available():
@@ -638,15 +648,13 @@ async def get_memory_info() -> MemoryInfo:
             gpu_type = "cuda"
             gpu_allocated = torch.cuda.memory_allocated()
             gpu_reserved = torch.cuda.memory_reserved()
-        elif torch.backends.mps.is_available():
+        elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
             gpu_available = True
             gpu_type = "mps"
-            # MPS doesn't have detailed memory reporting
             try:
                 gpu_allocated = torch.mps.current_allocated_memory()
                 gpu_reserved = gpu_allocated  # MPS doesn't distinguish reserved
             except AttributeError:
-                # Older PyTorch versions may not have this
                 gpu_allocated = None
                 gpu_reserved = None
     except ImportError:

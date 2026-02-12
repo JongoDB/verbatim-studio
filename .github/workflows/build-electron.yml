@@ -63,7 +63,7 @@ jobs:
         with:
           cuda: '12.6.3'
           method: 'network'
-          sub-packages: '["cudart", "cublas", "cufft", "curand", "cusparse", "nvrtc"]'
+          sub-packages: '["cudart", "cublas"]'
 
       # Cache Python standalone + dependencies to speed up builds
       - name: Cache Python environment
@@ -71,7 +71,7 @@ jobs:
         id: python-cache
         with:
           path: build/python-standalone
-          key: ${{ runner.os }}-${{ matrix.arch }}-python-ml-v2-${{ hashFiles('scripts/requirements-core.txt', 'scripts/requirements-ml.txt', 'scripts/requirements-ml-windows.txt', 'scripts/install-bundled-deps.sh') }}
+          key: ${{ runner.os }}-${{ matrix.arch }}-python-ml-v5-${{ hashFiles('scripts/requirements-core.txt', 'scripts/requirements-ml.txt', 'scripts/requirements-ml-windows.txt', 'scripts/install-bundled-deps.sh') }}
 
       - name: Install dependencies
         run: pnpm install
@@ -148,17 +148,14 @@ jobs:
           check_installed "python-pptx" || FAILED=1
 
           # ML packages (verify exact versions)
-          if [ "${{ matrix.platform }}" = "win32" ]; then
-            check_version "torch" "2.8.0+cu126" || FAILED=1
-            check_version "torchaudio" "2.8.0+cu126" || FAILED=1
-          else
-            check_version "torch" "2.8.0" || FAILED=1
-            check_version "torchaudio" "2.8.0" || FAILED=1
-          fi
+          check_version "torch" "2.8.0" || FAILED=1
+          check_version "torchaudio" "2.8.0" || FAILED=1
           check_version "huggingface-hub" "0.36.1" || FAILED=1
           check_version "transformers" "4.48.0" || FAILED=1
           check_version "numpy" "2.0.2" || FAILED=1
           check_version "whisperx" "3.3.4" || FAILED=1
+
+          # pyannote — bundled on all platforms
           check_version "pyannote.audio" "3.3.2" || FAILED=1
           check_version "pyannote.core" "5.0.0" || FAILED=1
           check_version "pyannote.database" "5.1.3" || FAILED=1
@@ -251,8 +248,6 @@ jobs:
           EMBED_DIR="build/resources/embedding-models/huggingface/hub/models--nomic-ai--nomic-embed-text-v1.5"
           if [ ! -d "$EMBED_DIR" ]; then
             echo "ERROR: Embedding model directory not found at $EMBED_DIR"
-            echo "Contents of build/resources/embedding-models:"
-            find build/resources/embedding-models -type f 2>/dev/null | head -20 || echo "(empty)"
             exit 1
           fi
           SNAPSHOTS_DIR="$EMBED_DIR/snapshots"
@@ -275,6 +270,11 @@ jobs:
         shell: bash
         run: ./scripts/prepare-electron-resources.sh
 
+      - name: Bundle CUDA runtime libraries
+        if: matrix.platform == 'win32'
+        shell: bash
+        run: ./scripts/bundle-cuda-libs.sh
+
       - name: Strip Python environment (reduce bundle size)
         if: matrix.platform == 'win32'
         shell: bash
@@ -291,47 +291,42 @@ jobs:
           rm -rf "$SITE_PACKAGES/torchvision-"*.dist-info
 
           # ---------------------------------------------------------------
-          # 2. Remove PyTorch development/build files (~1-2GB)
+          # 2. Remove nvidia-* pip packages
+          #    CUDA DLLs are now in build/resources/cuda/ via bundle-cuda-libs.sh
+          #    No need to keep full nvidia packages in Python env
           # ---------------------------------------------------------------
-          # C++ headers (only needed for torch C++ extensions)
+          rm -rf "$SITE_PACKAGES/nvidia"
+          rm -rf "$SITE_PACKAGES/nvidia_"*.dist-info
+
+          # ---------------------------------------------------------------
+          # 3. Strip speechbrain/lightning bloat from pyannote dependency tree
+          # ---------------------------------------------------------------
+          rm -rf "$SITE_PACKAGES/speechbrain/tests"
+          rm -rf "$SITE_PACKAGES/speechbrain/recipes"
+          rm -rf "$SITE_PACKAGES/speechbrain/templates"
+          rm -rf "$SITE_PACKAGES/speechbrain/benchmarks"
+          rm -rf "$SITE_PACKAGES/lightning/fabric/test_utilities"
+          rm -rf "$SITE_PACKAGES/lightning/pytorch/test_utilities"
+          rm -rf "$SITE_PACKAGES/pytorch_lightning/demos"
+
+          # ---------------------------------------------------------------
+          # 4. Remove PyTorch development/build files
+          # ---------------------------------------------------------------
           rm -rf "$SITE_PACKAGES/torch/include"
-          # CMake configs
           rm -rf "$SITE_PACKAGES/torch/share"
           rm -rf "$SITE_PACKAGES/torch/lib/cmake"
-          # Static import libraries (.lib) - only .dll needed at runtime
           find "$SITE_PACKAGES/torch" -name "*.lib" -delete 2>/dev/null || true
-          # Debug symbols
           find "$SITE_PACKAGES/torch" -name "*.pdb" -delete 2>/dev/null || true
 
           # ---------------------------------------------------------------
-          # 3. Remove PyTorch test *scripts* only (torch/test is standalone
-          #    test runner scripts, NOT importable modules)
+          # 5. Remove PyTorch test scripts only
           # ---------------------------------------------------------------
           rm -rf "$SITE_PACKAGES/torch/test"
-          # NOTE: Do NOT remove any torch Python packages (testing/_internal,
-          # _inductor, onnx, profiler, distributed, utils/benchmark, etc.)
-          # PyTorch 2.8 has deep cross-module imports at init time and
-          # removing ANY of these causes ImportError at runtime.
-
-          # ---------------------------------------------------------------
-          # 4. NVIDIA CUDA libraries — KEEP these!
-          #    nvidia-cudnn, nvidia-cublas, nvidia-nvjitlink etc. are needed
-          #    for GPU inference. PyTorch's torch/lib/ alone is not sufficient.
-          # ---------------------------------------------------------------
-
-          # ---------------------------------------------------------------
-          # 5. Remove unnecessary files from other packages
-          # ---------------------------------------------------------------
-          rm -rf "$SITE_PACKAGES/speechbrain/tests"
-          rm -rf "$SITE_PACKAGES/lightning/fabric/test_utilities"
 
           # ---------------------------------------------------------------
           # 6. General cleanup
           # ---------------------------------------------------------------
-          # __pycache__ directories
           find "$SITE_PACKAGES" -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
-          # NOTE: Keep .dist-info directories — pip list needs them, and they're
-          # included in the cached Python environment used by subsequent builds
 
           echo "=== After cleanup ==="
           du -sh "$SITE_PACKAGES" || true
@@ -340,21 +335,44 @@ jobs:
           du -sh "$SITE_PACKAGES"/torch 2>/dev/null || true
           du -sh "$SITE_PACKAGES"/torchaudio 2>/dev/null || true
 
-      - name: Verify PyTorch and CUDA after stripping
+      - name: Verify imports after stripping
         if: matrix.platform == 'win32'
         shell: bash
         run: |
           PYTHON_BIN="build/python-standalone/python-windows-x64/python.exe"
           SITE_PACKAGES="build/python-standalone/python-windows-x64/Lib/site-packages"
-          echo "=== Verifying PyTorch imports after strip ==="
+          echo "=== Verifying imports after strip ==="
           "$PYTHON_BIN" -c "
           import torch
           print('PyTorch version:', torch.__version__)
-          print('CUDA available:', torch.cuda.is_available())
           import torchaudio
           print('torchaudio version:', torchaudio.__version__)
+          import ctranslate2
+          print('CTranslate2 version:', ctranslate2.__version__)
+          print('CTranslate2 CUDA devices:', ctranslate2.get_cuda_device_count())
+          import pyannote.audio
+          print('pyannote.audio version:', pyannote.audio.__version__)
+          import speechbrain
+          print('speechbrain version:', speechbrain.__version__)
           print('All imports OK')
           "
+
+      - name: Bundle Size Check
+        if: matrix.platform == 'win32'
+        shell: bash
+        run: |
+          RESOURCES_DIR="build/resources"
+          if [ -d "$RESOURCES_DIR" ]; then
+            SIZE_MB=$(du -sm "$RESOURCES_DIR" | cut -f1)
+            echo "Resources directory size: ${SIZE_MB}MB"
+            if [ "$SIZE_MB" -gt 1800 ]; then
+              echo "::warning::Resources size ${SIZE_MB}MB exceeds 1800MB safety threshold for NSIS 2GB limit"
+            else
+              echo "Resources size ${SIZE_MB}MB is within 1800MB safety threshold"
+            fi
+          else
+            echo "Resources directory not found (may not be assembled yet)"
+          fi
 
       - name: Update version from git tag
         shell: bash
@@ -387,31 +405,6 @@ jobs:
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
 
-      - name: Create Windows archive (ultra compression)
-        if: matrix.platform == 'win32'
-        shell: bash
-        run: |
-          VERSION=$(node -p "require('./apps/electron/package.json').version")
-          cd dist/win-unpacked
-          echo "=== Unpacked app size ==="
-          du -sh . || true
-          # Use 7z ultra compression (LZMA2, dict=256MB) to fit under GitHub's 2GB limit
-          7z a -t7z -mx=9 -m0=lzma2 -md=256m -mfb=273 "../Verbatim Studio-${VERSION}-win.7z" .
-          cd ..
-          echo "=== Archive size ==="
-          ls -lh "Verbatim Studio-${VERSION}-win.7z"
-          FILE_SIZE=$(stat -c%s "Verbatim Studio-${VERSION}-win.7z" 2>/dev/null || stat -f%z "Verbatim Studio-${VERSION}-win.7z")
-          echo "Size in bytes: $FILE_SIZE"
-          if [ "$FILE_SIZE" -gt 2147483648 ]; then
-            echo "WARNING: Archive exceeds GitHub's 2GB limit ($FILE_SIZE bytes)"
-            echo "Splitting into volumes..."
-            rm "Verbatim Studio-${VERSION}-win.7z"
-            cd win-unpacked
-            7z a -t7z -mx=9 -m0=lzma2 -md=256m -mfb=273 -v1900m "../Verbatim Studio-${VERSION}-win.7z" .
-            cd ..
-            ls -lh Verbatim\ Studio-${VERSION}-win.7z.*
-          fi
-
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -419,8 +412,6 @@ jobs:
           path: |
             dist/*.dmg
             dist/*.exe
-            dist/*.7z
-            dist/*.7z.*
           if-no-files-found: error
 
   release:
