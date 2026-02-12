@@ -352,6 +352,31 @@ jobs:
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
 
+      - name: Create Windows archive (ultra compression)
+        if: matrix.platform == 'win32'
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./apps/electron/package.json').version")
+          cd dist/win-unpacked
+          echo "=== Unpacked app size ==="
+          du -sh . || true
+          # Use 7z ultra compression (LZMA2, dict=256MB) to fit under GitHub's 2GB limit
+          7z a -t7z -mx=9 -m0=lzma2 -md=256m -mfb=273 "../Verbatim Studio-${VERSION}-win.7z" .
+          cd ..
+          echo "=== Archive size ==="
+          ls -lh "Verbatim Studio-${VERSION}-win.7z"
+          FILE_SIZE=$(stat -c%s "Verbatim Studio-${VERSION}-win.7z" 2>/dev/null || stat -f%z "Verbatim Studio-${VERSION}-win.7z")
+          echo "Size in bytes: $FILE_SIZE"
+          if [ "$FILE_SIZE" -gt 2147483648 ]; then
+            echo "WARNING: Archive exceeds GitHub's 2GB limit ($FILE_SIZE bytes)"
+            echo "Splitting into volumes..."
+            rm "Verbatim Studio-${VERSION}-win.7z"
+            cd win-unpacked
+            7z a -t7z -mx=9 -m0=lzma2 -md=256m -mfb=273 -v1900m "../Verbatim Studio-${VERSION}-win.7z" .
+            cd ..
+            ls -lh Verbatim\ Studio-${VERSION}-win.7z.*
+          fi
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -359,6 +384,8 @@ jobs:
           path: |
             dist/*.dmg
             dist/*.exe
+            dist/*.7z
+            dist/*.7z.*
           if-no-files-found: error
 
   release:

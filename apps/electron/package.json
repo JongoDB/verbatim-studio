@@ -100,18 +100,12 @@
       "icon": "assets/icon.png",
       "target": [
         {
-          "target": "nsis",
+          "target": "dir",
           "arch": [
             "x64"
           ]
         }
       ]
-    },
-    "nsis": {
-      "oneClick": false,
-      "perMachine": false,
-      "allowToChangeInstallationDirectory": true,
-      "deleteAppDataOnUninstall": false
     },
     "linux": {
       "icon": "assets/icon.png",
