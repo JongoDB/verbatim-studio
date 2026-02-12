@@ -143,6 +143,19 @@ else
 fi
 
 # =============================================================================
+# Fix pkg_resources: --target installs of setuptools (pulled by torch) strip
+# the pkg_resources top-level module. Force-reinstall without --target to
+# restore it. This must happen AFTER all --target installs.
+# =============================================================================
+echo ""
+echo "=== Ensuring pkg_resources is available ==="
+"$PYTHON_BIN" -c "import pkg_resources; print('pkg_resources OK')" 2>/dev/null || {
+  echo "pkg_resources missing, force-reinstalling setuptools..."
+  "$PYTHON_BIN" -m pip install --force-reinstall setuptools --quiet
+}
+"$PYTHON_BIN" -c "import pkg_resources; print('pkg_resources verified')"
+
+# =============================================================================
 # Verify critical version constraints using pip list (reliable with --path)
 # =============================================================================
 echo ""
