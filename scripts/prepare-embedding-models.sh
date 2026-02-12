@@ -47,6 +47,13 @@ REPO="nomic-ai/nomic-embed-text-v1.5"
 DEST_NAME="models--nomic-ai--nomic-embed-text-v1.5"
 DEST_DIR="$OUTPUT_DIR/huggingface/hub/$DEST_NAME"
 
+# Convert Git Bash paths (/d/a/...) to Windows-native (D:/a/...) for Python
+if command -v cygpath &>/dev/null; then
+    DEST_DIR_PY=$(cygpath -m "$DEST_DIR")
+else
+    DEST_DIR_PY="$DEST_DIR"
+fi
+
 echo ""
 echo "--- Downloading $REPO ---"
 
@@ -60,7 +67,7 @@ else
 import tempfile, shutil, os, sys
 
 repo_id = '$REPO'
-dest_dir = os.path.normpath('$DEST_DIR')
+dest_dir = '$DEST_DIR_PY'
 
 temp_dir = tempfile.mkdtemp()
 cache_dir = os.path.join(temp_dir, 'hub')
