@@ -269,20 +269,14 @@ jobs:
           find "$SITE_PACKAGES/torch" -name "*.pdb" -delete 2>/dev/null || true
 
           # ---------------------------------------------------------------
-          # 3. Remove PyTorch subsystems not needed for inference
+          # 3. Remove PyTorch test files (safe — not imported at init)
           # ---------------------------------------------------------------
-          # Test files (~300MB)
           rm -rf "$SITE_PACKAGES/torch/test"
           rm -rf "$SITE_PACKAGES/torch/testing/_internal"
-          # JIT compiler backend (torch.compile) - not used for inference
-          rm -rf "$SITE_PACKAGES/torch/_inductor"
-          # NOTE: torch/distributed must be kept — torch.utils.data.dataloader imports it
-          # ONNX export - not used
-          rm -rf "$SITE_PACKAGES/torch/onnx"
-          # Profiling tools
-          rm -rf "$SITE_PACKAGES/torch/profiler"
-          # Benchmark utilities
           rm -rf "$SITE_PACKAGES/torch/utils/benchmark"
+          # NOTE: Do NOT remove torch submodules (_inductor, onnx, profiler,
+          # distributed, etc.) — torch/__init__.py imports them at init time
+          # and removal causes ImportError at runtime.
 
           # ---------------------------------------------------------------
           # 4. NVIDIA CUDA libraries — KEEP these!
