@@ -42,9 +42,9 @@ export function UploadDocumentDialog({
     const fetchOcrStatus = () => api.ocr.status().then(setOcrStatus).catch(() => setOcrStatus(null));
     if (open) {
       fetchOcrStatus();
+      window.addEventListener('ocr-status-changed', fetchOcrStatus);
+      return () => window.removeEventListener('ocr-status-changed', fetchOcrStatus);
     }
-    window.addEventListener('ocr-status-changed', fetchOcrStatus);
-    return () => window.removeEventListener('ocr-status-changed', fetchOcrStatus);
   }, [open]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
