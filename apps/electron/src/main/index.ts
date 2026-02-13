@@ -26,7 +26,7 @@ async function bootstrap(): Promise<void> {
 
     // Bootstrap bundled models (copy from resources to cache if needed)
     updateSplashStatus('Checking bundled models\u2026');
-    await bootstrapBundledModels();
+    await bootstrapBundledModels((msg) => updateSplashStatus(msg));
 
     // Start backend (both development and production)
     console.log('[Main] Starting backend...');

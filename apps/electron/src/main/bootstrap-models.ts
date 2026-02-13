@@ -91,7 +91,9 @@ function isModelInstalled(destDir: string): boolean {
  *
  * @returns Object with results for each model
  */
-export async function bootstrapBundledModels(): Promise<{
+export async function bootstrapBundledModels(
+  onProgress?: (message: string) => void
+): Promise<{
   copied: string[];
   skipped: string[];
   errors: Array<{ name: string; error: string }>;
@@ -135,6 +137,7 @@ export async function bootstrapBundledModels(): Promise<{
 
       // Copy the model
       console.log(`[Bootstrap] Copying bundled model: ${model.name}`);
+      onProgress?.(`Copying ${model.name}\u2026`);
       console.log(`[Bootstrap]   From: ${srcDir}`);
       console.log(`[Bootstrap]   To: ${destDir}`);
 
