@@ -231,7 +231,7 @@ jobs:
         id: embedding-cache
         with:
           path: build/resources/embedding-models
-          key: embedding-models-v1-${{ runner.os }}-${{ hashFiles('scripts/prepare-embedding-models.sh') }}
+          key: embedding-models-v2-${{ runner.os }}-${{ hashFiles('scripts/prepare-embedding-models.sh') }}
 
       - name: Prepare Embedding models for bundling
         if: steps.embedding-cache.outputs.cache-hit != 'true'

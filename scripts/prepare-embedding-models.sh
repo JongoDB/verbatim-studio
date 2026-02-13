@@ -79,13 +79,16 @@ try:
         repo_id=repo_id,
         cache_dir=cache_dir,
         local_dir=None,
-        ignore_patterns=['onnx/*', '*.onnx', '.gitattributes', 'README.md'],
+        # Whitelist: only grab config, tokenizer, and safetensors weights
+        allow_patterns=['*.json', '*.txt', '*.safetensors'],
     )
 
     model_dir = os.path.join(cache_dir, 'models--nomic-ai--nomic-embed-text-v1.5')
     if os.path.isdir(model_dir):
         os.makedirs(os.path.dirname(dest_dir), exist_ok=True)
-        shutil.copytree(model_dir, dest_dir)
+        # symlinks=True preserves HF cache symlinks (blobs → snapshots)
+        # to avoid duplicating the 547MB model.safetensors
+        shutil.copytree(model_dir, dest_dir, symlinks=True)
         print(f'Model copied to: {dest_dir}')
     else:
         print(f'ERROR: Model not found at {model_dir}', file=sys.stderr)
