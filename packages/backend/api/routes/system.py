@@ -683,6 +683,128 @@ async def get_memory_info() -> MemoryInfo:
     )
 
 
+class GpuFeatureStatus(BaseModel):
+    """GPU acceleration status for a single feature."""
+    feature: str
+    gpu_accelerated: bool
+    device: str  # "cuda", "mps", "cpu"
+    detail: str  # Human-readable explanation
+
+
+class GpuStatus(BaseModel):
+    """Overall GPU acceleration status."""
+    platform: str
+    cuda_available: bool
+    torch_cuda_available: bool
+    nvidia_gpu_detected: bool
+    gpu_name: str | None
+    cuda_pytorch_installed: bool
+    cuda_llama_installed: bool
+    features: list[GpuFeatureStatus]
+    upgrade_available: bool
+    estimated_download_bytes: int
+
+
+@router.get("/gpu-status", response_model=GpuStatus)
+async def get_gpu_status() -> GpuStatus:
+    """Get GPU acceleration status for all AI features."""
+    plat = sys.platform
+    features: list[GpuFeatureStatus] = []
+
+    # 1. Check CTranslate2 CUDA (bundled, always works if GPU present)
+    cuda_available = False
+    try:
+        import ctranslate2
+        cuda_available = ctranslate2.get_cuda_device_count() > 0
+    except (ImportError, Exception):
+        pass
+
+    # 2. Check PyTorch CUDA
+    torch_cuda = False
+    gpu_name = None
+    try:
+        import torch
+        torch_cuda = torch.cuda.is_available()
+        if torch_cuda:
+            gpu_name = torch.cuda.get_device_name(0)
+    except (ImportError, Exception):
+        pass
+
+    # 3. Detect NVIDIA GPU even without CUDA torch (via ctranslate2 or nvidia-smi)
+    nvidia_detected = cuda_available
+    if not nvidia_detected and plat == "win32":
+        try:
+            result = subprocess.run(
+                ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
+                capture_output=True, text=True, timeout=5,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                nvidia_detected = True
+                if not gpu_name:
+                    gpu_name = result.stdout.strip().split("\n")[0]
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            pass
+
+    # 4. Check llama-cpp-python CUDA support
+    cuda_llama = False
+    try:
+        from llama_cpp import llama_cpp as _lib
+        cuda_llama = hasattr(_lib, 'ggml_backend_cuda_init')
+    except Exception:
+        cuda_llama = False
+
+    # 5. Build per-feature status
+    features.append(GpuFeatureStatus(
+        feature="Transcription (Whisper)",
+        gpu_accelerated=cuda_available,
+        device="cuda" if cuda_available else "cpu",
+        detail="CTranslate2 native CUDA" if cuda_available else "CPU mode",
+    ))
+
+    features.append(GpuFeatureStatus(
+        feature="Speaker ID (pyannote)",
+        gpu_accelerated=torch_cuda,
+        device="cuda" if torch_cuda else "cpu",
+        detail="PyTorch CUDA" if torch_cuda else "Requires CUDA PyTorch",
+    ))
+
+    features.append(GpuFeatureStatus(
+        feature="Semantic Search",
+        gpu_accelerated=torch_cuda,
+        device="cuda" if torch_cuda else "cpu",
+        detail="PyTorch CUDA" if torch_cuda else "Requires CUDA PyTorch",
+    ))
+
+    features.append(GpuFeatureStatus(
+        feature="AI Assistant (Granite 8B)",
+        gpu_accelerated=cuda_llama,
+        device="cuda" if cuda_llama else "cpu",
+        detail="CUDA offload" if cuda_llama else "Requires CUDA llama-cpp-python",
+    ))
+
+    features.append(GpuFeatureStatus(
+        feature="OCR (Qwen2-VL)",
+        gpu_accelerated=torch_cuda,
+        device="cuda" if torch_cuda else "cpu",
+        detail="PyTorch CUDA" if torch_cuda else "Requires CUDA PyTorch",
+    ))
+
+    estimated_bytes = 2800 * 1024 * 1024  # ~2.8 GB download
+
+    return GpuStatus(
+        platform=plat,
+        cuda_available=cuda_available,
+        torch_cuda_available=torch_cuda,
+        nvidia_gpu_detected=nvidia_detected,
+        gpu_name=gpu_name,
+        cuda_pytorch_installed=torch_cuda,
+        cuda_llama_installed=cuda_llama,
+        features=features,
+        upgrade_available=nvidia_detected and not torch_cuda,
+        estimated_download_bytes=estimated_bytes,
+    )
+
+
 @router.post("/clear-memory")
 async def clear_memory():
     """Force garbage collection and clear GPU caches.
