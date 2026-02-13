@@ -9,6 +9,11 @@ export function registerIpcHandlers(): void {
     return app.getVersion();
   });
 
+  ipcMain.handle('app:restart', () => {
+    app.relaunch();
+    app.exit(0);
+  });
+
   // API URL - returns the backend URL for the renderer
   ipcMain.handle('api:getUrl', () => {
     return backendManager.getApiUrl();

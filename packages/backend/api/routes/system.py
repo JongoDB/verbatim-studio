@@ -683,6 +683,271 @@ async def get_memory_info() -> MemoryInfo:
     )
 
 
+class GpuFeatureStatus(BaseModel):
+    """GPU acceleration status for a single feature."""
+    feature: str
+    gpu_accelerated: bool
+    device: str  # "cuda", "mps", "cpu"
+    detail: str  # Human-readable explanation
+
+
+class GpuStatus(BaseModel):
+    """Overall GPU acceleration status."""
+    platform: str
+    cuda_available: bool
+    torch_cuda_available: bool
+    nvidia_gpu_detected: bool
+    gpu_name: str | None
+    cuda_pytorch_installed: bool
+    cuda_llama_installed: bool
+    features: list[GpuFeatureStatus]
+    upgrade_available: bool
+    estimated_download_bytes: int
+
+
+@router.get("/gpu-status", response_model=GpuStatus)
+async def get_gpu_status() -> GpuStatus:
+    """Get GPU acceleration status for all AI features."""
+    plat = sys.platform
+    features: list[GpuFeatureStatus] = []
+
+    # 1. Check CTranslate2 CUDA (bundled, always works if GPU present)
+    cuda_available = False
+    try:
+        import ctranslate2
+        cuda_available = ctranslate2.get_cuda_device_count() > 0
+    except (ImportError, Exception):
+        pass
+
+    # 2. Check PyTorch CUDA
+    torch_cuda = False
+    gpu_name = None
+    try:
+        import torch
+        torch_cuda = torch.cuda.is_available()
+        if torch_cuda:
+            gpu_name = torch.cuda.get_device_name(0)
+    except (ImportError, Exception):
+        pass
+
+    # 3. Detect NVIDIA GPU even without CUDA torch (via ctranslate2 or nvidia-smi)
+    nvidia_detected = cuda_available
+    if not nvidia_detected and plat == "win32":
+        try:
+            result = subprocess.run(
+                ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
+                capture_output=True, text=True, timeout=5,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                nvidia_detected = True
+                if not gpu_name:
+                    gpu_name = result.stdout.strip().split("\n")[0]
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            pass
+
+    # 4. Check llama-cpp-python CUDA support
+    cuda_llama = False
+    try:
+        from llama_cpp import llama_cpp as _lib
+        cuda_llama = hasattr(_lib, 'ggml_backend_cuda_init')
+    except Exception:
+        cuda_llama = False
+
+    # 5. Build per-feature status
+    features.append(GpuFeatureStatus(
+        feature="Transcription (Whisper)",
+        gpu_accelerated=cuda_available,
+        device="cuda" if cuda_available else "cpu",
+        detail="CTranslate2 native CUDA" if cuda_available else "CPU mode",
+    ))
+
+    features.append(GpuFeatureStatus(
+        feature="Speaker ID (pyannote)",
+        gpu_accelerated=torch_cuda,
+        device="cuda" if torch_cuda else "cpu",
+        detail="PyTorch CUDA" if torch_cuda else "Requires CUDA PyTorch",
+    ))
+
+    features.append(GpuFeatureStatus(
+        feature="Semantic Search",
+        gpu_accelerated=torch_cuda,
+        device="cuda" if torch_cuda else "cpu",
+        detail="PyTorch CUDA" if torch_cuda else "Requires CUDA PyTorch",
+    ))
+
+    features.append(GpuFeatureStatus(
+        feature="AI Assistant (Granite 8B)",
+        gpu_accelerated=cuda_llama,
+        device="cuda" if cuda_llama else "cpu",
+        detail="CUDA offload" if cuda_llama else "Requires CUDA llama-cpp-python",
+    ))
+
+    features.append(GpuFeatureStatus(
+        feature="OCR (Qwen2-VL)",
+        gpu_accelerated=torch_cuda,
+        device="cuda" if torch_cuda else "cpu",
+        detail="PyTorch CUDA" if torch_cuda else "Requires CUDA PyTorch",
+    ))
+
+    estimated_bytes = 2800 * 1024 * 1024  # ~2.8 GB download
+
+    return GpuStatus(
+        platform=plat,
+        cuda_available=cuda_available,
+        torch_cuda_available=torch_cuda,
+        nvidia_gpu_detected=nvidia_detected,
+        gpu_name=gpu_name,
+        cuda_pytorch_installed=torch_cuda,
+        cuda_llama_installed=cuda_llama,
+        features=features,
+        upgrade_available=nvidia_detected and not torch_cuda,
+        estimated_download_bytes=estimated_bytes,
+    )
+
+
+# Track GPU installation status
+_gpu_install_in_progress = False
+
+
+@router.post("/enable-gpu")
+async def enable_gpu_acceleration():
+    """Install CUDA-enabled PyTorch and llama-cpp-python for full GPU acceleration.
+
+    Windows-only. Replaces CPU PyTorch with CUDA PyTorch and installs
+    CUDA llama-cpp-python. Returns SSE stream with progress.
+
+    Requires app restart after completion to reload modules.
+    """
+    global _gpu_install_in_progress
+
+    if sys.platform != "win32":
+        return StreamingResponse(
+            iter([f"data: {json.dumps({'status': 'error', 'message': 'GPU acceleration upgrade is only available on Windows'})}\n\n"]),
+            media_type="text/event-stream",
+        )
+
+    if _gpu_install_in_progress:
+        return StreamingResponse(
+            iter([f"data: {json.dumps({'status': 'error', 'message': 'GPU installation already in progress'})}\n\n"]),
+            media_type="text/event-stream",
+        )
+
+    # Pre-flight: check disk space (need ~6 GB free)
+    free_bytes = shutil.disk_usage(Path.home()).free
+    if free_bytes < 6 * 1024 * 1024 * 1024:
+        free_gb = free_bytes / (1024 ** 3)
+        return StreamingResponse(
+            iter([f"data: {json.dumps({'status': 'error', 'message': f'Insufficient disk space. Need ~6 GB free, only {free_gb:.1f} GB available.'})}\n\n"]),
+            media_type="text/event-stream",
+        )
+
+    async def install_stream() -> AsyncIterator[str]:
+        global _gpu_install_in_progress
+        _gpu_install_in_progress = True
+
+        try:
+            python_exe = sys.executable
+            cuda_torch_index = "https://download.pytorch.org/whl/cu126"
+            cuda_llama_index = "https://abetlen.github.io/llama-cpp-python/whl/cu126"
+
+            # Skip if CUDA PyTorch already installed (e.g. from OCR deps)
+            torch_already_cuda = False
+            try:
+                import torch
+                if torch.cuda.is_available():
+                    torch_already_cuda = True
+                    yield f"data: {json.dumps({'status': 'progress', 'phase': 'torch', 'message': 'CUDA PyTorch already installed — skipping'})}\n\n"
+            except (ImportError, Exception):
+                pass
+
+            if not torch_already_cuda:
+                # Phase 1: Install CUDA PyTorch (replaces CPU version)
+                yield f"data: {json.dumps({'status': 'progress', 'phase': 'torch', 'message': 'Installing CUDA PyTorch (~2.5 GB)...'})}\n\n"
+
+                # --index-url ensures torch comes from CUDA index, not PyPI.
+                # Pin setuptools<72 to preserve pkg_resources (required by ctranslate2).
+                torch_cmd = [
+                    python_exe, "-m", "pip", "install",
+                    "--upgrade", "--force-reinstall",
+                    "--index-url", cuda_torch_index,
+                    "torch==2.8.0", "torchaudio==2.8.0",
+                    "setuptools>=69,<72",
+                ]
+
+                logger.info("Installing CUDA PyTorch: %s", " ".join(torch_cmd))
+
+                process = await asyncio.create_subprocess_exec(
+                    *torch_cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.STDOUT,
+                )
+
+                while True:
+                    line = await process.stdout.readline()
+                    if not line:
+                        break
+                    line_text = line.decode().strip()
+                    if line_text:
+                        logger.info("pip (torch): %s", line_text)
+                        if any(kw in line_text for kw in ("Downloading", "Installing", "Successfully", "Using cached")):
+                            yield f"data: {json.dumps({'status': 'progress', 'phase': 'torch', 'message': line_text[:200]})}\n\n"
+
+                await process.wait()
+
+                if process.returncode != 0:
+                    yield f"data: {json.dumps({'status': 'error', 'message': 'CUDA PyTorch installation failed. CPU PyTorch may need reinstalling — restart the app to check.'})}\n\n"
+                    return
+
+                yield f"data: {json.dumps({'status': 'progress', 'phase': 'torch', 'message': 'CUDA PyTorch installed successfully'})}\n\n"
+
+            # Phase 2: Install CUDA llama-cpp-python
+            yield f"data: {json.dumps({'status': 'progress', 'phase': 'llama', 'message': 'Installing CUDA llama-cpp-python (~200 MB)...'})}\n\n"
+
+            llama_cmd = [
+                python_exe, "-m", "pip", "install",
+                "--upgrade", "--force-reinstall",
+                "--extra-index-url", cuda_llama_index,
+                "llama-cpp-python",
+            ]
+
+            logger.info("Installing CUDA llama-cpp-python: %s", " ".join(llama_cmd))
+
+            process = await asyncio.create_subprocess_exec(
+                *llama_cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+            )
+
+            while True:
+                line = await process.stdout.readline()
+                if not line:
+                    break
+                line_text = line.decode().strip()
+                if line_text:
+                    logger.info("pip (llama): %s", line_text)
+                    if any(kw in line_text for kw in ("Downloading", "Installing", "Successfully", "Using cached")):
+                        yield f"data: {json.dumps({'status': 'progress', 'phase': 'llama', 'message': line_text[:200]})}\n\n"
+
+            await process.wait()
+
+            if process.returncode != 0:
+                logger.warning("CUDA llama-cpp-python failed — CPU version will continue working")
+                yield f"data: {json.dumps({'status': 'progress', 'phase': 'llama', 'message': 'CUDA llama-cpp-python not available — AI assistant will use CPU'})}\n\n"
+            else:
+                yield f"data: {json.dumps({'status': 'progress', 'phase': 'llama', 'message': 'CUDA llama-cpp-python installed successfully'})}\n\n"
+
+            # Done — signal restart required
+            yield f"data: {json.dumps({'status': 'complete', 'message': 'GPU acceleration enabled. Restarting...', 'restart_required': True})}\n\n"
+
+        except Exception as e:
+            logger.exception("GPU acceleration installation failed")
+            yield f"data: {json.dumps({'status': 'error', 'message': str(e)})}\n\n"
+        finally:
+            _gpu_install_in_progress = False
+
+    return StreamingResponse(install_stream(), media_type="text/event-stream")
+
+
 @router.post("/clear-memory")
 async def clear_memory():
     """Force garbage collection and clear GPU caches.

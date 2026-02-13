@@ -84,6 +84,23 @@ Each AI feature loads its own model. You only pay for what you use — deactivat
 
 > **Tip:** On a 16 GB machine you can comfortably run transcription + diarization + search + Max simultaneously. OCR is loaded on-demand and released when idle.
 
+### Windows GPU / VRAM
+
+Out of the box, only transcription uses your NVIDIA GPU (via CTranslate2). To accelerate **all** AI features on the GPU, open **Settings > AI** and click **Enable Full GPU Acceleration** (~2.8 GB download).
+
+| Feature | VRAM | Notes |
+|---------|------|-------|
+| Transcription (Whisper base) | ~200 MB | GPU by default (CTranslate2) |
+| Transcription (Whisper large-v3) | ~3 GB | GPU by default (CTranslate2) |
+| Speaker ID (pyannote) | ~1 GB | Requires GPU acceleration pack |
+| Semantic search (nomic-embed) | ~600 MB | Requires GPU acceleration pack |
+| AI Assistant (Granite 8B) | ~5 GB | Requires GPU acceleration pack |
+| OCR (Qwen2-VL 2B) | ~5 GB | Requires GPU acceleration pack |
+
+> **Minimum VRAM:** 4 GB handles transcription + diarization + search. **Recommended:** 8 GB+ for the full AI suite including Granite and OCR.
+>
+> No NVIDIA GPU? Everything works on CPU — just slower for transcription.
+
 ---
 
 ## Features

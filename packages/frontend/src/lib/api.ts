@@ -1088,6 +1088,33 @@ export interface MemoryInfo {
   models_loaded: string[];
 }
 
+export interface GpuFeatureStatus {
+  feature: string;
+  gpu_accelerated: boolean;
+  device: string;
+  detail: string;
+}
+
+export interface GpuStatus {
+  platform: string;
+  cuda_available: boolean;
+  torch_cuda_available: boolean;
+  nvidia_gpu_detected: boolean;
+  gpu_name: string | null;
+  cuda_pytorch_installed: boolean;
+  cuda_llama_installed: boolean;
+  features: GpuFeatureStatus[];
+  upgrade_available: boolean;
+  estimated_download_bytes: number;
+}
+
+export interface GpuInstallEvent {
+  status: 'progress' | 'complete' | 'error';
+  phase?: string;
+  message: string;
+  restart_required?: boolean;
+}
+
 export interface ResetDatabaseResponse {
   success: boolean;
   deleted: Record<string, number>;
@@ -2509,6 +2536,47 @@ class ApiClient {
       this.request<{ status: string; message: string }>('/api/system/clear-memory', {
         method: 'POST',
       }),
+    gpuStatus: () => this.request<GpuStatus>('/api/system/gpu-status'),
+    enableGpu: async function* (): AsyncGenerator<GpuInstallEvent> {
+      const baseUrl = getApiBaseUrl();
+      const response = await fetch(`${baseUrl}/api/system/enable-gpu`, {
+        method: 'POST',
+      });
+
+      if (!response.ok) {
+        yield { status: 'error' as const, message: `HTTP ${response.status}: ${response.statusText}` };
+        return;
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) {
+        yield { status: 'error' as const, message: 'No response body' };
+        return;
+      }
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6)) as GpuInstallEvent;
+              yield data;
+            } catch {
+              // Ignore parse errors
+            }
+          }
+        }
+      }
+    },
   };
 
   // Storage Locations

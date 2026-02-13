@@ -11,6 +11,7 @@ try {
 
   // App info
   getAppVersion: (): Promise<string> => ipcRenderer.invoke('app:getVersion'),
+  restartApp: (): Promise<void> => ipcRenderer.invoke('app:restart'),
 
   // API connection
   getApiUrl: (): Promise<string | null> => ipcRenderer.invoke('api:getUrl'),
@@ -100,6 +101,7 @@ declare global {
     electronAPI?: {
       platform: NodeJS.Platform;
       getAppVersion: () => Promise<string>;
+      restartApp: () => Promise<void>;
       getApiUrl: () => Promise<string | null>;
       getApiPort: () => Promise<number | null>;
       getConnectionMode: () => Promise<'local' | 'connected' | 'hybrid'>;
