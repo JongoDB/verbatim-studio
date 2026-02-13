@@ -75,7 +75,12 @@ cache_dir = os.path.join(temp_dir, 'hub')
 try:
     from huggingface_hub import snapshot_download
     print(f'Downloading {repo_id}...')
-    snapshot_download(repo_id=repo_id, cache_dir=cache_dir, local_dir=None)
+    snapshot_download(
+        repo_id=repo_id,
+        cache_dir=cache_dir,
+        local_dir=None,
+        ignore_patterns=['onnx/*', '*.onnx', '.gitattributes', 'README.md'],
+    )
 
     model_dir = os.path.join(cache_dir, 'models--nomic-ai--nomic-embed-text-v1.5')
     if os.path.isdir(model_dir):
