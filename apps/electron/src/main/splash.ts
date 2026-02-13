@@ -1,8 +1,25 @@
 import { BrowserWindow } from 'electron';
+import path from 'path';
+import { readFileSync } from 'fs';
 
 let splashWindow: BrowserWindow | null = null;
 
-const SPLASH_HTML = `<!DOCTYPE html>
+// Read the app icon and convert to base64 for inline embedding.
+// Falls back gracefully if icon isn't found (e.g. in development).
+let iconBase64 = '';
+try {
+  const iconPath = path.join(__dirname, '..', '..', 'assets', 'icon.png');
+  iconBase64 = readFileSync(iconPath).toString('base64');
+} catch {
+  // Icon not available — splash will show without it
+}
+
+function buildSplashHtml(): string {
+  const logoHtml = iconBase64
+    ? `<img src="data:image/png;base64,${iconBase64}" class="logo" alt="" />`
+    : '';
+
+  return `<!DOCTYPE html>
 <html><head><meta charset="utf-8"><style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
@@ -17,6 +34,12 @@ body {
   -webkit-app-region: drag;
   user-select: none;
   overflow: hidden;
+}
+.logo {
+  width: 64px;
+  height: 64px;
+  border-radius: 14px;
+  margin-bottom: 16px;
 }
 .title {
   font-size: 21px;
@@ -43,15 +66,17 @@ body {
   line-height: 1.4;
 }
 </style></head><body>
+  ${logoHtml}
   <div class="title">Verbatim Studio</div>
   <div class="spinner"></div>
   <div id="status">Initializing\u2026</div>
 </body></html>`;
+}
 
 export function createSplashWindow(): BrowserWindow {
   splashWindow = new BrowserWindow({
     width: 400,
-    height: 220,
+    height: iconBase64 ? 300 : 220,
     frame: false,
     resizable: false,
     center: true,
@@ -64,8 +89,9 @@ export function createSplashWindow(): BrowserWindow {
     },
   });
 
+  const html = buildSplashHtml();
   splashWindow.loadURL(
-    `data:text/html;charset=utf-8,${encodeURIComponent(SPLASH_HTML)}`
+    `data:text/html;charset=utf-8,${encodeURIComponent(html)}`
   );
 
   splashWindow.once('ready-to-show', () => {
