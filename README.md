@@ -18,7 +18,7 @@
 <p align="center">
   <img src="https://img.shields.io/github/v/tag/JongoDB/verbatim-studio?label=version&color=blue" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License">
-  <img src="https://img.shields.io/badge/platform-macOS-lightgrey.svg" alt="Platform">
+  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey.svg" alt="Platform">
 </p>
 
 <p align="center">
@@ -53,16 +53,36 @@ Verbatim Studio works just as well for everyday use:
 
 ## System Requirements
 
+### Hardware
+
 |  | Minimum | Recommended |
 |---|---|---|
-| **RAM** | 8 GB | 16 GB |
-| **Disk** | ~2 GB | ~8 GB |
-| **macOS** | Apple Silicon (M1/M2/M3/M4) | Apple Silicon (M1/M2/M3/M4) |
-| **Windows** | Coming soon | Coming soon |
+| **RAM** | 8 GB | 16 GB+ |
+| **Disk** | ~2 GB (base install) | ~8 GB (all AI models) |
+
+### Platform Support
+
+| Platform | Requirement | Notes |
+|----------|-------------|-------|
+| **macOS** | Apple Silicon (M1/M2/M3/M4) | Optimized for Metal / MLX — Intel Macs not supported |
+| **Windows** | x86-64 with 8 GB+ RAM | NVIDIA GPU optional — enables CUDA-accelerated transcription |
 
 **Minimum** covers transcription and basic editing. **Recommended** includes the full AI suite (Max assistant, semantic search, OCR).
 
-> **Memory note:** When the AI model (IBM Granite 8B) is active, it uses approximately 5 GB of resident memory. If you're on a memory-constrained machine, you can deactivate the model in **Settings > AI** to reclaim that memory when you don't need the assistant or AI summaries.
+### Memory Usage by Feature
+
+Each AI feature loads its own model. You only pay for what you use — deactivate models in **Settings > AI** to reclaim memory.
+
+| Feature | Memory | Loaded when… |
+|---------|--------|--------------|
+| App (idle) | ~300 MB | Always |
+| Transcription (Whisper base) | +200–300 MB | Transcribing audio/video |
+| Speaker ID (pyannote) | +1 GB | Diarization enabled |
+| Semantic search (nomic-embed) | +600 MB | Search index active |
+| Max assistant (Granite 8B) | +5 GB | AI chat / summaries |
+| OCR (Qwen2-VL 2B) | +5 GB | Processing images / scanned PDFs |
+
+> **Tip:** On a 16 GB machine you can comfortably run transcription + diarization + search + Max simultaneously. OCR is loaded on-demand and released when idle.
 
 ---
 
@@ -70,7 +90,7 @@ Verbatim Studio works just as well for everyday use:
 
 ### Transcription That Actually Works
 
-- **OpenAI Whisper accuracy** — State-of-the-art speech recognition running entirely on your Mac
+- **OpenAI Whisper accuracy** — State-of-the-art speech recognition running entirely on your device
 - **Multi-language support** — Transcribe in 12+ languages with automatic detection
 - **Automatic speaker identification** — Know who said what without manual tagging
 - **Live transcription** — Real-time speech-to-text from your microphone
@@ -153,10 +173,10 @@ All AI runs on your machine. Download and manage models directly from the settin
 
 Download for your platform:
 
-| Platform | Download | Status |
-|----------|----------|--------|
+| Platform | Download | Notes |
+|----------|----------|-------|
 | **macOS (Apple Silicon)** | [Download .dmg](https://github.com/JongoDB/verbatim-studio/releases) | M1/M2/M3/M4 optimized |
-| **Windows** | [Download .exe](https://github.com/JongoDB/verbatim-studio/releases) | Nvidia CUDA optimized |
+| **Windows (x64)** | [Download .exe](https://github.com/JongoDB/verbatim-studio/releases) | NVIDIA GPU optional for faster transcription |
 
 The app is self-contained—no Python, Node.js, or other dependencies required. Just download, install, and run.
 
@@ -302,6 +322,12 @@ Open [http://localhost:5173](http://localhost:5173) in your browser.
 - [x] Local, network, and cloud storage options
 - [x] Google Drive, OneDrive, Dropbox integration
 - [x] Export to TXT, SRT, VTT, JSON
+
+### In Development
+
+- [x] Automatic update notifications with release notes
+- [ ] External LLM connections (Ollama, OpenAI, self-hosted)
+- [x] Windows desktop app
 
 ### Enterprise Tier (Planned)
 
