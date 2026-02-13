@@ -415,6 +415,8 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
           }
         } else if (event.status === 'error') {
           setGpuError(event.message);
+          setGpuInstalling(false);
+          break;
         }
       }
     } catch (err) {
