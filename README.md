@@ -278,9 +278,11 @@ Open [http://localhost:5173](http://localhost:5173) in your browser.
 
 **Core Platform**
 - [x] Native macOS desktop app (Apple Silicon optimized)
+- [x] Native Windows desktop app (Nvidia CUDA optimized)
 - [x] Local AI transcription with speaker identification
 - [x] Live transcription from microphone
 - [x] Video file support with automatic audio extraction
+- [x] Automatic update notifications with release notes
 
 **AI Assistant (Max)**
 - [x] Multi-document conversations with chat history
@@ -301,14 +303,9 @@ Open [http://localhost:5173](http://localhost:5173) in your browser.
 - [x] Google Drive, OneDrive, Dropbox integration
 - [x] Export to TXT, SRT, VTT, JSON
 
-### In Development
-
-- [x] Automatic update notifications with release notes
-- [ ] External LLM connections (Ollama, OpenAI, self-hosted)
-- [ ] Windows desktop app
-
 ### Enterprise Tier (Planned)
 
+- [ ] External LLM connections (Ollama, OpenAI, self-hosted)
 - [ ] Multi-user with role-based access control
 - [ ] Meeting bots for Teams, Google Meet, and Zoom
 - [ ] PostgreSQL database support
@@ -328,10 +325,10 @@ On first use, Verbatim Studio downloads the AI models you select:
 
 | Model | Size | Purpose |
 |-------|------|---------|
-| Whisper (base) | ~150 MB | Transcription (configurable up to large-v3) |
-| pyannote | ~200 MB | Speaker identification |
-| nomic-embed-text | ~550 MB | Semantic search |
-| IBM Granite 3.3 | ~5 GB | Max AI assistant |
+| Whisper (base) | ~150 MB | Transcription (pre-bundled; configurable up to large-v3) |
+| pyannote | ~200 MB | Speaker diarization |
+| nomic-embed-text | ~550 MB | Semantic search (pre-bundled) |
+| IBM Granite 3.3 | ~5 GB | AI assistant and transcript summarization |
 
 Models are cached locally and only download once.
 
