@@ -6,6 +6,7 @@
 interface ElectronAPI {
   platform: NodeJS.Platform;
   getAppVersion: () => Promise<string>;
+  restartApp: () => Promise<void>;
   getApiUrl: () => Promise<string | null>;
   getApiPort: () => Promise<number | null>;
   getConnectionMode: () => Promise<'local' | 'connected' | 'hybrid'>;
