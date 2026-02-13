@@ -364,7 +364,7 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
     api.system.getCategoryCounts().then((r) => setCategoryCounts(r.categories)).catch(console.error);
     // Fetch GPU status on Windows
     if (window.electronAPI?.platform === 'win32') {
-      api.system.gpuStatus().then(setGpuStatus).catch(() => {});
+      api.system.gpuStatus().then(setGpuStatus).catch(console.error);
     }
     loadStorageLocations();
   }, [loadStorageLocations]);
@@ -411,7 +411,7 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
             setTimeout(() => window.electronAPI!.restartApp(), 2000);
           } else {
             // Fallback: refresh GPU status
-            api.system.gpuStatus().then(setGpuStatus).catch(() => {});
+            api.system.gpuStatus().then(setGpuStatus).catch(console.error);
           }
         } else if (event.status === 'error') {
           setGpuError(event.message);
@@ -2395,7 +2395,7 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
       {activeTab === 'ai' && (
         <>
       {/* GPU Acceleration Section (Windows only) */}
-      {gpuStatus && gpuStatus.platform === 'win32' && (
+      {gpuStatus?.platform === 'win32' && (
         <div className="mb-6 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
           <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -2458,12 +2458,15 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
                   <div>
                     <button
                       onClick={handleEnableGpu}
-                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium transition-colors"
+                      disabled={gpuInstalling}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       Enable Full GPU Acceleration
-                      <span className="ml-2 text-blue-200 text-xs">
-                        (~{formatBytes(gpuStatus.estimated_download_bytes)} download)
-                      </span>
+                      {gpuStatus.estimated_download_bytes > 0 && (
+                        <span className="ml-2 text-blue-200 text-xs">
+                          (~{formatBytes(gpuStatus.estimated_download_bytes)} download)
+                        </span>
+                      )}
                     </button>
                     <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
                       Downloads CUDA PyTorch to accelerate all AI features on your GPU. Requires app restart.
@@ -2473,17 +2476,15 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
               </>
             )}
 
-            {gpuStatus.torch_cuda_available && (
+            {gpuStatus.torch_cuda_available ? (
               <p className="text-sm text-green-600 dark:text-green-400 font-medium">
                 Full GPU acceleration is active — all AI features are using your GPU
               </p>
-            )}
-
-            {!gpuStatus.nvidia_gpu_detected && (
+            ) : !gpuStatus.nvidia_gpu_detected ? (
               <p className="text-sm text-gray-500 dark:text-gray-400">
                 No NVIDIA GPU detected. All features running on CPU.
               </p>
-            )}
+            ) : null}
 
             {gpuError && (
               <div className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-sm text-red-600 dark:text-red-400">
