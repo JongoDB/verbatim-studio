@@ -46,9 +46,12 @@ export function DocumentViewerPage({ documentId, onBack }: DocumentViewerPagePro
   const [highlightText, setHighlightText] = useState<string | null>(null);
   const [ocrStatus, setOcrStatus] = useState<OCRStatusResponse | null>(null);
 
-  // Fetch OCR status on mount
+  // Fetch OCR status on mount and when OCR model is downloaded
   useEffect(() => {
-    api.ocr.status().then(setOcrStatus).catch(() => setOcrStatus(null));
+    const fetchOcrStatus = () => api.ocr.status().then(setOcrStatus).catch(() => setOcrStatus(null));
+    fetchOcrStatus();
+    window.addEventListener('ocr-status-changed', fetchOcrStatus);
+    return () => window.removeEventListener('ocr-status-changed', fetchOcrStatus);
   }, []);
 
   // Handle text selection in PDF to create a note

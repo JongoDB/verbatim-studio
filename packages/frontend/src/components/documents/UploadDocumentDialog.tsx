@@ -37,11 +37,14 @@ export function UploadDocumentDialog({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [ocrStatus, setOcrStatus] = useState<OCRStatusResponse | null>(null);
 
-  // Fetch OCR status when dialog opens
+  // Fetch OCR status when dialog opens and when OCR model is downloaded
   useEffect(() => {
+    const fetchOcrStatus = () => api.ocr.status().then(setOcrStatus).catch(() => setOcrStatus(null));
     if (open) {
-      api.ocr.status().then(setOcrStatus).catch(() => setOcrStatus(null));
+      fetchOcrStatus();
     }
+    window.addEventListener('ocr-status-changed', fetchOcrStatus);
+    return () => window.removeEventListener('ocr-status-changed', fetchOcrStatus);
   }, [open]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {

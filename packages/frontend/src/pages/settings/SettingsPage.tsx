@@ -609,6 +609,10 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
         setAiTotalBytes(0);
         completeDownload(modelId);
         refreshAiModels();
+        // Auto-activation happened on backend — notify all AI components
+        if (event.status === 'activated') {
+          window.dispatchEvent(new Event('ai-status-changed'));
+        }
       } else if (event.status === 'error') {
         setAiError(event.error || 'Download failed');
         setAiDownloading(null);
@@ -681,6 +685,8 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
         setOcrDownloadProgress(null);
         completeDownload(modelId);
         refreshOcrModels();
+        // Notify other components that OCR is now available
+        window.dispatchEvent(new Event('ocr-status-changed'));
       } else if (event.status === 'error') {
         setOcrError(event.error || 'Download failed');
         setOcrDownloading(null);
