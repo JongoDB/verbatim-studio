@@ -131,7 +131,7 @@ function downloadFile(
   destPath: string,
   onProgress?: (percent: number) => void,
   redirectDepth = 0,
-  maxSize = 1024 * 1024 * 1024 // 1GB
+  maxSize = 2 * 1024 * 1024 * 1024 // 2GB
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     // Check redirect depth
@@ -222,9 +222,9 @@ function downloadFile(
       });
     });
 
-    // 15 minute timeout for large DMG downloads on slower connections
+    // 30 minute timeout for large downloads (up to 2GB) on slower connections
     // This is a connection/inactivity timeout, not total download time
-    req.setTimeout(900000, () => {
+    req.setTimeout(1800000, () => {
       req.destroy();
       reject(new Error('Download timed out - please check your internet connection'));
     });
