@@ -909,7 +909,8 @@ async def enable_gpu_acceleration():
             llama_cmd = [
                 python_exe, "-m", "pip", "install",
                 "--upgrade", "--force-reinstall",
-                "--extra-index-url", cuda_llama_index,
+                "--index-url", cuda_llama_index,
+                "--extra-index-url", "https://pypi.org/simple",
                 "llama-cpp-python",
             ]
 

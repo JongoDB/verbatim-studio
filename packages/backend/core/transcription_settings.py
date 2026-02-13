@@ -245,10 +245,19 @@ def detect_llm_gpu_layers() -> int:
         logger.info("Apple Silicon detected — defaulting to full GPU offload for llama.cpp")
         return -1
     try:
+        from llama_cpp import llama_supports_gpu_offload
+
+        if llama_supports_gpu_offload():
+            logger.info("CUDA llama-cpp detected — defaulting to full GPU offload")
+            return -1
+    except (ImportError, Exception):
+        pass
+    # Fallback: check CTranslate2 CUDA (for transcription GPU, not LLM)
+    try:
         import ctranslate2
 
         if ctranslate2.get_cuda_device_count() > 0:
-            logger.info("CUDA detected — defaulting to full GPU offload for llama.cpp")
+            logger.info("CUDA (CTranslate2) detected — defaulting to full GPU offload for llama.cpp")
             return -1
     except (ImportError, Exception):
         pass
