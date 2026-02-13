@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { api, type ArchiveInfo, type TranscriptionSettings, type AIModel, type AIModelDownloadEvent, type OCRModel, type OCRModelDownloadEvent, type WhisperModel, type WhisperModelDownloadEvent, type DiarizationModel, type DiarizationModelDownloadEvent, type SystemInfo, type MLStatus, type StorageLocation, type MigrationStatus, type TransferStatus, type SyncResult, type StorageType, type StorageSubtype, type StorageLocationConfig, type OAuthStatusResponse, type CategoryCount, type ClearableCategory } from '@/lib/api';
+import { api, type ArchiveInfo, type TranscriptionSettings, type AIModel, type AIModelDownloadEvent, type OCRModel, type OCRModelDownloadEvent, type WhisperModel, type WhisperModelDownloadEvent, type DiarizationModel, type DiarizationModelDownloadEvent, type SystemInfo, type MLStatus, type StorageLocation, type MigrationStatus, type TransferStatus, type SyncResult, type StorageType, type StorageSubtype, type StorageLocationConfig, type OAuthStatusResponse, type CategoryCount, type ClearableCategory, type GpuStatus } from '@/lib/api';
 import { useDownloadStore } from '@/stores/downloadStore';
 import { useKeybindingStore, DEFAULT_ACTIONS, formatCombo, type KeyCombo, type ActionCategory } from '@/stores/keybindingStore';
 import { StorageTypeSelector } from '@/components/storage/StorageTypeSelector';
@@ -331,6 +331,12 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
   const [isCheckingForUpdates, setIsCheckingForUpdates] = useState(false);
   const [updateCheckResult, setUpdateCheckResult] = useState<'none' | 'available' | null>(null);
 
+  // GPU acceleration state (Windows only)
+  const [gpuStatus, setGpuStatus] = useState<GpuStatus | null>(null);
+  const [gpuInstalling, setGpuInstalling] = useState(false);
+  const [gpuInstallMessage, setGpuInstallMessage] = useState<string>('');
+  const [gpuError, setGpuError] = useState<string>('');
+
   const defaultLanguage = settings.defaultLanguage || '';
   const defaultPlaybackSpeed = settings.defaultPlaybackSpeed || 1;
   const autoTranscribe = settings.autoTranscribe ?? false;
@@ -356,6 +362,10 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
     api.system.info().then(setSystemInfo).catch(console.error);
     api.system.mlStatus().then(setMlStatus).catch(console.error);
     api.system.getCategoryCounts().then((r) => setCategoryCounts(r.categories)).catch(console.error);
+    // Fetch GPU status on Windows
+    if (window.electronAPI?.platform === 'win32') {
+      api.system.gpuStatus().then(setGpuStatus).catch(() => {});
+    }
     loadStorageLocations();
   }, [loadStorageLocations]);
 
@@ -381,6 +391,36 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
         cleanupNotAvailable();
         cleanupAvailable();
       };
+    }
+  }, []);
+
+  // Handle GPU acceleration installation (Windows only)
+  const handleEnableGpu = useCallback(async () => {
+    setGpuInstalling(true);
+    setGpuError('');
+    setGpuInstallMessage('Starting...');
+
+    try {
+      for await (const event of api.system.enableGpu()) {
+        if (event.status === 'progress') {
+          setGpuInstallMessage(event.message);
+        } else if (event.status === 'complete') {
+          setGpuInstallMessage(event.message);
+          // Trigger app restart to reload modules with CUDA
+          if (window.electronAPI?.restartApp) {
+            setTimeout(() => window.electronAPI!.restartApp(), 2000);
+          } else {
+            // Fallback: refresh GPU status
+            api.system.gpuStatus().then(setGpuStatus).catch(() => {});
+          }
+        } else if (event.status === 'error') {
+          setGpuError(event.message);
+        }
+      }
+    } catch (err) {
+      setGpuError(err instanceof Error ? err.message : 'Installation failed');
+    } finally {
+      setGpuInstalling(false);
     }
   }, []);
 
@@ -2354,6 +2394,107 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
       {/* ===== AI TAB ===== */}
       {activeTab === 'ai' && (
         <>
+      {/* GPU Acceleration Section (Windows only) */}
+      {gpuStatus && gpuStatus.platform === 'win32' && (
+        <div className="mb-6 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+          <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">GPU Acceleration</h2>
+              {gpuStatus.torch_cuda_available ? (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300">
+                  <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                  Full GPU
+                </span>
+              ) : gpuStatus.cuda_available ? (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                  Partial
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400">
+                  <span className="w-1.5 h-1.5 rounded-full bg-gray-400" />
+                  CPU Only
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div className="px-5 py-4 space-y-4">
+            {/* GPU name */}
+            {gpuStatus.gpu_name && (
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                {gpuStatus.gpu_name}
+              </p>
+            )}
+
+            {/* Feature status table */}
+            <div className="space-y-1.5">
+              {gpuStatus.features.map((f) => (
+                <div key={f.feature} className="flex items-center justify-between text-sm">
+                  <span className="text-gray-700 dark:text-gray-300">{f.feature}</span>
+                  <span className={f.gpu_accelerated
+                    ? 'text-green-600 dark:text-green-400 font-medium'
+                    : 'text-gray-400 dark:text-gray-500'
+                  }>
+                    {f.gpu_accelerated ? `GPU (${f.device.toUpperCase()})` : 'CPU'}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            {/* Upgrade button or status */}
+            {gpuStatus.upgrade_available && !gpuStatus.torch_cuda_available && (
+              <>
+                {gpuInstalling ? (
+                  <div className="space-y-2">
+                    <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                      <div className="bg-blue-500 h-2 rounded-full animate-pulse w-full" />
+                    </div>
+                    <p className="text-sm text-gray-600 dark:text-gray-300">
+                      {gpuInstallMessage || 'Installing...'}
+                    </p>
+                  </div>
+                ) : (
+                  <div>
+                    <button
+                      onClick={handleEnableGpu}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium transition-colors"
+                    >
+                      Enable Full GPU Acceleration
+                      <span className="ml-2 text-blue-200 text-xs">
+                        (~{formatBytes(gpuStatus.estimated_download_bytes)} download)
+                      </span>
+                    </button>
+                    <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                      Downloads CUDA PyTorch to accelerate all AI features on your GPU. Requires app restart.
+                    </p>
+                  </div>
+                )}
+              </>
+            )}
+
+            {gpuStatus.torch_cuda_available && (
+              <p className="text-sm text-green-600 dark:text-green-400 font-medium">
+                Full GPU acceleration is active — all AI features are using your GPU
+              </p>
+            )}
+
+            {!gpuStatus.nvidia_gpu_detected && (
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                No NVIDIA GPU detected. All features running on CPU.
+              </p>
+            )}
+
+            {gpuError && (
+              <div className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-sm text-red-600 dark:text-red-400">
+                {gpuError}
+                <button onClick={() => setGpuError('')} className="ml-2 underline">Dismiss</button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Vision Language Model Section */}
       <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
         <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
