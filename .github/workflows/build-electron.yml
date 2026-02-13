@@ -390,8 +390,7 @@ jobs:
             # Skip signing on macOS (add CSC_LINK secret to enable)
             pnpm --filter @verbatim/electron exec electron-builder --publish never --config.mac.identity=null
           else
-            # Use dir target to bypass NSIS 2GB mmap limit, then compress manually
-            pnpm --filter @verbatim/electron exec electron-builder --publish never --config.win.target=dir
+            pnpm --filter @verbatim/electron exec electron-builder --publish never
           fi
         shell: bash
         env:
@@ -406,23 +405,13 @@ jobs:
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
 
-      - name: Compress Windows build with 7z
-        if: matrix.platform == 'win32'
-        shell: bash
-        run: |
-          cd dist/win-unpacked
-          7z a -t7z -mx=9 -mfb=64 -md=32m -ms=on "../Verbatim-Studio-${{ github.ref_name }}-win-x64.7z" .
-          cd ..
-          echo "Archive size:"
-          ls -lh "Verbatim-Studio-${{ github.ref_name }}-win-x64.7z"
-
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: verbatim-studio-${{ matrix.platform }}-${{ matrix.arch }}
           path: |
             dist/*.dmg
-            dist/*.7z
+            dist/*.exe
           if-no-files-found: error
 
   release:
