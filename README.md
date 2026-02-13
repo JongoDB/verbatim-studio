@@ -323,12 +323,6 @@ Open [http://localhost:5173](http://localhost:5173) in your browser.
 - [x] Google Drive, OneDrive, Dropbox integration
 - [x] Export to TXT, SRT, VTT, JSON
 
-### In Development
-
-- [x] Automatic update notifications with release notes
-- [ ] External LLM connections (Ollama, OpenAI, self-hosted)
-- [x] Windows desktop app
-
 ### Enterprise Tier (Planned)
 
 - [ ] External LLM connections (Ollama, OpenAI, self-hosted)
