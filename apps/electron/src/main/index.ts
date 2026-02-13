@@ -4,6 +4,7 @@ import { backendManager } from './backend';
 import { registerIpcHandlers } from './ipc';
 import { initAutoUpdater } from './updater';
 import { bootstrapBundledModels } from './bootstrap-models';
+import { createSplashWindow, updateSplashStatus, closeSplashWindow } from './splash';
 
 // Single instance lock
 const gotTheLock = app.requestSingleInstanceLock();
@@ -14,6 +15,9 @@ if (!gotTheLock) {
 let mainWindow: BrowserWindow | null = null;
 
 async function bootstrap(): Promise<void> {
+  // Show splash screen immediately so the user sees feedback
+  createSplashWindow();
+
   try {
     console.log('[Main] Bootstrap starting, app.isReady():', app.isReady());
 
@@ -21,6 +25,7 @@ async function bootstrap(): Promise<void> {
     registerIpcHandlers();
 
     // Bootstrap bundled models (copy from resources to cache if needed)
+    updateSplashStatus('Checking bundled models\u2026');
     await bootstrapBundledModels();
 
     // Start backend (both development and production)
@@ -28,7 +33,26 @@ async function bootstrap(): Promise<void> {
     console.log('[Main] app.isPackaged:', app.isPackaged);
     console.log('[Main] process.resourcesPath:', process.resourcesPath);
 
+    updateSplashStatus('Starting backend\u2026');
+
+    // Forward backend logs to splash screen for progress feedback
+    const logListener = ({ message }: { level: string; message: string }) => {
+      const msg = message.toLowerCase();
+      if (msg.includes('cache for model') || msg.includes('transformers')) {
+        updateSplashStatus('Loading AI libraries\u2026');
+      } else if (msg.includes('pyannote') || msg.includes('torchaudio')) {
+        updateSplashStatus('Loading audio models\u2026');
+      } else if (msg.includes('started server process')) {
+        updateSplashStatus('Starting server\u2026');
+      } else if (msg.includes('application startup complete')) {
+        updateSplashStatus('Almost ready\u2026');
+      }
+    };
+    backendManager.on('log', logListener);
+
     await backendManager.start();
+
+    backendManager.removeListener('log', logListener);
 
     console.log('[Main] Backend started successfully, port:', backendManager.port);
     console.log('[Main] Backend API URL:', backendManager.getApiUrl());
@@ -40,11 +64,18 @@ async function bootstrap(): Promise<void> {
     }
 
     console.log('[Main] Creating main window...');
+    updateSplashStatus('Loading interface\u2026');
     mainWindow = createMainWindow();
+
+    // Close splash once the main window is visible
+    mainWindow.once('ready-to-show', () => {
+      closeSplashWindow();
+    });
 
     // Initialize auto-updater
     initAutoUpdater(mainWindow);
   } catch (error) {
+    closeSplashWindow();
     console.error('[Main] Failed to start:', error);
     const logHint = process.platform === 'darwin'
       ? 'Check Console.app for more details.'

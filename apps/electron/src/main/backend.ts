@@ -222,7 +222,7 @@ class BackendManager extends EventEmitter {
     }
   }
 
-  private async waitForHealth(timeout = 60000): Promise<void> {
+  private async waitForHealth(timeout = 120000): Promise<void> {
     const startTime = Date.now();
     const url = `http://127.0.0.1:${this._port}/health`;
 
