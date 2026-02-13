@@ -396,31 +396,40 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
 
   // Handle GPU acceleration installation (Windows only)
   const handleEnableGpu = useCallback(async () => {
+    const { startDownload, updateProgress, completeDownload, failDownload } = useDownloadStore.getState();
+    const downloadId = 'gpu-acceleration';
+
     setGpuInstalling(true);
     setGpuError('');
     setGpuInstallMessage('Starting...');
+
+    // Track in global store for blue sidebar indicator
+    startDownload(downloadId, 'ai', 'GPU Acceleration');
 
     try {
       for await (const event of api.system.enableGpu()) {
         if (event.status === 'progress') {
           setGpuInstallMessage(event.message);
+          updateProgress(downloadId, 0, 0, event.message);
         } else if (event.status === 'complete') {
           setGpuInstallMessage(event.message);
-          // Trigger app restart to reload modules with CUDA
+          completeDownload(downloadId);
           if (window.electronAPI?.restartApp) {
             setTimeout(() => window.electronAPI!.restartApp(), 2000);
           } else {
-            // Fallback: refresh GPU status
             api.system.gpuStatus().then(setGpuStatus).catch(console.error);
           }
         } else if (event.status === 'error') {
           setGpuError(event.message);
           setGpuInstalling(false);
+          failDownload(downloadId, event.message);
           break;
         }
       }
     } catch (err) {
-      setGpuError(err instanceof Error ? err.message : 'Installation failed');
+      const msg = err instanceof Error ? err.message : 'Installation failed';
+      setGpuError(msg);
+      failDownload(downloadId, msg);
     } finally {
       setGpuInstalling(false);
     }

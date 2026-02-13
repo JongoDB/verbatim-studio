@@ -891,6 +891,9 @@ async def enable_gpu_acceleration():
                         logger.info("pip (torch): %s", line_text)
                         if any(kw in line_text for kw in ("Downloading", "Installing", "Successfully", "Using cached")):
                             yield f"data: {json.dumps({'status': 'progress', 'phase': 'torch', 'message': line_text[:200]})}\n\n"
+                        elif "Uninstalling" in line_text:
+                            pkg = line_text.replace("Uninstalling ", "").rstrip(":")
+                            yield f"data: {json.dumps({'status': 'progress', 'phase': 'torch', 'message': f'Replacing {pkg} with CUDA version...'})}\n\n"
 
                 await process.wait()
 
@@ -927,6 +930,9 @@ async def enable_gpu_acceleration():
                     logger.info("pip (llama): %s", line_text)
                     if any(kw in line_text for kw in ("Downloading", "Installing", "Successfully", "Using cached")):
                         yield f"data: {json.dumps({'status': 'progress', 'phase': 'llama', 'message': line_text[:200]})}\n\n"
+                    elif "Uninstalling" in line_text:
+                        pkg = line_text.replace("Uninstalling ", "").rstrip(":")
+                        yield f"data: {json.dumps({'status': 'progress', 'phase': 'llama', 'message': f'Replacing {pkg} with CUDA version...'})}\n\n"
 
             await process.wait()
 
