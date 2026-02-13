@@ -156,7 +156,7 @@ Download for your platform:
 | Platform | Download | Status |
 |----------|----------|--------|
 | **macOS (Apple Silicon)** | [Download .dmg](https://github.com/JongoDB/verbatim-studio/releases) | M1/M2/M3/M4 optimized |
-| **Windows** | — | Coming soon |
+| **Windows** | [Download .exe](https://github.com/JongoDB/verbatim-studio/releases) | Nvidia CUDA optimized |
 
 The app is self-contained—no Python, Node.js, or other dependencies required. Just download, install, and run.
 
@@ -329,6 +329,7 @@ On first use, Verbatim Studio downloads the AI models you select:
 | pyannote | ~200 MB | Speaker diarization |
 | nomic-embed-text | ~550 MB | Semantic search (pre-bundled) |
 | IBM Granite 3.3 | ~5 GB | AI assistant and transcript summarization |
+| Qwen2 VL | ~4.4 GB | Image OCR and document parsing |
 
 Models are cached locally and only download once.
 
