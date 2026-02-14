@@ -32,6 +32,31 @@ async_session = async_sessionmaker(
 )
 
 
+def get_engine():
+    """Get the current database engine."""
+    return engine
+
+
+def set_engine(new_engine):
+    """Override the database engine (called by enterprise plugin for PostgreSQL).
+
+    This updates the module-level engine and session factory so that
+    get_db() and init_db() automatically use the new engine.
+    """
+    global engine, async_session
+    engine = new_engine
+    async_session = async_sessionmaker(
+        new_engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+    )
+
+
+def get_session_factory():
+    """Get the current async session factory."""
+    return async_session
+
+
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """Dependency for database sessions."""
     async with async_session() as session:
