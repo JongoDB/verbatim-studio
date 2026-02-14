@@ -15,6 +15,7 @@ from sqlalchemy.orm.attributes import flag_modified
 from persistence.database import async_session
 from persistence.models import Job, Recording, Segment, SegmentEmbedding, Speaker, Transcript
 from api.routes.sync import broadcast
+from core.events import emit as emit_event
 
 logger = logging.getLogger(__name__)
 
@@ -550,6 +551,7 @@ async def handle_transcription(
 
         # Broadcast status change so frontend updates immediately
         await broadcast("recordings", "status_changed", recording_id)
+        await emit_event("transcription.complete", recording_id=recording_id, transcript_id=transcript_id)
 
         # Auto-queue embedding job if service is available
         from services.embedding import embedding_service
@@ -609,6 +611,7 @@ async def handle_transcription(
             await session.commit()
         # Broadcast status change so frontend updates immediately
         await broadcast("recordings", "status_changed", recording_id)
+        await emit_event("transcription.failed", recording_id=recording_id, error=str(e))
         logger.exception("Transcription failed for recording %s", recording_id)
         raise
 
@@ -1017,6 +1020,7 @@ async def handle_document_processing(
             doc.error_message = None
             await session.commit()
             await broadcast("documents", "status_changed", document_id)
+            await emit_event("document.processed", document_id=document_id)
 
             await update_progress(100)
 
