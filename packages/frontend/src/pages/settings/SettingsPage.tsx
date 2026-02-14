@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { api, type ArchiveInfo, type TranscriptionSettings, type AIModel, type AIModelDownloadEvent, type OCRModel, type OCRModelDownloadEvent, type WhisperModel, type WhisperModelDownloadEvent, type DiarizationModel, type DiarizationModelDownloadEvent, type SystemInfo, type MLStatus, type StorageLocation, type MigrationStatus, type TransferStatus, type SyncResult, type StorageType, type StorageSubtype, type StorageLocationConfig, type OAuthStatusResponse, type CategoryCount, type ClearableCategory, type GpuStatus } from '@/lib/api';
+import { api, getApiUrl, type ArchiveInfo, type TranscriptionSettings, type AIModel, type AIModelDownloadEvent, type OCRModel, type OCRModelDownloadEvent, type WhisperModel, type WhisperModelDownloadEvent, type DiarizationModel, type DiarizationModelDownloadEvent, type SystemInfo, type MLStatus, type StorageLocation, type MigrationStatus, type TransferStatus, type SyncResult, type StorageType, type StorageSubtype, type StorageLocationConfig, type OAuthStatusResponse, type CategoryCount, type ClearableCategory, type GpuStatus } from '@/lib/api';
 import { useDownloadStore } from '@/stores/downloadStore';
 import { useKeybindingStore, DEFAULT_ACTIONS, formatCombo, type KeyCombo, type ActionCategory } from '@/stores/keybindingStore';
 import { StorageTypeSelector } from '@/components/storage/StorageTypeSelector';
@@ -13,6 +13,7 @@ import { APP_VERSION } from '@/version';
 interface SettingsPageProps {
   theme: 'light' | 'dark' | 'system';
   onThemeChange: (theme: 'light' | 'dark' | 'system') => void;
+  pluginSettingsTabs?: Array<{ id: string; label: string; icon: string }>;
 }
 
 // Languages supported by WhisperX
@@ -228,7 +229,7 @@ function KeybindingEditor() {
   );
 }
 
-export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
+export function SettingsPage({ theme, onThemeChange, pluginSettingsTabs }: SettingsPageProps) {
   const [settings, setSettings] = useState(() => getStoredSettings());
   const [saved, setSaved] = useState(false);
 
@@ -1192,16 +1193,19 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
   };
 
   // Tab state - check URL hash for direct linking
-  const [activeTab, setActiveTab] = useState<'general' | 'transcription' | 'ai' | 'system'>(() => {
+  const [activeTab, setActiveTab] = useState<string>(() => {
     const hash = window.location.hash.slice(1);
-    if (['general', 'transcription', 'ai', 'system'].includes(hash)) {
-      return hash as 'general' | 'transcription' | 'ai' | 'system';
+    const builtinTabs = ['general', 'transcription', 'ai', 'system'];
+    const pluginTabIds = pluginSettingsTabs?.map(t => t.id) || [];
+    const validTabs = [...builtinTabs, ...pluginTabIds];
+    if (validTabs.includes(hash)) {
+      return hash;
     }
     return 'general';
   });
 
   // Update URL hash when tab changes
-  const handleTabChange = (tab: 'general' | 'transcription' | 'ai' | 'system') => {
+  const handleTabChange = (tab: string) => {
     setActiveTab(tab);
     window.history.replaceState(null, '', `#${tab}`);
   };
@@ -1210,14 +1214,17 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
   useEffect(() => {
     const handleHashChange = () => {
       const hash = window.location.hash.slice(1);
-      if (['general', 'transcription', 'ai', 'system'].includes(hash)) {
-        setActiveTab(hash as 'general' | 'transcription' | 'ai' | 'system');
+      const builtinTabs = ['general', 'transcription', 'ai', 'system'];
+      const pluginTabIds = pluginSettingsTabs?.map(t => t.id) || [];
+      const validTabs = [...builtinTabs, ...pluginTabIds];
+      if (validTabs.includes(hash)) {
+        setActiveTab(hash);
       }
     };
 
     window.addEventListener('hashchange', handleHashChange);
     return () => window.removeEventListener('hashchange', handleHashChange);
-  }, []);
+  }, [pluginSettingsTabs]);
 
   const TABS = [
     { id: 'general' as const, label: 'General', icon: (
@@ -1267,6 +1274,22 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
               }`}
             >
               {tab.icon}
+              {tab.label}
+            </button>
+          ))}
+          {pluginSettingsTabs?.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => handleTabChange(tab.id)}
+              className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                activeTab === tab.id
+                  ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                  : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'
+              }`}
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 16.875h3.375m0 0h3.375m-3.375 0V13.5m0 3.375v3.375M6 10.5h2.25a2.25 2.25 0 002.25-2.25V6a2.25 2.25 0 00-2.25-2.25H6A2.25 2.25 0 003.75 6v2.25A2.25 2.25 0 006 10.5zm0 9.75h2.25A2.25 2.25 0 0010.5 18v-2.25a2.25 2.25 0 00-2.25-2.25H6a2.25 2.25 0 00-2.25 2.25V18A2.25 2.25 0 006 20.25zm9.75-9.75H18a2.25 2.25 0 002.25-2.25V6A2.25 2.25 0 0018 3.75h-2.25A2.25 2.25 0 0013.5 6v2.25a2.25 2.25 0 002.25 2.25z" />
+              </svg>
               {tab.label}
             </button>
           ))}
@@ -4229,6 +4252,18 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
           </div>
         </div>
         </>
+      )}
+
+      {/* Plugin settings tabs */}
+      {pluginSettingsTabs?.some((t) => t.id === activeTab) && (
+        <div className="h-[calc(100vh-16rem)]">
+          <iframe
+            src={getApiUrl(`/plugins/settings/${activeTab}`)}
+            className="w-full h-full border-0 rounded-lg"
+            title={`Plugin settings: ${activeTab}`}
+            sandbox="allow-scripts allow-same-origin allow-forms"
+          />
+        </div>
       )}
 
       {/* Migration Dialog */}

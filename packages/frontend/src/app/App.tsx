@@ -639,7 +639,7 @@ export function App() {
                   />
                 )}
                 {navigation.type === 'settings' && (
-                  <SettingsPage theme={theme} onThemeChange={setTheme} />
+                  <SettingsPage theme={theme} onThemeChange={setTheme} pluginSettingsTabs={pluginManifest.settings_tabs} />
                 )}
                 {navigation.type === 'plugin' && (
                   <div className="w-full h-[calc(100vh-8rem)]">
