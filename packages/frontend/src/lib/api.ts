@@ -1335,6 +1335,27 @@ export interface OAuthCredentialsUpdate {
   client_secret: string;
 }
 
+// Plugin system types
+export interface PluginNavItem {
+  key: string;
+  label: string;
+  icon: string;
+  position: 'main' | 'bottom';
+}
+
+export interface PluginSettingsTab {
+  id: string;
+  label: string;
+  icon: string;
+}
+
+export interface PluginManifest {
+  routes: string[];
+  nav_items: PluginNavItem[];
+  settings_tabs: PluginSettingsTab[];
+  slots: Record<string, string>;
+}
+
 class ApiClient {
   private customBaseUrl?: string;
 
@@ -2680,6 +2701,12 @@ class ApiClient {
         method: 'POST',
         body: JSON.stringify({ role, content }),
       }),
+  };
+
+  // Plugins
+  plugins = {
+    manifest: () =>
+      this.request<PluginManifest>('/api/plugins/manifest'),
   };
 }
 
