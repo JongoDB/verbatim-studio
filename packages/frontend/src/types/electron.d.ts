@@ -18,6 +18,7 @@ interface ElectronAPI {
     filters?: { name: string; extensions: string[] }[];
     multiple?: boolean;
   }) => Promise<string | string[] | null>;
+  captureScreenshot: () => Promise<{ data: string | null; width: number; height: number }>;
 
   // Update methods
   onUpdateAvailable: (

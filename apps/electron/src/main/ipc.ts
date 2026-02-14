@@ -2,6 +2,7 @@ import { ipcMain, app, BrowserWindow, dialog } from 'electron';
 import { backendManager } from './backend';
 import { checkForUpdates, startUpdate, markWhatsNewSeen } from './updater';
 import { getAutoUpdateEnabled, setAutoUpdateEnabled } from './update-store';
+import { captureScreenshot } from './screenshot';
 
 export function registerIpcHandlers(): void {
   // App info
@@ -57,6 +58,13 @@ export function registerIpcHandlers(): void {
       return null;
     }
     return options?.multiple ? result.filePaths : result.filePaths[0];
+  });
+
+  // Screenshot capture
+  ipcMain.handle('screenshot:capture', async (event) => {
+    const window = BrowserWindow.fromWebContents(event.sender);
+    if (!window) return { data: null, width: 0, height: 0 };
+    return captureScreenshot(window);
   });
 
   // Window controls

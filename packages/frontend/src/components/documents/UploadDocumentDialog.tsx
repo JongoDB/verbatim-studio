@@ -32,6 +32,9 @@ export function UploadDocumentDialog({
   const [projectId, setProjectId] = useState(defaultProjectId || '');
   const [enableOcr, setEnableOcr] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [isCapturing, setIsCapturing] = useState(false);
+  const [countdown, setCountdown] = useState(0);
+  const [screenshotDelay, setScreenshotDelay] = useState(0);
   const [progress, setProgress] = useState<Record<string, number>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -63,6 +66,45 @@ export function UploadDocumentDialog({
   const removeFile = useCallback((index: number) => {
     setFiles((prev) => prev.filter((_, i) => i !== index));
   }, []);
+
+  const doCapture = useCallback(async () => {
+    if (!window.electronAPI?.captureScreenshot) return;
+    try {
+      const result = await window.electronAPI.captureScreenshot();
+      if (result.data) {
+        const byteString = atob(result.data);
+        const ab = new ArrayBuffer(byteString.length);
+        const ia = new Uint8Array(ab);
+        for (let i = 0; i < byteString.length; i++) {
+          ia[i] = byteString.charCodeAt(i);
+        }
+        const blob = new Blob([ab], { type: 'image/png' });
+        const filename = `screenshot-${new Date().toISOString().replace(/[:.]/g, '-')}.png`;
+        const file = new File([blob], filename, { type: 'image/png' });
+        setFiles((prev) => [...prev, file]);
+      }
+    } catch (err) {
+      console.error('Screenshot capture failed:', err);
+    }
+  }, []);
+
+  const handleScreenshot = useCallback(async () => {
+    if (!window.electronAPI?.captureScreenshot) return;
+    setIsCapturing(true);
+    try {
+      if (screenshotDelay > 0) {
+        // Countdown in the UI so user can switch windows
+        for (let i = screenshotDelay; i > 0; i--) {
+          setCountdown(i);
+          await new Promise((r) => setTimeout(r, 1000));
+        }
+        setCountdown(0);
+      }
+      await doCapture();
+    } finally {
+      setIsCapturing(false);
+    }
+  }, [screenshotDelay, doCapture]);
 
   const handleUpload = async () => {
     if (files.length === 0) return;
@@ -125,6 +167,38 @@ export function UploadDocumentDialog({
             className="hidden"
           />
         </div>
+
+        {/* Screenshot capture - Electron only */}
+        {window.electronAPI?.captureScreenshot && (
+          <div className="mt-3 flex gap-2">
+            <button
+              onClick={handleScreenshot}
+              disabled={uploading || isCapturing}
+              className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0z" />
+              </svg>
+              {countdown > 0
+                ? `${countdown}\u2026`
+                : isCapturing
+                  ? 'Capturing\u2026'
+                  : 'Take Screenshot'}
+            </button>
+            <select
+              value={screenshotDelay}
+              onChange={(e) => setScreenshotDelay(Number(e.target.value))}
+              disabled={uploading || isCapturing}
+              className="px-2 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 disabled:opacity-50"
+              title="Delay before capture"
+            >
+              <option value={0}>No delay</option>
+              <option value={3}>3s delay</option>
+              <option value={5}>5s delay</option>
+            </select>
+          </div>
+        )}
 
         {/* File list */}
         {files.length > 0 && (

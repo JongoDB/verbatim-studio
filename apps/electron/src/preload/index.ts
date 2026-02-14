@@ -33,6 +33,10 @@ try {
   }): Promise<string | string[] | null> =>
     ipcRenderer.invoke('dialog:openFile', options),
 
+  // Screenshot capture
+  captureScreenshot: (): Promise<{ data: string | null; width: number; height: number }> =>
+    ipcRenderer.invoke('screenshot:capture'),
+
   // Update event listeners (return cleanup function)
   onUpdateAvailable: (
     callback: (data: { version: string; downloadUrl: string }) => void
@@ -113,6 +117,7 @@ declare global {
         filters?: { name: string; extensions: string[] }[];
         multiple?: boolean;
       }) => Promise<string | string[] | null>;
+      captureScreenshot: () => Promise<{ data: string | null; width: number; height: number }>;
       // Update methods
       onUpdateAvailable: (
         callback: (data: { version: string; downloadUrl: string }) => void
