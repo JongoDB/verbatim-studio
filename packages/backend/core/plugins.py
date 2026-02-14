@@ -58,6 +58,7 @@ class PluginRegistry:
     _models: list[type] = field(default_factory=list)
     _job_handlers: dict[str, JobHandler] = field(default_factory=dict)
     _adapters: dict[str, dict[str, type]] = field(default_factory=dict)
+    _startup_hooks: list[Callable] = field(default_factory=list)
 
     # Frontend metadata (served via /api/plugins/manifest)
     _frontend_routes: list[str] = field(default_factory=list)
@@ -89,6 +90,10 @@ class PluginRegistry:
     def add_adapter(self, interface: str, name: str, adapter_class: type) -> None:
         self._adapters.setdefault(interface, {})[name] = adapter_class
 
+    def add_startup_hook(self, hook: Callable) -> None:
+        """Register an async hook to run after plugin loading but before DB init."""
+        self._startup_hooks.append(hook)
+
     def add_frontend_routes(self, routes: list[str]) -> None:
         self._frontend_routes.extend(routes)
 
@@ -118,6 +123,15 @@ class PluginRegistry:
         for job_type, handler in self._job_handlers.items():
             job_queue.register_handler(job_type, handler)
             logger.info("Plugin job handler registered: %s", job_type)
+
+    async def run_startup_hooks(self) -> None:
+        """Run all registered startup hooks (called before init_db)."""
+        for hook in self._startup_hooks:
+            try:
+                await hook()
+            except Exception:
+                logger.exception("Startup hook failed: %s", hook)
+                raise
 
     def get_frontend_manifest(self) -> dict:
         """Return frontend extension metadata for the /api/plugins/manifest endpoint."""

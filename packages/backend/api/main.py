@@ -95,6 +95,10 @@ from services.jobs import job_queue
 # Global file watcher instance
 file_watcher: FileWatcherService | None = None
 
+# Load plugins early (synchronous) so middleware + routers can be applied
+# before the app starts. Async init (DB, startup hooks) happens in lifespan.
+_plugin_registry = load_plugins()
+
 
 def _get_version() -> str:
     """Read version from pyproject.toml or git tags at startup."""
@@ -138,14 +142,13 @@ async def lifespan(app: FastAPI):
     # Startup
     settings.ensure_directories()
 
-    # Load plugins before DB init (so plugin models get created)
-    registry = load_plugins()
+    # Enterprise plugins can override the database engine here
+    await _plugin_registry.run_startup_hooks()
 
     await init_db()
 
-    # Apply plugin registrations to the app
-    registry.apply_to_app(app)
-    registry.apply_job_handlers(job_queue)
+    # Register plugin job handlers (async-safe during lifespan)
+    _plugin_registry.apply_job_handlers(job_queue)
 
     # Start file watcher for external file detection
     file_watcher = FileWatcherService(settings.MEDIA_DIR)
@@ -175,6 +178,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Apply plugin middleware and routers (must be before app starts)
+_plugin_registry.apply_to_app(app)
 
 # Routes
 app.include_router(health.router)
@@ -213,17 +219,7 @@ app.include_router(diarization_router, prefix="/api")
 @app.get("/api/plugins/manifest")
 async def plugin_manifest():
     """Return plugin frontend metadata (routes, nav items, settings tabs, slots)."""
-    return get_registry().get_frontend_manifest()
-
-
-@app.get("/")
-async def root():
-    """Root endpoint."""
-    return {
-        "name": "Verbatim Studio API",
-        "version": APP_VERSION,
-        "mode": settings.MODE,
-    }
+    return _plugin_registry.get_frontend_manifest()
 
 
 @app.get("/api/info")
@@ -234,3 +230,20 @@ async def api_info():
         "version": APP_VERSION,
         "mode": settings.MODE,
     }
+
+
+# In server/Docker mode, serve the frontend SPA from VERBATIM_FRONTEND_DIR.
+# The SPA mount handles "/" so we skip the JSON root endpoint.
+_frontend_dir = os.environ.get("VERBATIM_FRONTEND_DIR")
+if _frontend_dir and os.path.isdir(_frontend_dir):
+    from starlette.staticfiles import StaticFiles
+    app.mount("/", StaticFiles(directory=_frontend_dir, html=True), name="frontend")
+else:
+    @app.get("/")
+    async def root():
+        """Root endpoint (only when no frontend is being served)."""
+        return {
+            "name": "Verbatim Studio API",
+            "version": APP_VERSION,
+            "mode": settings.MODE,
+        }

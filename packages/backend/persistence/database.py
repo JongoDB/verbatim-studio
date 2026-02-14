@@ -136,6 +136,11 @@ async def init_db() -> None:
 
 async def _run_migrations(conn) -> None:
     """Run schema migrations that create_all doesn't handle (column drops, renames, etc)."""
+    # These migrations are SQLite-specific (PRAGMA, sqlite3 module).
+    # On PostgreSQL, create_all handles the full schema from models.
+    if settings.DATABASE_URL.startswith("postgresql"):
+        return
+
     # Note: Recording.project_id FK is now the standard pattern (single project per recording).
     # The project_recordings junction table is kept for backward compatibility during migration.
 
