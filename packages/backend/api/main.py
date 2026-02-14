@@ -88,6 +88,7 @@ from api.routes.whisper import router as whisper_router
 from api.routes.diarization import router as diarization_router
 from core.config import settings
 from persistence import init_db
+from core.plugins import load_plugins, get_registry
 from services.file_watcher import FileWatcherService
 from services.jobs import job_queue
 
@@ -136,7 +137,15 @@ async def lifespan(app: FastAPI):
 
     # Startup
     settings.ensure_directories()
+
+    # Load plugins before DB init (so plugin models get created)
+    registry = load_plugins()
+
     await init_db()
+
+    # Apply plugin registrations to the app
+    registry.apply_to_app(app)
+    registry.apply_job_handlers(job_queue)
 
     # Start file watcher for external file detection
     file_watcher = FileWatcherService(settings.MEDIA_DIR)
@@ -199,6 +208,12 @@ app.include_router(conversations_router, prefix="/api")
 app.include_router(sync_router, prefix="/api")  # WebSocket sync endpoint
 app.include_router(whisper_router, prefix="/api")
 app.include_router(diarization_router, prefix="/api")
+
+
+@app.get("/api/plugins/manifest")
+async def plugin_manifest():
+    """Return plugin frontend metadata (routes, nav items, settings tabs, slots)."""
+    return get_registry().get_frontend_manifest()
 
 
 @app.get("/")

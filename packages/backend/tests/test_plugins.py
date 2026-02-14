@@ -196,3 +196,30 @@ def test_get_registry_after_load():
 
     registry = get_registry()
     assert registry is not None
+
+
+import pytest_asyncio
+from httpx import ASGITransport, AsyncClient
+
+
+@pytest_asyncio.fixture
+async def api_client():
+    """Create a test client for the FastAPI app."""
+    from api.main import app
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test",
+    ) as client:
+        yield client
+
+
+@pytest.mark.asyncio
+async def test_manifest_endpoint(api_client):
+    """GET /api/plugins/manifest returns plugin metadata."""
+    resp = await api_client.get("/api/plugins/manifest")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "routes" in data
+    assert "nav_items" in data
+    assert "settings_tabs" in data
+    assert "slots" in data
