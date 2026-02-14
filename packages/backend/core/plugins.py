@@ -133,3 +133,63 @@ class PluginRegistry:
             ],
             "slots": self._frontend_slots,
         }
+
+
+# --- Plugin discovery and loading ---
+
+from importlib.metadata import entry_points
+
+
+def discover_plugins() -> list:
+    """Discover installed plugins via entry points."""
+    plugins = []
+    eps = entry_points()
+
+    # Python 3.12+: entry_points() returns a SelectableGroups
+    plugin_eps = (
+        eps.select(group="verbatim.plugins")
+        if hasattr(eps, "select")
+        else eps.get("verbatim.plugins", [])
+    )
+
+    for ep in plugin_eps:
+        try:
+            plugin_class = ep.load()
+            plugin = plugin_class()
+            if isinstance(plugin, VerbatimPlugin):
+                plugins.append(plugin)
+                logger.info("Discovered plugin: %s v%s", plugin.name, plugin.version)
+            else:
+                logger.warning(
+                    "Plugin %s does not implement VerbatimPlugin protocol", ep.name
+                )
+        except Exception:
+            logger.exception("Failed to load plugin: %s", ep.name)
+
+    return plugins
+
+
+_registry: PluginRegistry | None = None
+
+
+def load_plugins() -> PluginRegistry:
+    """Discover and register all installed plugins. Returns the registry."""
+    global _registry
+    _registry = PluginRegistry()
+
+    plugins = discover_plugins()
+    for plugin in plugins:
+        try:
+            plugin.register(_registry)
+            logger.info("Plugin registered: %s", plugin.name)
+        except Exception:
+            logger.exception("Failed to register plugin: %s", plugin.name)
+
+    return _registry
+
+
+def get_registry() -> PluginRegistry:
+    """Get the global plugin registry. Must call load_plugins() first."""
+    if _registry is None:
+        raise RuntimeError("Plugins not loaded. Call load_plugins() first.")
+    return _registry

@@ -124,3 +124,75 @@ def test_add_middleware(registry):
 
     registry.add_middleware(FakeMiddleware, some_arg="value")
     assert len(registry._middleware) == 1
+
+
+from unittest.mock import MagicMock, patch
+from core.plugins import discover_plugins, load_plugins, get_registry
+
+
+class FakePlugin:
+    """A test plugin that implements the VerbatimPlugin protocol."""
+    name = "test-plugin"
+    version = "0.1.0"
+
+    def register(self, registry):
+        registry.add_frontend_routes(["/fake"])
+
+
+def test_discover_plugins_with_entry_points():
+    """discover_plugins() loads plugins from entry points."""
+    mock_ep = MagicMock()
+    mock_ep.name = "test"
+    mock_ep.load.return_value = FakePlugin
+
+    with patch("core.plugins.entry_points") as mock_eps:
+        mock_result = MagicMock()
+        mock_result.select.return_value = [mock_ep]
+        mock_eps.return_value = mock_result
+
+        plugins = discover_plugins()
+
+    assert len(plugins) == 1
+    assert plugins[0].name == "test-plugin"
+
+
+def test_discover_plugins_skips_invalid():
+    """discover_plugins() skips plugins that fail to load."""
+    mock_ep = MagicMock()
+    mock_ep.name = "broken"
+    mock_ep.load.side_effect = ImportError("missing dep")
+
+    with patch("core.plugins.entry_points") as mock_eps:
+        mock_result = MagicMock()
+        mock_result.select.return_value = [mock_ep]
+        mock_eps.return_value = mock_result
+
+        plugins = discover_plugins()
+
+    assert len(plugins) == 0
+
+
+def test_load_plugins_returns_registry():
+    """load_plugins() returns a PluginRegistry with all plugins registered."""
+    with patch("core.plugins.discover_plugins", return_value=[FakePlugin()]):
+        registry = load_plugins()
+
+    assert registry.get_frontend_manifest()["routes"] == ["/fake"]
+
+
+def test_get_registry_before_load_raises():
+    """get_registry() raises if load_plugins() hasn't been called."""
+    import core.plugins as mod
+    mod._registry = None  # reset
+
+    with pytest.raises(RuntimeError, match="Plugins not loaded"):
+        get_registry()
+
+
+def test_get_registry_after_load():
+    """get_registry() returns the registry after load_plugins()."""
+    with patch("core.plugins.discover_plugins", return_value=[]):
+        load_plugins()
+
+    registry = get_registry()
+    assert registry is not None
