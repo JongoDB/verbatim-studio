@@ -848,7 +848,7 @@ async def enable_gpu_acceleration():
         try:
             python_exe = sys.executable
             cuda_torch_index = "https://download.pytorch.org/whl/cu126"
-            cuda_llama_index = "https://abetlen.github.io/llama-cpp-python/whl/cu126"
+            cuda_llama_index = "https://abetlen.github.io/llama-cpp-python/whl/cu124"
 
             # Skip if CUDA PyTorch already installed (e.g. from OCR deps)
             torch_already_cuda = False
@@ -889,10 +889,12 @@ async def enable_gpu_acceleration():
                     line_text = line.decode().strip()
                     if line_text:
                         logger.info("pip (torch): %s", line_text)
-                        if any(kw in line_text for kw in ("Downloading", "Installing", "Successfully", "Using cached")):
+                        if "Successfully installed" in line_text:
                             yield f"data: {json.dumps({'status': 'progress', 'phase': 'torch', 'message': line_text[:200]})}\n\n"
-                        elif "Uninstalling" in line_text:
-                            pkg = line_text.replace("Uninstalling ", "").rstrip(":")
+                        elif any(kw in line_text for kw in ("Downloading", "Installing", "Using cached")):
+                            yield f"data: {json.dumps({'status': 'progress', 'phase': 'torch', 'message': line_text[:200]})}\n\n"
+                        elif "Uninstalling" in line_text or "Successfully uninstalled" in line_text:
+                            pkg = line_text.replace("Successfully uninstalled ", "").replace("Uninstalling ", "").rstrip(":")
                             yield f"data: {json.dumps({'status': 'progress', 'phase': 'torch', 'message': f'Replacing {pkg} with CUDA version...'})}\n\n"
 
                 await process.wait()
@@ -904,17 +906,18 @@ async def enable_gpu_acceleration():
                 yield f"data: {json.dumps({'status': 'progress', 'phase': 'torch', 'message': 'CUDA PyTorch installed successfully'})}\n\n"
 
             # Phase 2: Install CUDA llama-cpp-python
-            yield f"data: {json.dumps({'status': 'progress', 'phase': 'llama', 'message': 'Installing CUDA llama-cpp-python (~200 MB)...'})}\n\n"
+            # Pre-built Windows CUDA wheels only exist up to v0.3.4 on the cu124 index.
+            # Try that first; if it fails, attempt building from source with CUDA.
+            yield f"data: {json.dumps({'status': 'progress', 'phase': 'llama', 'message': 'Installing CUDA llama-cpp-python...'})}\n\n"
 
             llama_cmd = [
                 python_exe, "-m", "pip", "install",
                 "--upgrade", "--force-reinstall",
-                "--index-url", cuda_llama_index,
-                "--extra-index-url", "https://pypi.org/simple",
-                "llama-cpp-python",
+                "--extra-index-url", cuda_llama_index,
+                "llama-cpp-python==0.3.4",
             ]
 
-            logger.info("Installing CUDA llama-cpp-python: %s", " ".join(llama_cmd))
+            logger.info("Installing CUDA llama-cpp-python (pre-built): %s", " ".join(llama_cmd))
 
             process = await asyncio.create_subprocess_exec(
                 *llama_cmd,
@@ -929,15 +932,51 @@ async def enable_gpu_acceleration():
                 line_text = line.decode().strip()
                 if line_text:
                     logger.info("pip (llama): %s", line_text)
-                    if any(kw in line_text for kw in ("Downloading", "Installing", "Successfully", "Using cached")):
+                    if "Successfully installed" in line_text:
                         yield f"data: {json.dumps({'status': 'progress', 'phase': 'llama', 'message': line_text[:200]})}\n\n"
-                    elif "Uninstalling" in line_text:
-                        pkg = line_text.replace("Uninstalling ", "").rstrip(":")
+                    elif any(kw in line_text for kw in ("Downloading", "Installing", "Using cached")):
+                        yield f"data: {json.dumps({'status': 'progress', 'phase': 'llama', 'message': line_text[:200]})}\n\n"
+                    elif "Uninstalling" in line_text or "Successfully uninstalled" in line_text:
+                        pkg = line_text.replace("Successfully uninstalled ", "").replace("Uninstalling ", "").rstrip(":")
                         yield f"data: {json.dumps({'status': 'progress', 'phase': 'llama', 'message': f'Replacing {pkg} with CUDA version...'})}\n\n"
 
             await process.wait()
 
-            if process.returncode != 0:
+            llama_ok = process.returncode == 0
+
+            # Fallback: build from source with CUDA if pre-built wheel unavailable
+            if not llama_ok:
+                logger.info("Pre-built CUDA wheel failed, trying source build with DGGML_CUDA=on")
+                yield f"data: {json.dumps({'status': 'progress', 'phase': 'llama', 'message': 'Pre-built wheel unavailable, building from source (may take a few minutes)...'})}\n\n"
+
+                build_env = {**os.environ, "CMAKE_ARGS": "-DGGML_CUDA=on"}
+                llama_src_cmd = [
+                    python_exe, "-m", "pip", "install",
+                    "--upgrade", "--force-reinstall", "--no-cache-dir",
+                    "llama-cpp-python",
+                ]
+
+                process = await asyncio.create_subprocess_exec(
+                    *llama_src_cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.STDOUT,
+                    env=build_env,
+                )
+
+                while True:
+                    line = await process.stdout.readline()
+                    if not line:
+                        break
+                    line_text = line.decode().strip()
+                    if line_text:
+                        logger.info("pip (llama-src): %s", line_text)
+                        if any(kw in line_text for kw in ("Building", "Downloading", "Installing", "Successfully installed", "cmake", "Running")):
+                            yield f"data: {json.dumps({'status': 'progress', 'phase': 'llama', 'message': line_text[:200]})}\n\n"
+
+                await process.wait()
+                llama_ok = process.returncode == 0
+
+            if not llama_ok:
                 logger.warning("CUDA llama-cpp-python failed — CPU version will continue working")
                 yield f"data: {json.dumps({'status': 'progress', 'phase': 'llama', 'message': 'CUDA llama-cpp-python not available — AI assistant will use CPU'})}\n\n"
             else:

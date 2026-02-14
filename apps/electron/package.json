@@ -37,6 +37,10 @@
     ],
     "extraResources": [
       {
+        "from": "assets/icon.png",
+        "to": "icon.png"
+      },
+      {
         "from": "../../build/resources/python",
         "to": "python",
         "filter": [

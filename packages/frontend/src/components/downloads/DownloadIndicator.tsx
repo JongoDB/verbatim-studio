@@ -67,8 +67,8 @@ export function DownloadIndicator({ collapsed }: DownloadIndicatorProps) {
           Downloading...
         </span>
 
-        {/* Progress percent */}
-        {progress && (
+        {/* Progress percent (hidden for indeterminate / SSE-based installs) */}
+        {progress && progress.totalBytes > 0 && (
           <span
             className={`ml-auto text-xs font-medium overflow-hidden whitespace-nowrap transition-all duration-300 ${
               collapsed ? 'md:w-0 md:opacity-0' : 'md:w-auto md:opacity-100'
@@ -109,20 +109,22 @@ export function DownloadIndicator({ collapsed }: DownloadIndicatorProps) {
                   </button>
                 </div>
                 <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-blue-500 transition-all duration-300"
-                    style={{
-                      width: download.totalBytes > 0
-                        ? `${(download.downloadedBytes / download.totalBytes) * 100}%`
-                        : '0%',
-                    }}
-                  />
+                  {download.totalBytes > 0 ? (
+                    <div
+                      className="h-full bg-blue-500 transition-all duration-300"
+                      style={{ width: `${(download.downloadedBytes / download.totalBytes) * 100}%` }}
+                    />
+                  ) : (
+                    <div className="h-full w-1/3 bg-blue-500 rounded-full animate-indeterminate" />
+                  )}
                 </div>
                 <div className="flex justify-between text-[10px] text-muted-foreground">
-                  <span>{download.message || 'Downloading...'}</span>
-                  <span>
-                    {formatBytes(download.downloadedBytes)} / {formatBytes(download.totalBytes)}
-                  </span>
+                  <span className="truncate">{download.message || 'Installing...'}</span>
+                  {download.totalBytes > 0 && (
+                    <span className="shrink-0 ml-2">
+                      {formatBytes(download.downloadedBytes)} / {formatBytes(download.totalBytes)}
+                    </span>
+                  )}
                 </div>
               </div>
             ))}

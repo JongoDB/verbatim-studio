@@ -1,14 +1,17 @@
-import { BrowserWindow } from 'electron';
+import { BrowserWindow, app } from 'electron';
 import path from 'path';
 import { readFileSync } from 'fs';
 
 let splashWindow: BrowserWindow | null = null;
 
 // Read the app icon and convert to base64 for inline embedding.
-// Falls back gracefully if icon isn't found (e.g. in development).
+// In packaged builds the icon lives in extraResources (process.resourcesPath).
+// In development it's at apps/electron/assets/icon.png relative to dist/main/.
 let iconBase64 = '';
 try {
-  const iconPath = path.join(__dirname, '..', '..', 'assets', 'icon.png');
+  const iconPath = app.isPackaged
+    ? path.join(process.resourcesPath, 'icon.png')
+    : path.join(__dirname, '..', '..', 'assets', 'icon.png');
   iconBase64 = readFileSync(iconPath).toString('base64');
 } catch {
   // Icon not available — splash will show without it

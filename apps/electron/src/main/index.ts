@@ -35,17 +35,33 @@ async function bootstrap(): Promise<void> {
 
     updateSplashStatus('Starting backend\u2026');
 
-    // Forward backend logs to splash screen for progress feedback
+    // Forward backend logs to splash screen for progress feedback.
+    // On Windows the backend can take 30-60s to start — showing granular
+    // progress prevents the splash from looking stuck.
+    let startupStep = 0;
     const logListener = ({ message }: { level: string; message: string }) => {
       const msg = message.toLowerCase();
-      if (msg.includes('cache for model') || msg.includes('transformers')) {
+      if (msg.includes('importing') || msg.includes('import ')) {
+        startupStep++;
+        updateSplashStatus(`Loading Python modules (${startupStep})\u2026`);
+      } else if (msg.includes('cache for model') || msg.includes('transformers')) {
         updateSplashStatus('Loading AI libraries\u2026');
       } else if (msg.includes('pyannote') || msg.includes('torchaudio')) {
         updateSplashStatus('Loading audio models\u2026');
+      } else if (msg.includes('torch') && !msg.includes('torchaudio')) {
+        updateSplashStatus('Loading torch\u2026');
+      } else if (msg.includes('database') || msg.includes('init_db') || msg.includes('sqlite')) {
+        updateSplashStatus('Initializing database\u2026');
+      } else if (msg.includes('file_watcher') || msg.includes('filewatcher')) {
+        updateSplashStatus('Starting file watcher\u2026');
       } else if (msg.includes('started server process')) {
         updateSplashStatus('Starting server\u2026');
+      } else if (msg.includes('waiting for application startup')) {
+        updateSplashStatus('Preparing application\u2026');
       } else if (msg.includes('application startup complete')) {
         updateSplashStatus('Almost ready\u2026');
+      } else if (msg.includes('uvicorn') || msg.includes('running on')) {
+        updateSplashStatus('Server starting\u2026');
       }
     };
     backendManager.on('log', logListener);
