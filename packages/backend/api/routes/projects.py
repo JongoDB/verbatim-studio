@@ -10,6 +10,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.routes.sync import broadcast
+from core.events import emit as emit_event
 from persistence.database import get_db
 from persistence.models import Document, Project, ProjectType, Recording, RecordingTag, Tag
 from services.storage import storage_service
@@ -231,6 +232,7 @@ async def create_project(
     db.add(project)
     await db.commit()
     await broadcast("projects", "created", str(project.id))
+    await emit_event("project.created", project_id=project.id, name=data.name)
 
     # Create project folder on disk
     try:

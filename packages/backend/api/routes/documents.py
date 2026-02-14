@@ -17,6 +17,7 @@ from persistence.models import Document, DocumentTag, Project, StorageLocation
 from services.storage import storage_service, get_active_storage_location
 from storage.factory import get_adapter
 from api.routes.sync import broadcast
+from core.events import emit as emit_event
 
 logger = logging.getLogger(__name__)
 
@@ -247,6 +248,7 @@ async def upload_document(
     await job_queue.enqueue("process_document", {"document_id": doc.id})
 
     await broadcast("documents", "created", doc.id)
+    await emit_event("document.uploaded", document_id=doc.id, filename=safe_filename)
     return _doc_to_response(doc)
 
 

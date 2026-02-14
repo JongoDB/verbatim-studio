@@ -22,6 +22,7 @@ from services.jobs import job_queue
 from services.storage import storage_service, get_storage_adapter, get_active_storage_location
 from storage.factory import get_adapter
 from api.routes.sync import broadcast
+from core.events import emit as emit_event
 
 logger = logging.getLogger(__name__)
 
@@ -617,6 +618,8 @@ async def upload_recording(
 
         await db.commit()
         await broadcast("recordings", "created", str(recording.id))
+        # Emit event for plugin hooks (webhooks, audit, etc.)
+        await emit_event("recording.created", recording_id=recording.id, project_id=project_id)
     except Exception as e:
         await db.rollback()
         # Log the actual error for debugging, but return generic message to client
@@ -1073,6 +1076,7 @@ async def delete_recording(
     await db.delete(recording)
     await db.commit()
     await broadcast("recordings", "deleted", recording_id)
+    await emit_event("recording.deleted", recording_id=recording_id)
 
     return MessageResponse(
         message="Recording deleted successfully",
