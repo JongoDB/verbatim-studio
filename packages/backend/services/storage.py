@@ -28,11 +28,11 @@ async def get_active_storage_location():
     Returns:
         StorageLocation model or None if no active location.
     """
-    from persistence.database import async_session
+    from persistence.database import get_session_factory
     from persistence.models import StorageLocation
     from sqlalchemy import select
 
-    async with async_session() as session:
+    async with get_session_factory()() as session:
         # First try to get the default storage location
         result = await session.execute(
             select(StorageLocation).where(
@@ -139,11 +139,11 @@ class StorageService:
         Falls back to current default if location_id is None or resolution fails.
         """
         if storage_location_id:
-            from persistence.database import async_session
+            from persistence.database import get_session_factory
             from persistence.models import StorageLocation
             from storage.factory import get_adapter
 
-            async with async_session() as session:
+            async with get_session_factory()() as session:
                 location = await session.get(StorageLocation, storage_location_id)
                 if location:
                     try:

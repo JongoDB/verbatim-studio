@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import distinct, func, select, update
 
-from persistence.database import async_session
+from persistence.database import get_session_factory
 from persistence.models import Segment, SegmentComment, SegmentHighlight, Speaker, Transcript
 
 logger = logging.getLogger(__name__)
@@ -98,7 +98,7 @@ class UniqueSpeakerListResponse(BaseModel):
 @router.get("/unique", response_model=UniqueSpeakerListResponse)
 async def list_unique_speakers() -> UniqueSpeakerListResponse:
     """List all unique speaker names across all recordings, with occurrence count."""
-    async with async_session() as session:
+    async with get_session_factory()() as session:
         # Get unique speaker names (prefer speaker_name over speaker_label)
         result = await session.execute(
             select(
@@ -132,7 +132,7 @@ async def get_speakers_by_transcript(transcript_id: str) -> SpeakerListResponse:
     Raises:
         HTTPException: If transcript not found.
     """
-    async with async_session() as session:
+    async with get_session_factory()() as session:
         # Verify transcript exists
         result = await session.execute(
             select(Transcript).where(Transcript.id == transcript_id)
@@ -176,7 +176,7 @@ async def update_speaker(speaker_id: str, request: SpeakerUpdateRequest) -> Spea
     Raises:
         HTTPException: If speaker not found.
     """
-    async with async_session() as session:
+    async with get_session_factory()() as session:
         result = await session.execute(select(Speaker).where(Speaker.id == speaker_id))
         speaker = result.scalar_one_or_none()
 
@@ -226,7 +226,7 @@ async def merge_speaker(speaker_id: str, request: SpeakerMergeRequest) -> Speake
     Raises:
         HTTPException: If speakers not found or belong to different transcripts.
     """
-    async with async_session() as session:
+    async with get_session_factory()() as session:
         # Load source speaker
         result = await session.execute(select(Speaker).where(Speaker.id == speaker_id))
         source = result.scalar_one_or_none()
@@ -303,7 +303,7 @@ async def reassign_segment(request: ReassignSegmentRequest) -> ReassignSegmentRe
     the segment is moved to that speaker. If no match, a new Speaker record is created.
     Orphaned speakers (0 remaining segments) are automatically deleted.
     """
-    async with async_session() as session:
+    async with get_session_factory()() as session:
         # Load the segment and verify it belongs to the transcript
         result = await session.execute(
             select(Segment).where(

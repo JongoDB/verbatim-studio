@@ -7,23 +7,27 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from core.config import settings
 
+_is_sqlite = settings.DATABASE_URL.startswith("sqlite")
+
 engine = create_async_engine(
     settings.DATABASE_URL,
     echo=False,
     future=True,
-    connect_args={"timeout": 30},  # Wait up to 30s for database locks
+    # SQLite-specific: wait up to 30s for database locks
+    connect_args={"timeout": 30} if _is_sqlite else {},
 )
 
 
-# Enable WAL mode for better concurrency (allows concurrent reads during writes)
-@event.listens_for(engine.sync_engine, "connect")
-def set_sqlite_pragma(dbapi_connection, connection_record):
-    cursor = dbapi_connection.cursor()
-    cursor.execute("PRAGMA foreign_keys=ON")  # Enable foreign key constraints (required for CASCADE)
-    cursor.execute("PRAGMA journal_mode=WAL")
-    cursor.execute("PRAGMA synchronous=NORMAL")  # Faster writes, still safe with WAL
-    cursor.execute("PRAGMA busy_timeout=30000")  # 30s timeout at SQLite level
-    cursor.close()
+if _is_sqlite:
+    # Enable WAL mode for better concurrency (allows concurrent reads during writes)
+    @event.listens_for(engine.sync_engine, "connect")
+    def set_sqlite_pragma(dbapi_connection, connection_record):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA synchronous=NORMAL")
+        cursor.execute("PRAGMA busy_timeout=30000")
+        cursor.close()
 
 async_session = async_sessionmaker(
     engine,

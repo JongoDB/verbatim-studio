@@ -16,6 +16,38 @@ declare global {
 let cachedApiBaseUrl: string | null = null;
 let apiUrlPromise: Promise<string> | null = null;
 
+// Auth token management
+const AUTH_TOKEN_KEY = 'verbatim_token';
+const AUTH_REFRESH_KEY = 'verbatim_refresh_token';
+
+let _onAuthRequired: (() => void) | null = null;
+
+/** Register a callback invoked when the server returns 401. */
+export function onAuthRequired(cb: () => void) {
+  _onAuthRequired = cb;
+}
+
+/** Store auth tokens after successful login. */
+export function setAuthTokens(access: string, refresh?: string) {
+  localStorage.setItem(AUTH_TOKEN_KEY, access);
+  if (refresh) localStorage.setItem(AUTH_REFRESH_KEY, refresh);
+}
+
+/** Clear auth tokens on logout. */
+export function clearAuthTokens() {
+  localStorage.removeItem(AUTH_TOKEN_KEY);
+  localStorage.removeItem(AUTH_REFRESH_KEY);
+}
+
+/** Check if an auth token is stored. */
+export function hasAuthToken(): boolean {
+  return !!localStorage.getItem(AUTH_TOKEN_KEY);
+}
+
+function getAuthToken(): string | null {
+  return localStorage.getItem(AUTH_TOKEN_KEY);
+}
+
 /**
  * Initialize the API base URL.
  * In Electron, this fetches the URL from the main process.
@@ -1382,12 +1414,21 @@ class ApiClient {
     if (options?.body) {
       headers['Content-Type'] = headers['Content-Type'] ?? 'application/json';
     }
+    // Attach auth token if available
+    const token = getAuthToken();
+    if (token && !headers['Authorization']) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
     const response = await fetch(`${currentBaseUrl}${path}`, {
       ...options,
       headers,
     });
 
     if (!response.ok) {
+      // On 401, notify the app that login is needed
+      if (response.status === 401 && _onAuthRequired) {
+        _onAuthRequired();
+      }
       // Try to extract detailed error message from response body
       let errorMessage = `${response.status} ${response.statusText}`;
       try {
@@ -1412,6 +1453,25 @@ class ApiClient {
 
     return response.json();
   }
+
+  // Auth (enterprise)
+  auth = {
+    login: (username: string, password: string) =>
+      this.request<{ access_token: string; token_type: string; expires_at: string; refresh_token: string }>(
+        '/api/auth/login',
+        { method: 'POST', body: JSON.stringify({ username, password }) },
+      ),
+    register: (username: string, email: string, password: string) =>
+      this.request<{ id: string; username: string; email: string }>(
+        '/api/auth/register',
+        { method: 'POST', body: JSON.stringify({ username, email, password }) },
+      ),
+    refresh: (refreshToken: string) =>
+      this.request<{ access_token: string; token_type: string; expires_at: string; refresh_token: string }>(
+        '/api/auth/refresh',
+        { method: 'POST', body: JSON.stringify({ refresh_token: refreshToken }) },
+      ),
+  };
 
   // Health
   health = {

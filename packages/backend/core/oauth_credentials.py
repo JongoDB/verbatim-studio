@@ -6,7 +6,7 @@ from typing import Any
 from sqlalchemy import select
 
 from core.config import settings as env_settings
-from persistence.database import async_session
+from persistence.database import get_session_factory
 from persistence.models import Setting
 from services.encryption import encrypt_config, decrypt_config
 
@@ -65,7 +65,7 @@ async def get_oauth_credentials(provider: str | None = None) -> dict[str, Any]:
     # Try to get DB credentials
     db_credentials = {}
     try:
-        async with async_session() as session:
+        async with get_session_factory()() as session:
             result = await session.execute(
                 select(Setting).where(Setting.key == "oauth_credentials")
             )
@@ -128,7 +128,7 @@ async def get_oauth_credentials_raw(provider: str) -> dict[str, str | None]:
 
     # Try DB first
     try:
-        async with async_session() as session:
+        async with get_session_factory()() as session:
             result = await session.execute(
                 select(Setting).where(Setting.key == "oauth_credentials")
             )
@@ -167,7 +167,7 @@ async def save_oauth_credentials(provider: str, client_id: str, client_secret: s
     if provider not in OAUTH_PROVIDERS:
         raise ValueError(f"Invalid provider: {provider}")
 
-    async with async_session() as session:
+    async with get_session_factory()() as session:
         result = await session.execute(
             select(Setting).where(Setting.key == "oauth_credentials")
         )
@@ -215,7 +215,7 @@ async def delete_oauth_credentials(provider: str) -> bool:
     if provider not in OAUTH_PROVIDERS:
         raise ValueError(f"Invalid provider: {provider}")
 
-    async with async_session() as session:
+    async with get_session_factory()() as session:
         result = await session.execute(
             select(Setting).where(Setting.key == "oauth_credentials")
         )

@@ -12,7 +12,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
-from persistence.database import async_session
+from persistence.database import get_session_factory
 from persistence.models import Job, Recording, Segment, SegmentEmbedding, Speaker, Transcript
 from api.routes.sync import broadcast
 from core.events import emit as emit_event
@@ -72,7 +72,7 @@ class JobQueue:
             raise ValueError(f"No handler registered for job type: {job_type}")
 
         # Create job record in database
-        async with async_session() as session:
+        async with get_session_factory()() as session:
             job = Job(
                 job_type=job_type,
                 status="queued",
@@ -116,7 +116,7 @@ class JobQueue:
         logger.info("Starting job %s", job_id)
 
         # Mark job as running
-        async with async_session() as session:
+        async with get_session_factory()() as session:
             await session.execute(
                 update(Job)
                 .where(Job.id == job_id)
@@ -126,7 +126,7 @@ class JobQueue:
 
         try:
             # Get job details
-            async with async_session() as session:
+            async with get_session_factory()() as session:
                 result = await session.execute(select(Job).where(Job.id == job_id))
                 job = result.scalar_one_or_none()
 
@@ -153,7 +153,7 @@ class JobQueue:
                 """Update job progress in database. Raises JobCancelled if requested."""
                 if job_id in self._cancelled_jobs:
                     raise JobCancelled(f"Job {job_id} was cancelled")
-                async with async_session() as session:
+                async with get_session_factory()() as session:
                     await session.execute(
                         update(Job).where(Job.id == job_id).values(progress=progress)
                     )
@@ -163,7 +163,7 @@ class JobQueue:
             result = await handler(payload, update_progress)
 
             # Mark job as completed
-            async with async_session() as session:
+            async with get_session_factory()() as session:
                 await session.execute(
                     update(Job)
                     .where(Job.id == job_id)
@@ -179,7 +179,7 @@ class JobQueue:
 
         except JobCancelled:
             logger.info("Job %s cancelled by user", job_id)
-            async with async_session() as session:
+            async with get_session_factory()() as session:
                 await session.execute(
                     update(Job)
                     .where(Job.id == job_id)
@@ -194,7 +194,7 @@ class JobQueue:
         except Exception as e:
             logger.exception("Job %s failed with error", job_id)
             # Mark job as failed
-            async with async_session() as session:
+            async with get_session_factory()() as session:
                 await session.execute(
                     update(Job)
                     .where(Job.id == job_id)
@@ -220,7 +220,7 @@ class JobQueue:
         Returns:
             The job record or None if not found.
         """
-        async with async_session() as session:
+        async with get_session_factory()() as session:
             result = await session.execute(select(Job).where(Job.id == job_id))
             return result.scalar_one_or_none()
 
@@ -236,7 +236,7 @@ class JobQueue:
         Returns:
             True if job was cancelled (or cancellation requested), False if not found or not cancellable.
         """
-        async with async_session() as session:
+        async with get_session_factory()() as session:
             result = await session.execute(select(Job).where(Job.id == job_id))
             job = result.scalar_one_or_none()
 
@@ -277,7 +277,7 @@ class JobQueue:
         Returns:
             List of jobs.
         """
-        async with async_session() as session:
+        async with get_session_factory()() as session:
             query = select(Job).order_by(Job.created_at.desc()).limit(limit)
             if status is not None:
                 query = query.where(Job.status == status)
@@ -292,7 +292,7 @@ class JobQueue:
         """
         from sqlalchemy import delete
 
-        async with async_session() as session:
+        async with get_session_factory()() as session:
             result = await session.execute(
                 delete(Job).where(Job.status.in_(["completed", "failed", "cancelled"]))
             )
@@ -394,7 +394,7 @@ async def handle_transcription(
     temp_audio_file = None
 
     # Get recording and update status
-    async with async_session() as session:
+    async with get_session_factory()() as session:
         result = await session.execute(select(Recording).where(Recording.id == recording_id))
         recording = result.scalar_one_or_none()
 
@@ -500,7 +500,7 @@ async def handle_transcription(
         word_count = sum(len(seg.get("text", "").split()) for seg in segments_data)
 
         # Create transcript, segments, and speakers in database
-        async with async_session() as session:
+        async with get_session_factory()() as session:
             # Delete existing transcript if re-transcribing (CASCADE deletes segments, speakers, etc.)
             existing = await session.execute(
                 select(Transcript).where(Transcript.recording_id == recording_id)
@@ -592,7 +592,7 @@ async def handle_transcription(
 
     except JobCancelled:
         # Update recording status to cancelled
-        async with async_session() as session:
+        async with get_session_factory()() as session:
             await session.execute(
                 update(Recording).where(Recording.id == recording_id).values(status="cancelled")
             )
@@ -604,7 +604,7 @@ async def handle_transcription(
 
     except Exception as e:
         # Update recording status to failed
-        async with async_session() as session:
+        async with get_session_factory()() as session:
             await session.execute(
                 update(Recording).where(Recording.id == recording_id).values(status="failed")
             )
@@ -680,7 +680,7 @@ async def handle_embedding(
     await asyncio.sleep(2)
 
     # Load segments for this transcript
-    async with async_session() as session:
+    async with get_session_factory()() as session:
         result = await session.execute(
             select(Segment)
             .where(Segment.transcript_id == transcript_id)
@@ -708,7 +708,7 @@ async def handle_embedding(
     max_retries = 3
     for attempt in range(max_retries):
         try:
-            async with async_session() as session:
+            async with get_session_factory()() as session:
                 for seg_id, emb in zip(segment_ids, embeddings):
                     existing = await session.get(SegmentEmbedding, seg_id)
                     if existing:
@@ -828,7 +828,7 @@ async def handle_summarization(
     await broadcast_progress(20)
 
     # Get transcript text
-    async with async_session() as session:
+    async with get_session_factory()() as session:
         result = await session.execute(
             select(Transcript).where(Transcript.id == transcript_id)
         )
@@ -874,7 +874,7 @@ async def handle_summarization(
         await broadcast_progress(80)
 
         # Store summary in transcript
-        async with async_session() as session:
+        async with get_session_factory()() as session:
             await session.execute(
                 update(Transcript)
                 .where(Transcript.id == transcript_id)
@@ -917,7 +917,7 @@ async def handle_document_processing(
     # Get job_id from payload for cancellation checking
     job_id = payload.get("job_id")
 
-    async with async_session() as session:
+    async with get_session_factory()() as session:
         from persistence.models import Document, DocumentEmbedding
         from services.document_processor import document_processor, ProcessingCancelledError, cleanup_ocr_model
         from services.storage import storage_service

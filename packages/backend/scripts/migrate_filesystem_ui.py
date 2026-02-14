@@ -28,7 +28,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from core.config import settings
-from persistence.database import async_session
+from persistence.database import get_session_factory
 from persistence.models import Document, Project, Recording
 from services.path_manager import PathManager
 from sqlalchemy import select
@@ -56,7 +56,7 @@ async def migrate_recordings(
     migrated = 0
     skipped = 0
 
-    async with async_session() as session:
+    async with get_session_factory()() as session:
         result = await session.execute(
             select(Recording).options(selectinload(Recording.project))
         )
@@ -132,7 +132,7 @@ async def migrate_documents(
     migrated = 0
     skipped = 0
 
-    async with async_session() as session:
+    async with get_session_factory()() as session:
         result = await session.execute(
             select(Document).options(selectinload(Document.project))
         )

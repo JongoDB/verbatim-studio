@@ -13,7 +13,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from persistence.database import async_session, get_db
+from persistence.database import get_session_factory, get_db
 from persistence.models import Document, Project, Recording, StorageLocation
 from services.encryption import encrypt_config, SENSITIVE_FIELDS
 from storage import StorageError, StorageAuthError, StorageUnavailableError
@@ -216,7 +216,7 @@ async def test_connection(body: TestConnectionRequest) -> TestConnectionResponse
 @router.get("", response_model=StorageLocationListResponse)
 async def list_storage_locations() -> StorageLocationListResponse:
     """List all storage locations."""
-    async with async_session() as session:
+    async with get_session_factory()() as session:
         result = await session.execute(
             select(StorageLocation).order_by(StorageLocation.created_at)
         )
@@ -248,7 +248,7 @@ async def start_transfer(body: TransferRequest) -> TransferStatus:
             detail="Transfer already in progress",
         )
 
-    async with async_session() as session:
+    async with get_session_factory()() as session:
         from_loc = await session.get(StorageLocation, body.from_location_id)
         to_loc = await session.get(StorageLocation, body.to_location_id)
 
@@ -331,7 +331,7 @@ async def get_transfer_status() -> TransferStatus:
 @router.get("/{location_id}", response_model=StorageLocationResponse)
 async def get_storage_location(location_id: str) -> StorageLocationResponse:
     """Get a storage location by ID."""
-    async with async_session() as session:
+    async with get_session_factory()() as session:
         result = await session.execute(
             select(StorageLocation).where(StorageLocation.id == location_id)
         )
@@ -368,7 +368,7 @@ async def create_storage_location(body: StorageLocationCreate) -> StorageLocatio
                     detail=f"Cannot create directory: {e}",
                 )
 
-    async with async_session() as session:
+    async with get_session_factory()() as session:
         # If this is being set as default, unset current default
         if body.is_default:
             await session.execute(
@@ -401,7 +401,7 @@ async def update_storage_location(
     location_id: str, body: StorageLocationUpdate
 ) -> StorageLocationResponse:
     """Update a storage location."""
-    async with async_session() as session:
+    async with get_session_factory()() as session:
         result = await session.execute(
             select(StorageLocation).where(StorageLocation.id == location_id)
         )
@@ -482,7 +482,7 @@ async def delete_storage_location(location_id: str) -> None:
 
     Cannot delete if it's the only active location.
     """
-    async with async_session() as session:
+    async with get_session_factory()() as session:
         result = await session.execute(
             select(StorageLocation).where(StorageLocation.id == location_id)
         )
@@ -677,7 +677,7 @@ async def _update_database_paths(source: Path, destination: Path) -> None:
     source_str = str(source)
     dest_str = str(destination)
 
-    async with async_session() as session:
+    async with get_session_factory()() as session:
         # Get the new active storage location (the one we're migrating TO)
         new_location_result = await session.execute(
             select(StorageLocation).where(
@@ -740,7 +740,7 @@ async def get_migration_status() -> MigrationStatus:
 @router.get("/{location_id}/file-count")
 async def get_location_file_count(location_id: str) -> dict:
     """Get count of files stored in a specific location."""
-    async with async_session() as session:
+    async with get_session_factory()() as session:
         rec_count = await session.scalar(
             select(func.count(Recording.id)).where(
                 Recording.storage_location_id == location_id
@@ -764,7 +764,7 @@ async def _run_cross_location_transfer(
     progress = _transfer_progress["current"]
 
     try:
-        async with async_session() as session:
+        async with get_session_factory()() as session:
             from_loc = await session.get(StorageLocation, from_location_id)
             to_loc = await session.get(StorageLocation, to_location_id)
 

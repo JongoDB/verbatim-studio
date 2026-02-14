@@ -8,7 +8,7 @@ from typing import Any
 from sqlalchemy import select
 
 from core.config import settings as env_settings
-from persistence.database import async_session
+from persistence.database import get_session_factory
 from persistence.models import Setting
 
 logger = logging.getLogger(__name__)
@@ -289,7 +289,7 @@ async def get_transcription_settings() -> dict[str, Any]:
 
     # Layer 3: DB overrides (highest priority)
     try:
-        async with async_session() as session:
+        async with get_session_factory()() as session:
             result = await session.execute(
                 select(Setting).where(Setting.key == "transcription")
             )
@@ -309,7 +309,7 @@ async def save_transcription_settings(data: dict[str, Any]) -> dict[str, Any]:
 
     Returns the saved settings dict.
     """
-    async with async_session() as session:
+    async with get_session_factory()() as session:
         result = await session.execute(
             select(Setting).where(Setting.key == "transcription")
         )

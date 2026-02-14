@@ -301,7 +301,7 @@ class FileWatcherService:
 
     async def _async_handle_file_created(self, path: Path) -> None:
         """Async handler for file creation."""
-        from persistence.database import async_session
+        from persistence.database import get_session_factory
         from persistence.models import Document, Project, Recording, generate_uuid
 
         project_name, filename = self._get_project_from_path(path)
@@ -310,7 +310,7 @@ class FileWatcherService:
         # Find project by name
         project_id = None
         if project_name:
-            async with async_session() as session:
+            async with get_session_factory()() as session:
                 from sqlalchemy import func, select
                 result = await session.execute(
                     select(Project).where(func.lower(Project.name) == project_name.lower())
@@ -327,7 +327,7 @@ class FileWatcherService:
 
     async def _create_recording_record(self, path: Path, project_id: str | None) -> None:
         """Create a Recording record for an externally added file."""
-        from persistence.database import async_session
+        from persistence.database import get_session_factory
         from persistence.models import Recording
 
         # Get file info
@@ -341,7 +341,7 @@ class FileWatcherService:
         mime_type, _ = mimetypes.guess_type(path.name)
         title = path.stem
 
-        async with async_session() as session:
+        async with get_session_factory()() as session:
             # Check if recording already exists for this path
             from sqlalchemy import select
             result = await session.execute(
@@ -368,7 +368,7 @@ class FileWatcherService:
 
     async def _create_document_record(self, path: Path, project_id: str | None) -> None:
         """Create a Document record for an externally added file."""
-        from persistence.database import async_session
+        from persistence.database import get_session_factory
         from persistence.models import Document
 
         # Get file info
@@ -382,7 +382,7 @@ class FileWatcherService:
         mime_type, _ = mimetypes.guess_type(path.name)
         title = path.stem
 
-        async with async_session() as session:
+        async with get_session_factory()() as session:
             # Check if document already exists for this path
             from sqlalchemy import select
             result = await session.execute(
@@ -417,11 +417,11 @@ class FileWatcherService:
 
     async def _async_handle_file_deleted(self, path: Path) -> None:
         """Async handler for file deletion."""
-        from persistence.database import async_session
+        from persistence.database import get_session_factory
         from persistence.models import Document, Recording
         from sqlalchemy import select
 
-        async with async_session() as session:
+        async with get_session_factory()() as session:
             # Check recordings
             result = await session.execute(
                 select(Recording).where(Recording.file_path == str(path))
@@ -452,7 +452,7 @@ class FileWatcherService:
 
     async def _async_handle_file_moved(self, src_path: Path, dest_path: Path) -> None:
         """Async handler for file move."""
-        from persistence.database import async_session
+        from persistence.database import get_session_factory
         from persistence.models import Document, Project, Recording
         from sqlalchemy import func, select
 
@@ -461,7 +461,7 @@ class FileWatcherService:
         new_project_id = None
 
         if new_project_name:
-            async with async_session() as session:
+            async with get_session_factory()() as session:
                 result = await session.execute(
                     select(Project).where(func.lower(Project.name) == new_project_name.lower())
                 )
@@ -469,7 +469,7 @@ class FileWatcherService:
                 if project:
                     new_project_id = project.id
 
-        async with async_session() as session:
+        async with get_session_factory()() as session:
             # Check recordings
             result = await session.execute(
                 select(Recording).where(Recording.file_path == str(src_path))
@@ -514,11 +514,11 @@ class FileWatcherService:
         folder_name = path.name
 
         # Check if project already exists
-        from persistence.database import async_session
+        from persistence.database import get_session_factory
         from persistence.models import Project
         from sqlalchemy import func, select
 
-        async with async_session() as session:
+        async with get_session_factory()() as session:
             result = await session.execute(
                 select(Project).where(func.lower(Project.name) == folder_name.lower())
             )
@@ -560,11 +560,11 @@ class FileWatcherService:
         old_name = src_path.name
         new_name = dest_path.name
 
-        from persistence.database import async_session
+        from persistence.database import get_session_factory
         from persistence.models import Document, Project, Recording
         from sqlalchemy import func, select
 
-        async with async_session() as session:
+        async with get_session_factory()() as session:
             result = await session.execute(
                 select(Project).where(func.lower(Project.name) == old_name.lower())
             )

@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { DataSyncProvider } from '@/hooks/useDataSync';
-import { api, getApiUrl, isElectron, type ApiInfo, type HealthStatus, type GlobalSearchResult, type SystemInfo, type PluginManifest } from '@/lib/api';
+import { api, getApiUrl, isElectron, onAuthRequired, type ApiInfo, type HealthStatus, type GlobalSearchResult, type SystemInfo, type PluginManifest } from '@/lib/api';
+import { LoginPage } from '@/pages/auth/LoginPage';
 import { usePluginManifest, PluginManifestContext } from '@/hooks/usePluginManifest';
 import { RecordingsPage } from '@/pages/recordings/RecordingsPage';
 import { ProjectsPage } from '@/pages/projects/ProjectsPage';
@@ -178,6 +179,7 @@ function AppContent() {
   const [health, setHealth] = useState<HealthStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(true);
+  const [needsAuth, setNeedsAuth] = useState(false);
   const [navigation, setNavigation] = useState<NavigationState>(() =>
     pathToNavigation(window.location.pathname)
   );
@@ -398,29 +400,38 @@ function AppContent() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
+  // Register auth callback — when any API call returns 401, show login
   useEffect(() => {
-    async function checkBackend() {
-      try {
-        const [info, healthStatus, sysInfo] = await Promise.all([
-          api.info(),
-          api.health.ready(),
-          api.system.info(),
-        ]);
-        setApiInfo(info);
-        setHealth(healthStatus);
-        setSystemInfo(sysInfo);
-        setError(null);
-        setIsConnecting(false);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to connect to backend');
-        setIsConnecting(false);
-      }
-    }
+    onAuthRequired(() => setNeedsAuth(true));
+  }, []);
 
+  const checkBackend = useCallback(async () => {
+    try {
+      const [info, healthStatus, sysInfo] = await Promise.all([
+        api.info(),
+        api.health.ready(),
+        api.system.info(),
+      ]);
+      setApiInfo(info);
+      setHealth(healthStatus);
+      setSystemInfo(sysInfo);
+      setError(null);
+      setNeedsAuth(false);
+      setIsConnecting(false);
+    } catch (err) {
+      // If needsAuth was just set by the 401 handler, don't show connection error
+      if (!needsAuth) {
+        setError(err instanceof Error ? err.message : 'Failed to connect to backend');
+      }
+      setIsConnecting(false);
+    }
+  }, [needsAuth]);
+
+  useEffect(() => {
     checkBackend();
     const interval = setInterval(checkBackend, 15000);
     return () => clearInterval(interval);
-  }, []);
+  }, [checkBackend]);
 
   // Auto-attach current transcript when opening chat from transcript page
   const handleOpenChat = useCallback(() => {
@@ -516,6 +527,21 @@ function AppContent() {
           <p className="text-muted-foreground">Connecting to backend...</p>
         </div>
       </div>
+    );
+  }
+
+  // Show login page when enterprise auth is required
+  if (needsAuth) {
+    return (
+      <LoginPage
+        onLoginSuccess={() => {
+          setNeedsAuth(false);
+          setError(null);
+          checkBackend();
+        }}
+        appName={apiInfo?.name ?? 'Verbatim Studio'}
+        mode={apiInfo?.mode}
+      />
     );
   }
 

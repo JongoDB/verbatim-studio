@@ -19,7 +19,7 @@ from pydantic import BaseModel
 from core.config import settings
 
 logger = logging.getLogger(__name__)
-from persistence.database import async_session
+from persistence.database import get_session_factory
 from sqlalchemy import text
 
 
@@ -304,7 +304,7 @@ async def get_system_info() -> SystemInfo:
     )
 
     # Content counts from database
-    async with async_session() as session:
+    async with get_session_factory()() as session:
         # Count recordings
         result = await session.execute(text("SELECT COUNT(*) FROM recordings"))
         recordings_count = result.scalar() or 0
@@ -1076,7 +1076,7 @@ async def reset_database(request: ResetDatabaseRequest) -> ResetDatabaseResponse
     deleted_counts: dict[str, int] = {}
 
     try:
-        async with async_session() as db:
+        async with get_session_factory()() as db:
             # Delete in dependency order (children first to respect foreign keys)
             # 1. Embeddings
             result = await db.execute(text("DELETE FROM segment_embeddings"))
@@ -1230,7 +1230,7 @@ async def get_category_counts() -> CategoryCountsResponse:
     )
     from persistence.models import SearchHistory
 
-    async with async_session() as db:
+    async with get_session_factory()() as db:
         # Get counts for each category
         recordings_count = (await db.execute(text("SELECT COUNT(*) FROM recordings"))).scalar() or 0
         projects_count = (await db.execute(text("SELECT COUNT(*) FROM projects"))).scalar() or 0
@@ -1297,7 +1297,7 @@ async def clear_selective(request: SelectiveClearRequest) -> SelectiveClearRespo
     deleted_counts: dict[str, int] = {}
 
     try:
-        async with async_session() as db:
+        async with get_session_factory()() as db:
             for category in request.categories:
                 if category == ClearableCategory.RECORDINGS:
                     # Delete in dependency order
