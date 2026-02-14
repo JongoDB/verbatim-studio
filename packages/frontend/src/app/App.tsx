@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { DataSyncProvider } from '@/hooks/useDataSync';
-import { api, getApiUrl, isElectron, type ApiInfo, type HealthStatus, type GlobalSearchResult, type SystemInfo } from '@/lib/api';
+import { api, getApiUrl, isElectron, type ApiInfo, type HealthStatus, type GlobalSearchResult, type SystemInfo, type PluginManifest } from '@/lib/api';
 import { usePluginManifest, PluginManifestContext } from '@/hooks/usePluginManifest';
 import { RecordingsPage } from '@/pages/recordings/RecordingsPage';
 import { ProjectsPage } from '@/pages/projects/ProjectsPage';
@@ -138,6 +138,31 @@ const queryClient = new QueryClient({
     },
   },
 });
+
+// Plugin module cache: avoids recreating React.lazy components on every render
+const pluginModuleCache = new Map<string, React.LazyExoticComponent<React.ComponentType<{ route: string }>>>();
+
+function getPluginModule(moduleUrl: string): React.LazyExoticComponent<React.ComponentType<{ route: string }>> {
+  if (!pluginModuleCache.has(moduleUrl)) {
+    pluginModuleCache.set(moduleUrl, React.lazy(() => import(/* @vite-ignore */ moduleUrl)));
+  }
+  return pluginModuleCache.get(moduleUrl)!;
+}
+
+function getPluginRouteConfig(route: string, manifest: PluginManifest): { renderMode: 'iframe' | 'module'; moduleUrl?: string } {
+  for (const r of manifest.routes) {
+    if (typeof r === 'string') {
+      if (r === route || route.startsWith(r + '/')) {
+        return { renderMode: 'iframe' };
+      }
+    } else {
+      if (r.path === route || route.startsWith(r.path + '/')) {
+        return { renderMode: r.renderMode, moduleUrl: r.moduleUrl };
+      }
+    }
+  }
+  return { renderMode: 'iframe' };
+}
 
 export function App() {
   return (
@@ -547,7 +572,12 @@ function AppContent() {
               else if (tab === 'settings') handleNavigateToSettings();
               else {
                 // Plugin nav item
-                const route = pluginManifest.routes.find((r) => r.includes(tab)) || `/${tab}`;
+                const matchedRoute = pluginManifest.routes.find((r) =>
+                  typeof r === 'string' ? r.includes(tab) : r.path.includes(tab)
+                );
+                const route = matchedRoute
+                  ? (typeof matchedRoute === 'string' ? matchedRoute : matchedRoute.path)
+                  : `/${tab}`;
                 setNavigation({ type: 'plugin', pluginRoute: route });
               }
             }}
@@ -644,15 +674,28 @@ function AppContent() {
                 {navigation.type === 'settings' && (
                   <SettingsPage theme={theme} onThemeChange={setTheme} pluginSettingsTabs={pluginManifest.settings_tabs} />
                 )}
-                {navigation.type === 'plugin' && (
-                  <div className="w-full h-[calc(100vh-8rem)]">
-                    <iframe
-                      src={getApiUrl(`/plugins${navigation.pluginRoute}`)}
-                      className="w-full h-full border-0"
-                      title={`Plugin: ${navigation.pluginRoute}`}
-                    />
-                  </div>
-                )}
+                {navigation.type === 'plugin' && (() => {
+                  const routeConfig = getPluginRouteConfig(navigation.pluginRoute, pluginManifest);
+                  if (routeConfig.renderMode === 'module' && routeConfig.moduleUrl) {
+                    const PluginModule = getPluginModule(routeConfig.moduleUrl);
+                    return (
+                      <div className="w-full h-full">
+                        <React.Suspense fallback={<div className="flex items-center justify-center h-full"><div className="animate-spin h-8 w-8 border-2 border-blue-500 border-t-transparent rounded-full" /></div>}>
+                          <PluginModule route={navigation.pluginRoute} />
+                        </React.Suspense>
+                      </div>
+                    );
+                  }
+                  return (
+                    <div className="w-full h-[calc(100vh-8rem)]">
+                      <iframe
+                        src={getApiUrl(`/plugins${navigation.pluginRoute}`)}
+                        className="w-full h-full border-0"
+                        title={`Plugin: ${navigation.pluginRoute}`}
+                      />
+                    </div>
+                  );
+                })()}
               </div>
             </main>
           </div>

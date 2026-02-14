@@ -1349,8 +1349,14 @@ export interface PluginSettingsTab {
   icon: string;
 }
 
+export interface PluginRoute {
+  path: string;
+  renderMode: 'iframe' | 'module';
+  moduleUrl?: string;  // URL of the JS module to load (for renderMode: 'module')
+}
+
 export interface PluginManifest {
-  routes: string[];
+  routes: (string | PluginRoute)[];  // Backward compatible: strings treated as iframe mode
   nav_items: PluginNavItem[];
   settings_tabs: PluginSettingsTab[];
   slots: Record<string, string>;
