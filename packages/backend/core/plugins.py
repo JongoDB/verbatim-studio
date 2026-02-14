@@ -57,7 +57,7 @@ class PluginRegistry:
     _event_handlers: dict[str, list[EventHandler]] = field(default_factory=dict)
     _models: list[type] = field(default_factory=list)
     _job_handlers: dict[str, JobHandler] = field(default_factory=dict)
-    _adapters: dict[str, dict] = field(default_factory=dict)
+    _adapters: dict[str, dict[str, type]] = field(default_factory=dict)
 
     # Frontend metadata (served via /api/plugins/manifest)
     _frontend_routes: list[str] = field(default_factory=list)

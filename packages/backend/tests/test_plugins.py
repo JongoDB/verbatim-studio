@@ -2,7 +2,16 @@
 
 import pytest
 from fastapi import APIRouter, FastAPI
+from core.events import clear as clear_events
 from core.plugins import PluginRegistry
+
+
+@pytest.fixture(autouse=True)
+def _clean_event_bus():
+    """Clean global event bus between tests (PluginRegistry.on() writes to it)."""
+    clear_events()
+    yield
+    clear_events()
 
 
 @pytest.fixture
