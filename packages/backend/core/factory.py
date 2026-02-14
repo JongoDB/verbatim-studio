@@ -108,10 +108,18 @@ class AdapterFactory:
             await adapter.initialize()
             return adapter
         else:
-            # Enterprise tier - PostgreSQL (future)
+            from core.plugins import get_registry
+            registry = get_registry()
+            db_adapters = registry._adapters.get("database", {})
+            if "postgresql" in db_adapters:
+                adapter_class = db_adapters["postgresql"]
+                logger.info("Creating PostgreSQL adapter from plugin registry")
+                adapter = adapter_class(self._config.database_url)
+                await adapter.initialize()
+                return adapter
             raise NotImplementedError(
-                "PostgreSQL adapter for enterprise tier is not yet implemented. "
-                "Use basic tier with SQLite for now."
+                "No database adapter registered for enterprise tier. "
+                "Install verbatim-enterprise or use basic tier."
             )
 
     def create_transcription_engine(self) -> "ITranscriptionEngine":
@@ -245,10 +253,15 @@ class AdapterFactory:
                 n_gpu_layers=gpu_layers,
             )
         else:
-            # Enterprise tier - Ollama (future)
+            from core.plugins import get_registry
+            registry = get_registry()
+            llm_adapters = registry._adapters.get("llm", {})
+            for name, adapter_class in llm_adapters.items():
+                logger.info("Creating %s AI service from plugin registry", name)
+                return adapter_class(self._config)
             raise NotImplementedError(
-                "Enterprise AI services are not yet implemented. "
-                "Use basic tier with llama.cpp for now."
+                "No AI service registered for enterprise tier. "
+                "Install verbatim-enterprise or use basic tier."
             )
 
     def create_auth_provider(self) -> "IAuthProvider":
@@ -267,10 +280,15 @@ class AdapterFactory:
 
             return NoAuthProvider()
         else:
-            # Enterprise tier - RBAC auth (future)
+            from core.plugins import get_registry
+            registry = get_registry()
+            auth_adapters = registry._adapters.get("auth", {})
+            for name, adapter_class in auth_adapters.items():
+                logger.info("Creating %s auth provider from plugin registry", name)
+                return adapter_class()
             raise NotImplementedError(
-                "Enterprise authentication is not yet implemented. "
-                "Use basic tier without authentication for now."
+                "No auth provider registered for enterprise tier. "
+                "Install verbatim-enterprise or use basic tier."
             )
 
 
