@@ -140,6 +140,14 @@ const queryClient = new QueryClient({
 });
 
 export function App() {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <AppContent />
+    </QueryClientProvider>
+  );
+}
+
+function AppContent() {
   const [apiInfo, setApiInfo] = useState<ApiInfo | null>(null);
   const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
   const [health, setHealth] = useState<HealthStatus | null>(null);
@@ -458,74 +466,69 @@ export function App() {
   // Show loading state while connecting
   if (isConnecting) {
     return (
-      <QueryClientProvider client={queryClient}>
-        <div className="min-h-screen bg-background flex items-center justify-center">
-          <div className="text-center space-y-4">
-            <svg
-              className="h-12 w-12 animate-spin text-primary mx-auto"
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-            >
-              <circle
-                className="opacity-25"
-                cx="12"
-                cy="12"
-                r="10"
-                stroke="currentColor"
-                strokeWidth="4"
-              />
-              <path
-                className="opacity-75"
-                fill="currentColor"
-                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-              />
-            </svg>
-            <p className="text-muted-foreground">Connecting to backend...</p>
-          </div>
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <svg
+            className="h-12 w-12 animate-spin text-primary mx-auto"
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+          >
+            <circle
+              className="opacity-25"
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              strokeWidth="4"
+            />
+            <path
+              className="opacity-75"
+              fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+            />
+          </svg>
+          <p className="text-muted-foreground">Connecting to backend...</p>
         </div>
-      </QueryClientProvider>
+      </div>
     );
   }
 
   // Show error state if connection failed
   if (error && !apiInfo) {
     return (
-      <QueryClientProvider client={queryClient}>
-        <div className="min-h-screen bg-background flex items-center justify-center">
-          <div className="text-center space-y-4 max-w-md p-6">
-            <div className="rounded-full bg-destructive/10 p-4 w-16 h-16 mx-auto flex items-center justify-center">
-              <svg
-                className="h-8 w-8 text-destructive"
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth="2"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-                />
-              </svg>
-            </div>
-            <h1 className="text-xl font-semibold text-foreground">Connection Error</h1>
-            <p className="text-muted-foreground">{error}</p>
-            <p className="text-sm text-muted-foreground">
-              Make sure the backend is running on port 8000
-            </p>
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center space-y-4 max-w-md p-6">
+          <div className="rounded-full bg-destructive/10 p-4 w-16 h-16 mx-auto flex items-center justify-center">
+            <svg
+              className="h-8 w-8 text-destructive"
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+              />
+            </svg>
           </div>
+          <h1 className="text-xl font-semibold text-foreground">Connection Error</h1>
+          <p className="text-muted-foreground">{error}</p>
+          <p className="text-sm text-muted-foreground">
+            Make sure the backend is running on port 8000
+          </p>
         </div>
-      </QueryClientProvider>
+      </div>
     );
   }
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <DataSyncProvider>
-        <PluginManifestContext.Provider value={pluginManifest}>
-        <div className="min-h-screen bg-background flex">
+    <DataSyncProvider>
+      <PluginManifestContext.Provider value={pluginManifest}>
+      <div className="min-h-screen bg-background flex">
           {/* macOS Title Bar (draggable region for window movement) */}
           <TitleBar />
 
@@ -701,8 +704,7 @@ export function App() {
             />
           )}
         </div>
-        </PluginManifestContext.Provider>
-      </DataSyncProvider>
-    </QueryClientProvider>
+      </PluginManifestContext.Provider>
+    </DataSyncProvider>
   );
 }
