@@ -375,7 +375,12 @@ async def handle_transcription(
     )
 
     # Determine if we should run diarization
+    # Models must be pre-downloaded via Settings — no auto-downloads
+    from core.pyannote_catalog import are_all_models_downloaded
     diarize = diarize_requested and effective["diarize"] and supports_diarization
+    if diarize and not are_all_models_downloaded():
+        logger.warning("Diarization requested but models not downloaded — skipping")
+        diarize = False
 
     if not recording_id:
         raise ValueError("Missing recording_id in payload")

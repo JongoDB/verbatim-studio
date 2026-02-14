@@ -17,6 +17,7 @@ interface EditableSegmentProps {
   onToggleSelect: (segmentId: string) => void;
   onHighlightChange: (segmentId: string, color: HighlightColor | null) => void;
   onCommentCountChange: (segmentId: string, delta: number) => void;
+  onDelete?: (segmentId: string) => void;
   onSpeakerReassign?: (segmentId: string, speakerName: string) => void;
   highlightedText?: React.ReactNode;
 }
@@ -49,6 +50,7 @@ export function EditableSegment({
   onToggleSelect,
   onHighlightChange,
   onCommentCountChange,
+  onDelete,
   onSpeakerReassign,
   highlightedText,
 }: EditableSegmentProps) {
@@ -233,6 +235,19 @@ export function EditableSegment({
               </span>
             )}
           </button>
+
+          {/* Delete button */}
+          {onDelete && (
+            <button
+              onClick={() => onDelete(segment.id)}
+              className="p-1 rounded transition-colors text-gray-400 hover:text-red-500 dark:hover:text-red-400"
+              title="Delete segment"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+            </button>
+          )}
 
           {/* Highlight picker popover */}
           {showHighlightPicker && (

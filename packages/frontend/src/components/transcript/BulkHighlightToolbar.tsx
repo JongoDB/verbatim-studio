@@ -13,6 +13,7 @@ interface BulkHighlightToolbarProps {
   selectedCount: number;
   onHighlight: (color: HighlightColor) => void;
   onRemoveHighlight: () => void;
+  onDelete: () => void;
   onClearSelection: () => void;
 }
 
@@ -20,6 +21,7 @@ export function BulkHighlightToolbar({
   selectedCount,
   onHighlight,
   onRemoveHighlight,
+  onDelete,
   onClearSelection,
 }: BulkHighlightToolbarProps) {
   return (
@@ -48,6 +50,15 @@ export function BulkHighlightToolbar({
         className="text-xs font-medium text-purple-700 dark:text-purple-300 hover:text-red-600 dark:hover:text-red-400 transition-colors"
       >
         Remove
+      </button>
+
+      <div className="w-px h-5 bg-purple-300 dark:bg-purple-600" />
+
+      <button
+        onClick={onDelete}
+        className="text-xs font-medium text-purple-700 dark:text-purple-300 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+      >
+        Delete
       </button>
 
       <button

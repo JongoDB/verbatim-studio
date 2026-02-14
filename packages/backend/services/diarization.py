@@ -70,11 +70,24 @@ class DiarizationService:
     def _ensure_loaded(self) -> None:
         """Ensure WhisperX diarization pipeline is loaded.
 
+        Sets HF_HUB_OFFLINE=1 before loading to prevent any auto-downloads.
+        Models must be pre-downloaded via the Settings UI.
+
         Raises:
             ImportError: If dependencies are not installed.
+            RuntimeError: If diarization models are not downloaded.
         """
         if self._pipeline is not None:
             return
+
+        # Gate on model availability — refuse to auto-download
+        from core.pyannote_catalog import are_all_models_downloaded, get_missing_components
+        if not are_all_models_downloaded():
+            missing = get_missing_components()
+            raise RuntimeError(
+                f"Diarization models not downloaded: {missing}. "
+                "Download them in Settings → AI → Speaker Diarization."
+            )
 
         try:
             import whisperx
@@ -88,10 +101,19 @@ class DiarizationService:
 
         logger.info("Loading WhisperX diarization pipeline (device=%s)", self.device)
 
-        self._pipeline = DiarizationPipeline(
-            use_auth_token=self.hf_token,
-            device=self.device,
-        )
+        # Prevent any auto-downloads during pipeline construction
+        old_offline = os.environ.get("HF_HUB_OFFLINE")
+        os.environ["HF_HUB_OFFLINE"] = "1"
+        try:
+            self._pipeline = DiarizationPipeline(
+                use_auth_token=self.hf_token,
+                device=self.device,
+            )
+        finally:
+            if old_offline is None:
+                os.environ.pop("HF_HUB_OFFLINE", None)
+            else:
+                os.environ["HF_HUB_OFFLINE"] = old_offline
 
         logger.info("WhisperX diarization pipeline loaded successfully")
 

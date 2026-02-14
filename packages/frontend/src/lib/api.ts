@@ -1560,6 +1560,17 @@ class ApiClient {
         body: JSON.stringify(data),
       }),
 
+    deleteSegment: (transcriptId: string, segmentId: string) =>
+      this.request<{ message: string }>(`/api/transcripts/${transcriptId}/segments/${segmentId}`, {
+        method: 'DELETE',
+      }),
+
+    bulkDeleteSegments: (transcriptId: string, segmentIds: string[]) =>
+      this.request<{ message: string }>(`/api/transcripts/${transcriptId}/segments/bulk-delete`, {
+        method: 'POST',
+        body: JSON.stringify({ segment_ids: segmentIds }),
+      }),
+
     export: async (transcriptId: string, options: ExportOptions): Promise<Blob> => {
       const queryParams = new URLSearchParams();
       queryParams.set('format', options.format);

@@ -8,7 +8,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import Response
 from pydantic import BaseModel
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -80,6 +80,18 @@ class SegmentUpdateRequest(BaseModel):
 
     text: str | None = None
     speaker: str | None = None
+
+
+class BulkDeleteRequest(BaseModel):
+    """Request model for bulk deleting segments."""
+
+    segment_ids: list[str]
+
+
+class MessageResponse(BaseModel):
+    """Simple message response."""
+
+    message: str
 
 
 class SegmentListResponse(BaseModel):
@@ -354,6 +366,66 @@ async def update_segment(
     highlight_map, comment_count_map = await _load_segment_annotations(db, [segment.id])
 
     return _build_segment_response(segment, highlight_map, comment_count_map)
+
+
+@router.delete("/{transcript_id}/segments/{segment_id}", response_model=MessageResponse)
+async def delete_segment(
+    transcript_id: str,
+    segment_id: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> MessageResponse:
+    """Delete a segment from a transcript.
+
+    Related comments, highlights, and embeddings are cascade-deleted automatically.
+    """
+    result = await db.execute(
+        select(Segment).where(
+            Segment.id == segment_id,
+            Segment.transcript_id == transcript_id,
+        )
+    )
+    segment = result.scalar_one_or_none()
+
+    if segment is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Segment not found: {segment_id}",
+        )
+
+    await db.delete(segment)
+    await db.commit()
+    logger.info("Segment %s deleted from transcript %s", segment_id, transcript_id)
+
+    return MessageResponse(message="Segment deleted")
+
+
+@router.post("/{transcript_id}/segments/bulk-delete", response_model=MessageResponse)
+async def bulk_delete_segments(
+    transcript_id: str,
+    request: BulkDeleteRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> MessageResponse:
+    """Delete multiple segments from a transcript."""
+    # Verify transcript exists
+    transcript_result = await db.execute(select(Transcript).where(Transcript.id == transcript_id))
+    if transcript_result.scalar_one_or_none() is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Transcript not found: {transcript_id}",
+        )
+
+    result = await db.execute(
+        delete(Segment).where(
+            Segment.transcript_id == transcript_id,
+            Segment.id.in_(request.segment_ids),
+        )
+    )
+    await db.commit()
+
+    deleted_count = result.rowcount
+    logger.info("Bulk deleted %d segments from transcript %s", deleted_count, transcript_id)
+
+    return MessageResponse(message=f"Deleted {deleted_count} segments")
 
 
 @router.get("/by-recording/{recording_id}", response_model=TranscriptWithSegmentsResponse)

@@ -91,6 +91,7 @@ function KeybindingEditor() {
   const { getKey, getDisplayLabel, setKey, resetKey, resetAll, findConflict } = useKeybindingStore();
   // Subscribe to overrides to re-render on changes
   useKeybindingStore(s => s.overrides);
+  const [expanded, setExpanded] = useState(false);
   const [capturing, setCapturing] = useState<string | null>(null);
   const [conflict, setConflict] = useState<{ actionId: string; combo: KeyCombo } | null>(null);
 
@@ -150,18 +151,26 @@ function KeybindingEditor() {
 
   return (
     <div className="mt-6 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
-      <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-        <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Keyboard Shortcuts</h2>
-        {hasOverrides && (
+      <div
+        className="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between cursor-pointer select-none"
+        onClick={() => setExpanded(!expanded)}
+      >
+        <div className="flex items-center gap-2">
+          <svg className={`w-4 h-4 text-gray-500 transition-transform ${expanded ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+          </svg>
+          <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Keyboard Shortcuts</h2>
+        </div>
+        {hasOverrides && expanded && (
           <button
-            onClick={() => { resetAll(); setCapturing(null); setConflict(null); }}
+            onClick={(e) => { e.stopPropagation(); resetAll(); setCapturing(null); setConflict(null); }}
             className="text-xs text-gray-500 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
           >
             Reset all to defaults
           </button>
         )}
       </div>
-      <div className="px-5 py-4 space-y-6">
+      {expanded && <div className="px-5 py-4 space-y-6">
         {(['playback', 'live'] as ActionCategory[]).map(category => (
           <div key={category}>
             <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">{CATEGORY_LABELS[category]}</h3>
@@ -214,7 +223,7 @@ function KeybindingEditor() {
         <p className="text-xs text-gray-500 dark:text-gray-400">
           Click any key to change it. Press Escape to cancel. Shortcuts within the same category must be unique.
         </p>
-      </div>
+      </div>}
     </div>
   );
 }
@@ -2521,7 +2530,7 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
             {ocrModels.some((m) => m.downloaded) ? (
               <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300">
                 <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
-                Ready
+                Ready ({ocrModels.find((m) => m.downloaded)?.label})
               </span>
             ) : (
               <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400">
@@ -3878,6 +3887,12 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
                 </svg>
                 <span><strong>Cloud Storage</strong> — Sync with Google Drive, OneDrive, and Dropbox via OAuth</span>
               </li>
+              <li className="flex items-start gap-2">
+                <svg className="w-4 h-4 text-green-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+                <span><strong>Desktop App</strong> — Native Electron application for macOS and Windows</span>
+              </li>
             </ul>
           </div>
 
@@ -3885,12 +3900,6 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
           <div className="pt-3 border-t border-gray-200 dark:border-gray-700">
             <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-2">Coming Soon</h3>
             <ul className="text-sm text-gray-600 dark:text-gray-400 space-y-1.5">
-              <li className="flex items-start gap-2">
-                <svg className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <span><strong>Desktop App</strong> — Native Electron application for macOS and Windows</span>
-              </li>
               <li className="flex items-start gap-2">
                 <svg className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />

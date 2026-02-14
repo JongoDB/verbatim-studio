@@ -220,6 +220,40 @@ export function TranscriptPage({ recordingId, onBack, initialSeekTime }: Transcr
     }
   }, [transcript, selectedSegmentIds]);
 
+  const handleDeleteSegment = useCallback(async (segmentId: string) => {
+    if (!transcript) return;
+    try {
+      await api.transcripts.deleteSegment(transcript.id, segmentId);
+      setTranscript((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          segments: prev.segments.filter((s) => s.id !== segmentId),
+        };
+      });
+    } catch (err) {
+      console.error('Failed to delete segment:', err);
+    }
+  }, [transcript]);
+
+  const handleBulkDelete = useCallback(async () => {
+    if (!transcript || selectedSegmentIds.size === 0) return;
+    try {
+      const ids = Array.from(selectedSegmentIds);
+      await api.transcripts.bulkDeleteSegments(transcript.id, ids);
+      setTranscript((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          segments: prev.segments.filter((s) => !selectedSegmentIds.has(s.id)),
+        };
+      });
+      setSelectedSegmentIds(new Set());
+    } catch (err) {
+      console.error('Failed to bulk delete segments:', err);
+    }
+  }, [transcript, selectedSegmentIds]);
+
   const handleCommentCountChange = useCallback((segmentId: string, delta: number) => {
     setTranscript((prev) => {
       if (!prev) return prev;
@@ -713,6 +747,7 @@ export function TranscriptPage({ recordingId, onBack, initialSeekTime }: Transcr
                   onToggleSelect={handleToggleSelect}
                   onHighlightChange={handleHighlightChange}
                   onCommentCountChange={handleCommentCountChange}
+                  onDelete={handleDeleteSegment}
                   onSpeakerReassign={handleSpeakerReassign}
                   highlightedText={highlighted}
                 />
@@ -728,6 +763,7 @@ export function TranscriptPage({ recordingId, onBack, initialSeekTime }: Transcr
           selectedCount={selectedSegmentIds.size}
           onHighlight={handleBulkHighlight}
           onRemoveHighlight={handleBulkRemoveHighlight}
+          onDelete={handleBulkDelete}
           onClearSelection={() => setSelectedSegmentIds(new Set())}
         />
       )}
