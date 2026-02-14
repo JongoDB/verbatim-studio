@@ -555,6 +555,7 @@ export function App() {
             collapsed={sidebarCollapsed}
             onCollapsedChange={setSidebarCollapsed}
             isTourActive={isTourActive}
+            pluginNavItems={pluginManifest.nav_items}
           />
 
           {/* Content Area - offset by sidebar width on desktop */}
