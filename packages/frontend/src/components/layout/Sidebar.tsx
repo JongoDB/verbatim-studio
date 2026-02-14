@@ -12,7 +12,7 @@ const isMacOS = typeof navigator !== 'undefined' && navigator.platform.toLowerCa
 
 type Theme = 'light' | 'dark' | 'system';
 
-type NavKey = 'dashboard' | 'recordings' | 'projects' | 'live' | 'search' | 'documents' | 'chats' | 'browser' | 'settings';
+type NavKey = 'dashboard' | 'recordings' | 'projects' | 'live' | 'search' | 'documents' | 'chats' | 'browser' | 'settings' | (string & {});
 
 interface SidebarProps {
   currentTab: NavKey;

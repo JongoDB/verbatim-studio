@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { DataSyncProvider } from '@/hooks/useDataSync';
-import { api, isElectron, type ApiInfo, type HealthStatus, type GlobalSearchResult, type SystemInfo } from '@/lib/api';
+import { api, getApiUrl, isElectron, type ApiInfo, type HealthStatus, type GlobalSearchResult, type SystemInfo } from '@/lib/api';
+import { usePluginManifest, PluginManifestContext } from '@/hooks/usePluginManifest';
 import { RecordingsPage } from '@/pages/recordings/RecordingsPage';
 import { ProjectsPage } from '@/pages/projects/ProjectsPage';
 import { ProjectDetailPage } from '@/pages/projects/ProjectDetailPage';
@@ -43,7 +44,8 @@ type NavigationState =
   | { type: 'documents' }
   | { type: 'document-viewer'; documentId: string }
   | { type: 'browser'; folderId?: string | null }
-  | { type: 'chats' };
+  | { type: 'chats' }
+  | { type: 'plugin'; pluginRoute: string };
 
 // Map navigation state to URL path
 function navigationToPath(nav: NavigationState): string {
@@ -61,6 +63,7 @@ function navigationToPath(nav: NavigationState): string {
     case 'document-viewer': return `/documents/${nav.documentId}`;
     case 'browser': return nav.folderId ? `/browser/${nav.folderId}` : '/browser';
     case 'chats': return '/chats';
+    case 'plugin': return `/plugins${nav.pluginRoute}`;
   }
 }
 
@@ -98,6 +101,10 @@ function pathToNavigation(path: string): NavigationState {
 
   const browserMatch = cleanPath.match(/^\/browser\/([^/]+)$/);
   if (browserMatch) return { type: 'browser', folderId: browserMatch[1] };
+
+  // /plugins/... -> plugin page
+  const pluginMatch = cleanPath.match(/^\/plugins(\/.*)?$/);
+  if (pluginMatch) return { type: 'plugin', pluginRoute: pluginMatch[1] || '/' };
 
   // Default to dashboard for unknown paths
   return { type: 'dashboard' };
@@ -167,6 +174,8 @@ export function App() {
   // Update dialog state
   const [updateInfo, setUpdateInfo] = useState<{ version: string; downloadUrl: string } | null>(null);
   const [whatsNewReleases, setWhatsNewReleases] = useState<Array<{ version: string; notes: string }> | null>(null);
+
+  const pluginManifest = usePluginManifest();
 
   // Persist sidebar collapsed state
   useEffect(() => {
@@ -262,6 +271,8 @@ export function App() {
         return 'browser';
       case 'chats':
         return 'chats';
+      case 'plugin':
+        return navigation.pluginRoute.replace(/^\//, '') as string;
       default:
         return navigation.type as 'dashboard' | 'recordings' | 'projects' | 'live' | 'search' | 'settings' | 'documents' | 'browser' | 'chats';
     }
@@ -513,6 +524,7 @@ export function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <DataSyncProvider>
+        <PluginManifestContext.Provider value={pluginManifest}>
         <div className="min-h-screen bg-background flex">
           {/* macOS Title Bar (draggable region for window movement) */}
           <TitleBar />
@@ -530,6 +542,11 @@ export function App() {
               else if (tab === 'chats') handleNavigateToChats();
               else if (tab === 'browser') handleNavigateToBrowser();
               else if (tab === 'settings') handleNavigateToSettings();
+              else {
+                // Plugin nav item
+                const route = pluginManifest.routes.find((r) => r.includes(tab)) || `/${tab}`;
+                setNavigation({ type: 'plugin', pluginRoute: route });
+              }
             }}
             theme={theme}
             onCycleTheme={cycleTheme}
@@ -623,6 +640,15 @@ export function App() {
                 {navigation.type === 'settings' && (
                   <SettingsPage theme={theme} onThemeChange={setTheme} />
                 )}
+                {navigation.type === 'plugin' && (
+                  <div className="w-full h-[calc(100vh-8rem)]">
+                    <iframe
+                      src={getApiUrl(`/plugins${navigation.pluginRoute}`)}
+                      className="w-full h-full border-0"
+                      title={`Plugin: ${navigation.pluginRoute}`}
+                    />
+                  </div>
+                )}
               </div>
             </main>
           </div>
@@ -674,6 +700,7 @@ export function App() {
             />
           )}
         </div>
+        </PluginManifestContext.Provider>
       </DataSyncProvider>
     </QueryClientProvider>
   );
