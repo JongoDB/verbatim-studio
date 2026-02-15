@@ -442,6 +442,62 @@ jobs:
       contents: write
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate release notes
+        id: notes
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          # Find previous tag
+          PREV_TAG=$(git tag --sort=-v:refname | grep -v "^${TAG}$" | head -1)
+          if [ -z "$PREV_TAG" ]; then
+            RANGE="HEAD"
+          else
+            RANGE="${PREV_TAG}..HEAD"
+          fi
+
+          FEATURES=""
+          FIXES=""
+          IMPROVEMENTS=""
+
+          while IFS= read -r line; do
+            # Strip leading hash + space
+            MSG="${line#* }"
+            # Normalize: remove scope parens for categorization
+            CLEAN=$(echo "$MSG" | sed 's/^feat([^)]*): /feat: /; s/^fix([^)]*): /fix: /; s/^chore([^)]*): /chore: /; s/^perf([^)]*): /perf: /')
+
+            case "$CLEAN" in
+              feat:*|feat\(*) FEATURES="${FEATURES}- ${MSG#*: }"$'\n' ;;
+              fix:*)           FIXES="${FIXES}- ${MSG#*: }"$'\n' ;;
+              perf:*|chore:*|refactor:*) IMPROVEMENTS="${IMPROVEMENTS}- ${MSG#*: }"$'\n' ;;
+            esac
+          done <<< "$(git log --oneline "$RANGE" -- . ':!docs/' ':!*.md')"
+
+          # Build release body
+          BODY="## What's New in ${TAG}"$'\n'
+
+          if [ -n "$FEATURES" ]; then
+            BODY="${BODY}"$'\n'"### ✨ New Features"$'\n'"${FEATURES}"
+          fi
+          if [ -n "$FIXES" ]; then
+            BODY="${BODY}"$'\n'"### 🐛 Bug Fixes"$'\n'"${FIXES}"
+          fi
+          if [ -n "$IMPROVEMENTS" ]; then
+            BODY="${BODY}"$'\n'"### 🔧 Improvements"$'\n'"${IMPROVEMENTS}"
+          fi
+
+          # Fallback if no conventional commits found
+          if [ -z "$FEATURES" ] && [ -z "$FIXES" ] && [ -z "$IMPROVEMENTS" ]; then
+            BODY="${BODY}"$'\n'"See [commit history](https://github.com/${{ github.repository }}/compare/${PREV_TAG}...${TAG}) for details."$'\n'
+          fi
+
+          # Write to file (avoids escaping issues with multiline env vars)
+          echo "$BODY" > release-notes.md
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
@@ -451,6 +507,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: artifacts/**/*
-          generate_release_notes: true
+          body_path: release-notes.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
