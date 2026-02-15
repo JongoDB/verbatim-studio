@@ -55,7 +55,25 @@ export async function migrateResourcesToUserData(
     if (hasUserPython) {
       console.log('[Migration] Update variant — using existing Python from user data');
     } else {
+      // This happens when a user upgrades from a pre-migration version using a
+      // stripped update. They need the full installer to bootstrap the Python env.
       console.error('[Migration] No Python in bundle or user data!');
+      const { dialog } = await import('electron');
+      const releaseUrl = `https://github.com/JongoDB/verbatim-studio/releases/latest`;
+      const result = await dialog.showMessageBox({
+        type: 'error',
+        title: 'Python Environment Missing',
+        message: 'This update requires a one-time full install to set up the Python environment.',
+        detail: 'Please download the full installer from the releases page. Future updates will be much smaller.',
+        buttons: ['Open Downloads', 'Quit'],
+      });
+      if (result.response === 0) {
+        const { shell } = await import('electron');
+        await shell.openExternal(releaseUrl);
+      }
+      app.quit();
+      // Return false but app is quitting — prevent further startup
+      return false;
     }
     return false;
   }

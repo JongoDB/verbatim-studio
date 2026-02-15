@@ -343,14 +343,16 @@ export async function checkForUpdates(manual = false): Promise<void> {
         return;
       }
     } else {
-      // macOS: prefer -update.dmg (stripped, no models) over regular .dmg (full)
+      // macOS: prefer -update.dmg (stripped, no models) over regular .dmg (full).
+      // Update DMGs intentionally omit the arch from the filename so that
+      // older updaters (which match .dmg + arch) won't accidentally pick them.
       const arch = process.arch === 'arm64' ? 'arm64' : 'x64';
       updateAsset = latestRelease.assets.find((asset) => {
         const name = asset.name.toLowerCase();
-        return name.endsWith('.dmg') && name.includes(arch) && name.includes('update');
+        return name.endsWith('.dmg') && name.includes('update');
       });
       if (!updateAsset) {
-        // Fallback to full DMG
+        // Fallback to full DMG (matches by architecture)
         updateAsset = latestRelease.assets.find((asset) => {
           const name = asset.name.toLowerCase();
           return name.endsWith('.dmg') && name.includes(arch);

@@ -43,7 +43,7 @@ mac:
     - target: dmg
       arch:
         - arm64
-  artifactName: "${productName}-${version}-${arch}-update.${ext}"
+  artifactName: "${productName}-${version}-update.${ext}"
   hardenedRuntime: true
   gatekeeperAssess: false
   entitlements: entitlements.mac.plist
