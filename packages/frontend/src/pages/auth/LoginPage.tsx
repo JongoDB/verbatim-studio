@@ -37,7 +37,11 @@ export function LoginPage({ onLoginSuccess, appName = 'Verbatim Studio', mode }:
     setIsLoading(true);
     try {
       const result = await api.auth.register(username, email, password);
-      setRegisterSuccess(`Account created for ${result.username}. You can now sign in.`);
+      if (result.is_active) {
+        setRegisterSuccess(`Admin account created for ${result.username}. You can now sign in.`);
+      } else {
+        setRegisterSuccess(`Account created for ${result.username}. An admin must approve your account before you can sign in.`);
+      }
       setIsRegistering(false);
       setPassword('');
     } catch (err) {
