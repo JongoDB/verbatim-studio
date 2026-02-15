@@ -416,16 +416,18 @@ function AppContent() {
       setHealth(healthStatus);
       setSystemInfo(sysInfo);
       setError(null);
-      setNeedsAuth(false);
       setIsConnecting(false);
     } catch (err) {
-      // If needsAuth was just set by the 401 handler, don't show connection error
-      if (!needsAuth) {
-        setError(err instanceof Error ? err.message : 'Failed to connect to backend');
-      }
       setIsConnecting(false);
+      // Don't overwrite needsAuth with a connection error
+      setNeedsAuth((current) => {
+        if (!current) {
+          setError(err instanceof Error ? err.message : 'Failed to connect to backend');
+        }
+        return current;
+      });
     }
-  }, [needsAuth]);
+  }, []);
 
   useEffect(() => {
     checkBackend();
