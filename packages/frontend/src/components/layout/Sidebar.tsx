@@ -3,9 +3,8 @@ import { isElectron } from '../../lib/api';
 import { DownloadIndicator } from '../downloads/DownloadIndicator';
 import { TaskIndicator } from '../tasks/TaskIndicator';
 
-// Import logos to get correct bundled paths (works with both http and file:// protocols)
+// Import icon logo to get correct bundled path (works with both http and file:// protocols)
 import logoIcon from '/logo-icon.png';
-import logoFull from '/logo.png';
 
 // Check if running on macOS in Electron (for traffic light padding)
 const isMacOS = typeof navigator !== 'undefined' && navigator.platform.toLowerCase().includes('mac');
@@ -191,16 +190,21 @@ export function Sidebar({ currentTab, onNavigate, theme, onCycleTheme, version, 
               />
             </button>
           ) : (
-            // Expanded: show full logo with tagline
-            <div className="flex flex-col">
+            // Expanded: show text wordmark with icon + tagline
+            <div className="flex items-center gap-2.5">
               <img
-                src={logoFull}
-                alt="Verbatim Studio"
-                className="h-8 object-contain dark:invert dark:hue-rotate-180"
+                src={logoIcon}
+                alt=""
+                className="h-7 w-7 shrink-0"
               />
-              <span className="text-[10px] text-muted-foreground tracking-wide mt-0.5">
-                Transcription you can trust
-              </span>
+              <div className="flex flex-col min-w-0">
+                <span className="text-[15px] font-semibold leading-tight tracking-tight text-foreground">
+                  Verbatim<span className="font-light text-muted-foreground">{' '}Studio</span>
+                </span>
+                <span className="text-[10px] text-muted-foreground tracking-wide">
+                  Transcription you can trust
+                </span>
+              </div>
             </div>
           )}
           {/* Desktop collapse toggle (hidden when collapsed — V logo expands instead) */}
