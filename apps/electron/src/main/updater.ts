@@ -318,15 +318,23 @@ export async function checkForUpdates(manual = false): Promise<void> {
       return;
     }
 
-    // Find the correct asset for this platform and architecture
+    // Find the correct asset for this platform and architecture.
+    // Prefer stripped "update" variants (no bundled models) over full installers.
     let updateAsset: GitHubAsset | undefined;
 
     if (process.platform === 'win32') {
-      // Windows: look for NSIS Setup .exe
+      // Windows: prefer .Update. (stripped, no models) over .Setup. (full)
       updateAsset = latestRelease.assets.find((asset) => {
         const name = asset.name.toLowerCase();
-        return name.endsWith('.exe') && name.includes('setup');
+        return name.endsWith('.exe') && name.includes('update');
       });
+      if (!updateAsset) {
+        // Fallback to full installer
+        updateAsset = latestRelease.assets.find((asset) => {
+          const name = asset.name.toLowerCase();
+          return name.endsWith('.exe') && name.includes('setup');
+        });
+      }
       if (!updateAsset) {
         console.error('[Updater] No Windows installer asset found');
         safeSend('update-error', {
@@ -335,12 +343,19 @@ export async function checkForUpdates(manual = false): Promise<void> {
         return;
       }
     } else {
-      // macOS: look for DMG matching architecture
+      // macOS: prefer -update.dmg (stripped, no models) over regular .dmg (full)
       const arch = process.arch === 'arm64' ? 'arm64' : 'x64';
       updateAsset = latestRelease.assets.find((asset) => {
         const name = asset.name.toLowerCase();
-        return name.endsWith('.dmg') && name.includes(arch);
+        return name.endsWith('.dmg') && name.includes(arch) && name.includes('update');
       });
+      if (!updateAsset) {
+        // Fallback to full DMG
+        updateAsset = latestRelease.assets.find((asset) => {
+          const name = asset.name.toLowerCase();
+          return name.endsWith('.dmg') && name.includes(arch);
+        });
+      }
       if (!updateAsset) {
         console.error('[Updater] No DMG asset found for architecture:', arch);
         safeSend('update-error', {

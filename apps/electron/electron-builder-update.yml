@@ -1,0 +1,77 @@
+# electron-builder config for AUTO-UPDATE releases (stripped).
+# Only includes backend code + frontend build. Python env, models, FFmpeg,
+# and CUDA libs persist in the user data directory across updates.
+#
+# Usage: electron-builder --config electron-builder-update.yml
+
+appId: com.verbatimstudio.app
+productName: Verbatim Studio
+
+directories:
+  output: ../../dist-update
+  buildResources: assets
+
+files:
+  - dist/**/*
+
+extraResources:
+  - from: assets/icon.png
+    to: icon.png
+  - from: ../../build/resources/backend
+    to: backend
+    filter:
+      - "**/*"
+  - from: ../../packages/frontend/dist
+    to: frontend
+    filter:
+      - "**/*"
+  - from: ../../scripts/requirements-ml.txt
+    to: requirements-ml.txt
+  - from: ../../scripts/requirements-ml-windows.txt
+    to: requirements-ml-windows.txt
+  # EXCLUDED from update builds (all persist in user data dir):
+  # - python (~1.2-1.5GB) — migrated on first launch
+  # - ffmpeg (~50MB) — migrated on first launch
+  # - whisper-models (~150MB) — downloaded on first transcription
+  # - embedding-models (~550MB) — downloaded on first semantic search
+  # - cuda (~200MB) — migrated on first launch (Windows)
+
+mac:
+  category: public.app-category.productivity
+  icon: assets/icon.icns
+  target:
+    - target: dmg
+      arch:
+        - arm64
+  artifactName: "${productName}-${version}-${arch}-update.${ext}"
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: entitlements.mac.plist
+  entitlementsInherit: entitlements.mac.plist
+
+win:
+  icon: assets/icon.png
+  target:
+    - target: nsis
+      arch:
+        - x64
+  artifactName: "${productName}.Update.${version}.${ext}"
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  deleteAppDataOnUninstall: false
+
+linux:
+  icon: assets/icon.png
+  target:
+    - target: AppImage
+      arch:
+        - x64
+  category: Office
+
+publish:
+  provider: github
+  owner: JongoDB
+  repo: verbatim-studio

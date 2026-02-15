@@ -230,15 +230,67 @@ The backend runs on a dynamic port. The API URL is injected into the frontend vi
 ### ML Model Downloads
 Models are downloaded to `~/Library/Application Support/@verbatim/electron/models/` on first use.
 
-## Recent Features (as of v0.26.12)
+## Enterprise Edition
 
-- Global search includes conversations/chat history (both SearchPage and header SearchBox)
-- PDF text extraction with PyMuPDF
-- OCR with Qwen VL model
-- Speaker diarization with pyannote
-- Inline document notes
-- Dark mode support
-- Cmd+R reload fix for Electron
+Verbatim Studio uses an **Open Core** architecture with two repositories:
+
+| | Open-Source | Enterprise |
+|---|---|---|
+| **Repo** | `verbatim-studio` (this repo) | `verbatim-studio-enterprise` (private) |
+| **Path** | `/Users/JonWFH/jondev/verbatim-studio` | `/Users/JonWFH/jondev/verbatim-studio-enterprise` |
+| **Contains** | Frontend, backend, Electron, CI | Plugin: auth, teams, PostgreSQL, license, Docker |
+| **Version** | v0.48.0 | v1.2.0-dev |
+
+### When to Update This Repo (Open-Source)
+
+**Only update open-source for:**
+- Bug fixes in core backend/frontend code
+- New plugin extension points needed by enterprise (e.g., `PluginRegistry` hooks)
+- CI/CD workflow changes (GitHub Actions)
+- Electron shell changes (updater, packaging)
+- Dependency bumps in core packages
+
+**Do NOT update open-source for:**
+- Enterprise-only features (auth, teams, admin, license)
+- Docker deployment (lives in enterprise repo)
+- Enterprise routes, middleware, models
+
+### Enterprise Plugin Architecture
+
+The enterprise plugin connects via Python entry points (`verbatim.plugins`):
+- `core/plugins.py` → `PluginRegistry` with routers, middleware, adapters, startup hooks
+- Enterprise `plugin.py` → Registers auth routes, JWT middleware, PostgreSQL adapter, startup hook
+- `api/main.py` → Loads plugins, runs startup hooks, then `init_db()`
+- Frontend `LoginPage.tsx` is gated — only shows when enterprise middleware returns 401
+
+### Enterprise Development Workflow
+
+```bash
+# Most work happens in the enterprise repo
+cd /Users/JonWFH/jondev/verbatim-studio-enterprise
+
+# Docker testing
+./scripts/build-docker.sh
+cd docker && docker compose up -d
+
+# If you need a core change, switch to open-source:
+cd /Users/JonWFH/jondev/verbatim-studio
+# Make change, commit, bump version, tag, push
+# Then rebuild enterprise Docker to pick up new core
+```
+
+### Enterprise Version Files
+1. `verbatim-studio-enterprise/pyproject.toml` - `version = "X.Y.Z"`
+
+## Auto-Update System
+
+The updater is custom-built (not `electron-updater`):
+- `apps/electron/src/main/updater.ts` — Checks GitHub releases API, downloads DMG/EXE
+- `apps/electron/src/main/update-script.ts` — macOS: shell script replaces `/Applications/Verbatim Studio.app`
+- `apps/electron/src/main/update-store.ts` — Persists auto-update preferences
+- `packages/frontend/src/components/updates/UpdatePrompt.tsx` — Download UI with progress bar
+
+**Flow:** `initAutoUpdater()` → checks GitHub releases every 24h → finds platform-specific asset → sends `update-available` to renderer → user clicks "Update Now" → downloads asset → macOS: mounts DMG + runs shell script / Windows: runs NSIS `/S` → quits app → new version launches.
 
 ## Testing Checklist for Releases
 
@@ -248,11 +300,7 @@ Models are downloaded to `~/Library/Application Support/@verbatim/electron/model
 - [ ] Speaker diarization works
 - [ ] Global search returns results
 - [ ] Cmd+R reloads without white screen
-- [ ] Chat history appears in search results
-
-## Supabase Integration
-
-Project uses Supabase MCP for documentation queries. The backend does NOT use Supabase for data storage (uses local SQLite).
+- [ ] Auto-update detects new version and downloads correctly
 
 ## Contact / Repository
 

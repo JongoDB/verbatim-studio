@@ -3,6 +3,7 @@ import { createMainWindow } from './windows';
 import { backendManager } from './backend';
 import { registerIpcHandlers } from './ipc';
 import { initAutoUpdater } from './updater';
+import { migrateResourcesToUserData } from './resource-migration';
 import { bootstrapBundledModels } from './bootstrap-models';
 import { createSplashWindow, updateSplashStatus, closeSplashWindow } from './splash';
 
@@ -23,6 +24,10 @@ async function bootstrap(): Promise<void> {
 
     // Register IPC handlers
     registerIpcHandlers();
+
+    // Migrate Python env from bundle to user data (first launch only)
+    updateSplashStatus('Checking resources\u2026');
+    await migrateResourcesToUserData((msg) => updateSplashStatus(msg));
 
     // Bootstrap bundled models (copy from resources to cache if needed)
     updateSplashStatus('Checking bundled models\u2026');

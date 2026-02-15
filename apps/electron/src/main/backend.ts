@@ -53,17 +53,29 @@ class BackendManager extends EventEmitter {
     console.log(`[Backend] Python exists: ${fs.existsSync(pythonPath)}`);
     console.log(`[Backend] Backend dir exists: ${fs.existsSync(backendPath)}`);
 
-    // Build PATH based on platform
+    // Build PATH based on platform.
+    // Resources may be in user data dir (migrated) or bundle (fresh install).
+    const userDataDir = app.getPath('userData');
     let extendedPath: string;
     if (process.platform === 'win32') {
-      // Windows: prepend bundled CUDA DLLs to PATH for CTranslate2 GPU inference.
-      // CTranslate2 dynamically loads cublas, cudart, and cuDNN DLLs from PATH.
-      const cudaPath = path.join(process.resourcesPath, 'cuda');
-      extendedPath = [cudaPath, process.env.PATH || ''].join(';');
+      // Windows: prepend CUDA DLLs + FFmpeg to PATH
+      const userCudaPath = path.join(userDataDir, 'cuda');
+      const bundledCudaPath = path.join(process.resourcesPath, 'cuda');
+      const cudaPath = fs.existsSync(userCudaPath) ? userCudaPath : bundledCudaPath;
+
+      const userFfmpegPath = path.join(userDataDir, 'ffmpeg');
+      const bundledFfmpegPath = path.join(process.resourcesPath, 'ffmpeg');
+      const ffmpegPath = fs.existsSync(userFfmpegPath) ? userFfmpegPath : bundledFfmpegPath;
+
+      extendedPath = [cudaPath, ffmpegPath, process.env.PATH || ''].join(';');
     } else {
-      // macOS/Linux: add common binary paths (Homebrew, MacPorts, etc.)
-      // Electron apps don't inherit the user's shell PATH
+      // macOS/Linux: add user data FFmpeg + common binary paths
+      const userFfmpegPath = path.join(userDataDir, 'ffmpeg');
+      const bundledFfmpegPath = path.join(process.resourcesPath, 'ffmpeg');
+      const ffmpegPath = fs.existsSync(userFfmpegPath) ? userFfmpegPath : bundledFfmpegPath;
+
       const additionalPaths = [
+        ffmpegPath,
         '/opt/homebrew/bin',
         '/opt/homebrew/sbin',
         '/usr/local/bin',
@@ -76,8 +88,6 @@ class BackendManager extends EventEmitter {
     }
 
     // Use user data directory for database to persist across updates
-    // The app bundle gets replaced on update, so storing db there causes data loss
-    const userDataDir = app.getPath('userData');
     const databasePath = path.join(userDataDir, 'verbatim.db');
 
     const env: NodeJS.ProcessEnv = {
@@ -196,11 +206,21 @@ class BackendManager extends EventEmitter {
 
   private getPythonPath(): string {
     if (app.isPackaged) {
-      // Bundled Python in resources
+      const userDataDir = app.getPath('userData');
       const resourcesPath = process.resourcesPath;
+
       if (process.platform === 'win32') {
+        // Prefer Python from user data dir (persists across updates)
+        const userPython = path.join(userDataDir, 'python', 'python.exe');
+        if (fs.existsSync(userPython)) {
+          return userPython;
+        }
         return path.join(resourcesPath, 'python', 'python.exe');
       } else {
+        const userPython = path.join(userDataDir, 'python', 'bin', 'python3');
+        if (fs.existsSync(userPython)) {
+          return userPython;
+        }
         return path.join(resourcesPath, 'python', 'bin', 'python3');
       }
     } else {

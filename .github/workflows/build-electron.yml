@@ -384,7 +384,7 @@ jobs:
       - name: Build Electron
         run: pnpm --filter @verbatim/electron build
 
-      - name: Package Electron app
+      - name: Package Electron app (full installer)
         run: |
           if [ "${{ matrix.platform }}" = "darwin" ]; then
             # Skip signing on macOS (add CSC_LINK secret to enable)
@@ -405,6 +405,24 @@ jobs:
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
 
+      - name: Package Electron app (update - no models)
+        run: |
+          if [ "${{ matrix.platform }}" = "darwin" ]; then
+            pnpm --filter @verbatim/electron exec electron-builder --publish never --config electron-builder-update.yml --config.mac.identity=null
+          else
+            pnpm --filter @verbatim/electron exec electron-builder --publish never --config electron-builder-update.yml
+          fi
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_LINK: ${{ secrets.MAC_CERTS }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CERTS_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -412,6 +430,8 @@ jobs:
           path: |
             dist/*.dmg
             dist/*.exe
+            dist-update/*.dmg
+            dist-update/*.exe
           if-no-files-found: error
 
   release:
