@@ -1,7 +1,7 @@
 import { app, BrowserWindow } from 'electron';
 import { execFile, spawn } from 'child_process';
 import { promisify } from 'util';
-import { createWriteStream } from 'fs';
+import { createWriteStream, existsSync } from 'fs';
 import { mkdir, rm } from 'fs/promises';
 import path from 'path';
 import https from 'https';
@@ -40,6 +40,18 @@ interface GitHubAsset {
 // Module state
 let mainWindow: BrowserWindow | null = null;
 let isCheckingForUpdates = false;
+
+/**
+ * Checks if the Python environment has been migrated to user data.
+ * Stripped "update" releases only work if this returns true.
+ */
+function hasMigratedPython(): boolean {
+  const userDataDir = app.getPath('userData');
+  const pythonBin = process.platform === 'win32'
+    ? path.join(userDataDir, 'python', 'python.exe')
+    : path.join(userDataDir, 'python', 'bin', 'python3');
+  return existsSync(pythonBin);
+}
 
 /**
  * Safely sends an IPC message to the main window.
@@ -319,17 +331,20 @@ export async function checkForUpdates(manual = false): Promise<void> {
     }
 
     // Find the correct asset for this platform and architecture.
-    // Prefer stripped "update" variants (no bundled models) over full installers.
+    // Only use stripped "update" variants if the Python environment has already
+    // been migrated to user data. Otherwise, use the full installer so migration
+    // can bootstrap the environment on first launch.
+    const canUseStripped = hasMigratedPython();
     let updateAsset: GitHubAsset | undefined;
 
     if (process.platform === 'win32') {
-      // Windows: prefer .Update. (stripped, no models) over .Setup. (full)
-      updateAsset = latestRelease.assets.find((asset) => {
-        const name = asset.name.toLowerCase();
-        return name.endsWith('.exe') && name.includes('update');
-      });
+      if (canUseStripped) {
+        updateAsset = latestRelease.assets.find((asset) => {
+          const name = asset.name.toLowerCase();
+          return name.endsWith('.exe') && name.includes('update');
+        });
+      }
       if (!updateAsset) {
-        // Fallback to full installer
         updateAsset = latestRelease.assets.find((asset) => {
           const name = asset.name.toLowerCase();
           return name.endsWith('.exe') && name.includes('setup');
@@ -343,16 +358,16 @@ export async function checkForUpdates(manual = false): Promise<void> {
         return;
       }
     } else {
-      // macOS: prefer -update.dmg (stripped, no models) over regular .dmg (full).
-      // Update DMGs intentionally omit the arch from the filename so that
-      // older updaters (which match .dmg + arch) won't accidentally pick them.
+      // macOS: Update DMGs omit the arch from the filename so that older
+      // updaters (which match .dmg + arch) fall through to the full DMG.
       const arch = process.arch === 'arm64' ? 'arm64' : 'x64';
-      updateAsset = latestRelease.assets.find((asset) => {
-        const name = asset.name.toLowerCase();
-        return name.endsWith('.dmg') && name.includes('update');
-      });
+      if (canUseStripped) {
+        updateAsset = latestRelease.assets.find((asset) => {
+          const name = asset.name.toLowerCase();
+          return name.endsWith('.dmg') && name.includes('update');
+        });
+      }
       if (!updateAsset) {
-        // Fallback to full DMG (matches by architecture)
         updateAsset = latestRelease.assets.find((asset) => {
           const name = asset.name.toLowerCase();
           return name.endsWith('.dmg') && name.includes(arch);
@@ -366,6 +381,8 @@ export async function checkForUpdates(manual = false): Promise<void> {
         return;
       }
     }
+
+    console.log(`[Updater] Python migrated: ${canUseStripped}, selected: ${updateAsset.name}`);
 
     console.log('[Updater] Update available:', latestVersion, updateAsset.name);
 
