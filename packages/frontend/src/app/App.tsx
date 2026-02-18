@@ -620,7 +620,7 @@ function AppContent() {
           />
 
           {/* Content Area - offset by sidebar width on desktop */}
-          <div className={`flex-1 flex flex-col min-h-screen overflow-hidden transition-[margin] duration-300 ${sidebarCollapsed ? 'md:ml-16' : 'md:ml-60'} ${needsTitleBarPadding ? 'pt-9' : ''}`}>
+          <div className={`flex-1 flex flex-col h-screen overflow-hidden transition-[margin] duration-300 ${sidebarCollapsed ? 'md:ml-16' : 'md:ml-60'} ${needsTitleBarPadding ? 'pt-9' : ''}`}>
             {/* Content header with search */}
             <header className="h-14 border-b border-border bg-card flex items-center px-4 md:px-6 gap-4 shrink-0">
               <div className="w-8 md:hidden" />
