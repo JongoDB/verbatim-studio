@@ -87,35 +87,40 @@ pnpm --filter @verbatim/electron dist
 ## What's New in vX.Y.Z
 
 ### ✨ New Features
-- Brief, user-friendly description of new feature
-- Another feature (explain benefit to user, not technical details)
+- **Feature name** — User-friendly description of what it does and why it matters
+- **Another feature** — Explain the benefit to the user, not technical details
 
 ### 🐛 Bug Fixes
-- Fixed issue where [user-facing problem] occurred
-- Resolved [describe what users experienced]
+- **Short label** — Fixed issue where [user-facing problem] occurred
+- **Another fix** — Resolved [describe what users experienced]
 
 ### 🔧 Improvements
 - Improved [feature] for better [benefit]
 - Enhanced [area] performance
 
 ### 📝 Notes
-- Any important notes users should know (e.g., "Requires re-download of models")
+- Any important notes users should know (e.g., "First launch after this update may take a moment")
+
+**Full Changelog**: https://github.com/JongoDB/verbatim-studio/compare/vPREVIOUS...vX.Y.Z
 ```
 
 ### Writing Guidelines
-1. **User-focused**: Describe what changed from the user's perspective, not implementation details
-2. **Plain language**: Avoid technical jargon (say "search is faster" not "optimized SQL queries")
-3. **Actionable**: If users need to do something, tell them clearly
-4. **Concise**: One line per item, get to the point
-5. **Categorized**: Use the sections above to organize changes
-6. **No AI attribution**: Do NOT include "Generated with Claude Code" or similar AI attribution in release notes
+1. **Bold lead phrases**: Start each bullet with `**Feature Name** —` to make items scannable
+2. **Past tense verbs**: Use "Added", "Fixed", "Improved" (not "now includes" or present tense)
+3. **User-focused**: Describe what changed from the user's perspective, not implementation details
+4. **Plain language**: Avoid technical jargon (say "search is faster" not "optimized SQL queries")
+5. **Actionable**: If users need to do something, tell them clearly
+6. **Concise**: One line per item, get to the point
+7. **Categorized**: Use the sections above to organize changes
+8. **Full Changelog link**: Always include the compare link at the bottom
+9. **No AI attribution**: Do NOT include "Generated with Claude Code" or similar AI attribution in release notes
 
 ### Examples
-**Good**: "Fixed issue where search results wouldn't show chat conversations"
-**Bad**: "Fixed SearchBox.tsx to handle type='conversation' with proper styling"
+**Good**: `- **Sticky player** — Fixed transcript player not staying visible when scrolling through segments`
+**Bad**: `- Fixed CSS positioning in App.tsx content wrapper`
 
-**Good**: "Added speaker identification for transcriptions (requires HuggingFace token)"
-**Bad**: "Integrated pyannote diarization pipeline with HF auth"
+**Good**: `- **AI summary persistence** — Summaries are now saved automatically when generated`
+**Bad**: `- Added DB write to sync summarize endpoint`
 
 ### Creating the Release
 When pushing a tag, GitHub Actions creates a draft release. Edit the release to add notes:
@@ -125,10 +130,12 @@ gh release edit vX.Y.Z --notes "$(cat << 'EOF'
 ## What's New in vX.Y.Z
 
 ### ✨ New Features
-- ...
+- **Feature** — Description
 
 ### 🐛 Bug Fixes
-- ...
+- **Fix** — Description
+
+**Full Changelog**: https://github.com/JongoDB/verbatim-studio/compare/vPREVIOUS...vX.Y.Z
 EOF
 )"
 ```
