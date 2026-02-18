@@ -367,6 +367,52 @@ class ExportService:
             row.cells[1].text = data.model_used
 
         doc.add_paragraph()
+
+        # AI Summary section
+        if data.ai_summary:
+            doc.add_heading("AI Summary", level=1)
+
+            summary_text = data.ai_summary.get("summary", "")
+            if summary_text:
+                doc.add_paragraph(summary_text)
+
+            key_points = data.ai_summary.get("key_points", [])
+            if key_points:
+                doc.add_heading("Key Points", level=2)
+                for point in key_points:
+                    doc.add_paragraph(point, style="List Bullet")
+
+            action_items = data.ai_summary.get("action_items", [])
+            if action_items:
+                doc.add_heading("Action Items", level=2)
+                for item in action_items:
+                    doc.add_paragraph(item, style="List Bullet")
+
+            topics = data.ai_summary.get("topics", [])
+            if topics:
+                doc.add_paragraph(f"Topics: {', '.join(topics)}")
+
+            doc.add_paragraph()
+
+        # Speaker Statistics section
+        if data.speaker_stats:
+            doc.add_heading("Speaker Statistics", level=1)
+            stat_table = doc.add_table(rows=1, cols=4)
+            stat_table.style = "Table Grid"
+
+            headers = ["Speaker", "Words", "Time", "%"]
+            for i, header in enumerate(headers):
+                stat_table.rows[0].cells[i].text = header
+
+            for stat in data.speaker_stats:
+                row = stat_table.add_row()
+                row.cells[0].text = stat.speaker_name
+                row.cells[1].text = f"{stat.word_count:,}"
+                row.cells[2].text = format_timestamp_readable(stat.speaking_time)
+                row.cells[3].text = f"{stat.word_percent:.1f}%"
+
+            doc.add_paragraph()
+
         doc.add_heading("Transcript", level=1)
 
         # Segments
