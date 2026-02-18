@@ -650,19 +650,35 @@ async def chat(request: ChatRequest) -> ChatResponse:
         )
 
     messages = []
+    max_tokens = request.max_tokens or 512
 
-    # Add context if provided
+    # Add context if provided, with truncation
     if request.context:
+        context = request.context
+        original_len = len(context)
+        if hasattr(ai_service, '_truncate_to_fit'):
+            prefix = "You are a helpful assistant. Here is some context:\n\n"
+            overhead = ai_service._count_tokens(prefix + request.message) + 30
+            available = ai_service._n_ctx - overhead - max_tokens
+            if available < 100:
+                available = 100
+            context = ai_service._truncate_to_fit(context, available)
+        truncation_note = ""
+        if len(context) < original_len:
+            truncation_note = (
+                "\n\nNote: The provided context was too large to include in full. "
+                "Some content has been omitted."
+            )
         messages.append(ChatMessage(
             role="system",
-            content=f"You are a helpful assistant. Here is some context:\n\n{request.context}",
+            content=f"You are a helpful assistant. Here is some context:\n\n{context}{truncation_note}",
         ))
 
     messages.append(ChatMessage(role="user", content=request.message))
 
     options = ChatOptions(
         temperature=request.temperature,
-        max_tokens=request.max_tokens,
+        max_tokens=max_tokens,
     )
 
     try:
@@ -846,8 +862,30 @@ async def chat_multi_stream(
         system_content += MAX_HELP_CONTEXT
 
     if context_parts:
-        system_content += f"\n\nYou have access to {len(context_parts)} attached item(s) (transcripts, documents, or files):\n\n"
-        system_content += "\n".join(context_parts)
+        context_header = f"\n\nYou have access to {len(context_parts)} attached item(s) (transcripts, documents, or files):\n\n"
+        full_context = "\n".join(context_parts)
+
+        # Truncate context to fit model's context window
+        max_response_tokens = 1024
+        original_context_len = len(full_context)
+        if hasattr(ai_service, '_truncate_to_fit'):
+            # Count tokens for non-context parts
+            history_text = "\n".join(m.content for m in request.history) + request.message
+            overhead_tokens = ai_service._count_tokens(
+                system_content + context_header + history_text
+            ) + 60  # framing overhead
+            available = ai_service._n_ctx - overhead_tokens - max_response_tokens
+            if available < 100:
+                available = 100
+            full_context = ai_service._truncate_to_fit(full_context, available)
+
+        system_content += context_header + full_context
+
+        if len(full_context) < original_context_len:
+            system_content += (
+                "\n\nNote: The attached content was too large to include in full. "
+                "Some content has been omitted. For complete analysis, use the Summarize or Analyze features."
+            )
     else:
         system_content += "\n\nNo transcripts or documents are currently attached. Help with general questions about Verbatim Studio."
 
@@ -861,7 +899,7 @@ async def chat_multi_stream(
     # Add current message
     messages.append(ChatMessage(role="user", content=request.message))
 
-    options = ChatOptions(temperature=request.temperature, max_tokens=1024)
+    options = ChatOptions(temperature=request.temperature, max_tokens=max_response_tokens)
 
     async def generate():
         try:
@@ -1080,21 +1118,34 @@ async def ask_about_transcript(
 
     transcript_text = await get_transcript_text(db, transcript_id)
 
+    # Truncate transcript to fit the model's context window
+    system_prefix = """You are a helpful assistant that answers questions about transcripts.
+Here is the transcript to reference:
+
+"""
+    system_suffix = """
+
+Answer questions based on the content of this transcript. If the answer cannot be found in the transcript, say so."""
+
+    max_response_tokens = 512
+    # Use the service's truncation if available, otherwise estimate
+    if hasattr(ai_service, '_truncate_to_fit'):
+        overhead_tokens = ai_service._count_tokens(system_prefix + system_suffix + question) + 40
+        available = ai_service._n_ctx - overhead_tokens - max_response_tokens
+        if available < 100:
+            available = 100
+        transcript_text = ai_service._truncate_to_fit(transcript_text, available)
+
     messages = [
         ChatMessage(
             role="system",
-            content=f"""You are a helpful assistant that answers questions about transcripts.
-Here is the transcript to reference:
-
-{transcript_text}
-
-Answer questions based on the content of this transcript. If the answer cannot be found in the transcript, say so.""",
+            content=f"{system_prefix}{transcript_text}{system_suffix}",
         ),
         ChatMessage(role="user", content=question),
     ]
 
     try:
-        options = ChatOptions(temperature=temperature, max_tokens=512)
+        options = ChatOptions(temperature=temperature, max_tokens=max_response_tokens)
         response = await ai_service.chat(messages, options)
         return ChatResponse(content=response.content, model=response.model)
     except Exception as e:

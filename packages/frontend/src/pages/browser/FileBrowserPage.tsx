@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { api, type BrowseItem, type BrowseResponse, type FolderTreeNode, type FileProperties } from '@/lib/api';
 import { formatDateTime, formatDate } from '@/lib/utils';
 import { Breadcrumb } from '@/components/browser/Breadcrumb';
@@ -447,6 +447,33 @@ export function FileBrowserPage({ initialFolderId, onViewRecording, onViewDocume
     setContextMenu(null);
   };
 
+  const downloadLinkRef = useRef<HTMLAnchorElement>(null);
+
+  const handleDownload = useCallback((item: BrowseItem) => {
+    if (item.type === 'folder') return;
+    let url: string;
+    if (item.type === 'recording') {
+      url = api.recordings.getAudioUrl(item.id);
+    } else {
+      url = api.documents.getFileUrl(item.id);
+    }
+    const a = downloadLinkRef.current;
+    if (a) {
+      a.href = url;
+      a.download = item.name;
+      a.click();
+    }
+    setContextMenu(null);
+  }, []);
+
+  const handleBulkDownload = useCallback(() => {
+    const items = Array.from(selectedItems.values()).filter(i => i.type !== 'folder');
+    // Download each file with a small delay to avoid browser blocking
+    items.forEach((item, i) => {
+      setTimeout(() => handleDownload(item), i * 200);
+    });
+  }, [selectedItems, handleDownload]);
+
   // Drag and drop handlers
   const handleDragStart = (e: React.DragEvent, item: BrowseItem) => {
     if (item.type === 'folder') {
@@ -637,6 +664,9 @@ export function FileBrowserPage({ initialFolderId, onViewRecording, onViewDocume
 
   return (
     <div className="flex flex-col h-full">
+      {/* Hidden download link */}
+      <a ref={downloadLinkRef} className="hidden" />
+
       {/* Toolbar */}
       <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
         <div className="flex items-center gap-4">
@@ -654,6 +684,13 @@ export function FileBrowserPage({ initialFolderId, onViewRecording, onViewDocume
                 className="px-2 py-1 text-xs text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
               >
                 Clear
+              </button>
+              <button
+                onClick={handleBulkDownload}
+                disabled={Array.from(selectedItems.values()).every(i => i.type === 'folder')}
+                className="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Download
               </button>
               <button
                 onClick={() => {
@@ -825,6 +862,14 @@ export function FileBrowserPage({ initialFolderId, onViewRecording, onViewDocume
             >
               Open
             </button>
+            {contextMenu.item.type !== 'folder' && (
+              <button
+                onClick={() => handleDownload(contextMenu.item)}
+                className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+              >
+                Download
+              </button>
+            )}
             <button
               onClick={() => handleRename(contextMenu.item)}
               className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"

@@ -11,5 +11,6 @@ MODEL_CATALOG: dict[str, dict] = {
         "label": "Granite 3.3 8B",
         "description": "IBM's instruct model. Recommended for chat and analysis.",
         "default": True,
+        "max_context": 131072,
     },
 }

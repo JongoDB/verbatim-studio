@@ -147,10 +147,11 @@ class LlamaCppAIService(IAIService):
                 "llama-cpp-python is not installed. Install with: pip install llama-cpp-python"
             ) from e
 
+        ctx_kb = self._n_ctx // 1024
         logger.info(
-            "Loading llama.cpp model: %s (n_ctx=%d, n_gpu_layers=%d)",
-            self._model_path,
-            self._n_ctx,
+            "Loading llama.cpp model: %s (context=%dK tokens, gpu_layers=%d)",
+            Path(self._model_path).name,
+            ctx_kb,
             self._n_gpu_layers,
         )
 
@@ -161,7 +162,146 @@ class LlamaCppAIService(IAIService):
             verbose=False,
         )
 
-        logger.info("Llama.cpp model loaded successfully")
+        logger.info(
+            "Model loaded successfully — context window: %dK tokens (%d). "
+            "KV cache is pre-allocated; memory usage is expected.",
+            ctx_kb, self._n_ctx,
+        )
+
+    def _count_tokens(self, text: str) -> int:
+        """Count tokens using the model's tokenizer if loaded, else estimate.
+
+        Uses a conservative 1 token ≈ 3 chars estimate as fallback.
+        """
+        if self._llm is not None:
+            try:
+                return len(self._llm.tokenize(text.encode("utf-8")))
+            except Exception:
+                pass
+        # Conservative estimate: 1 token ≈ 3 characters
+        return len(text) // 3 + 1
+
+    def _truncate_to_fit(self, text: str, max_tokens: int) -> str:
+        """Truncate text to fit within a token budget.
+
+        Uses the model's tokenizer when available for accuracy.
+        """
+        token_count = self._count_tokens(text)
+        if token_count <= max_tokens:
+            return text
+
+        if self._llm is not None:
+            try:
+                tokens = self._llm.tokenize(text.encode("utf-8"))
+                truncated_tokens = tokens[:max_tokens]
+                return self._llm.detokenize(truncated_tokens).decode("utf-8", errors="replace")
+            except Exception:
+                pass
+
+        # Fallback: estimate chars per token from the ratio
+        ratio = len(text) / token_count
+        max_chars = int(max_tokens * ratio)
+        return text[:max_chars]
+
+    def _split_into_chunks(
+        self,
+        text: str,
+        max_tokens_per_chunk: int,
+        overlap_tokens: int = 200,
+    ) -> list[str]:
+        """Split text into token-budget-aware chunks with overlap.
+
+        Splits on sentence/newline boundaries to avoid cutting mid-thought.
+        """
+        self._ensure_loaded()
+        total_tokens = self._count_tokens(text)
+
+        if total_tokens <= max_tokens_per_chunk:
+            return [text]
+
+        chunks = []
+        sentences = re.split(r'(?<=[.!?\n])\s+', text)
+
+        current_chunk: list[str] = []
+        current_tokens = 0
+
+        for sentence in sentences:
+            sentence_tokens = self._count_tokens(sentence)
+
+            if current_tokens + sentence_tokens > max_tokens_per_chunk and current_chunk:
+                chunks.append(" ".join(current_chunk))
+
+                # Overlap from end of previous chunk
+                overlap_text = []
+                overlap_count = 0
+                for s in reversed(current_chunk):
+                    s_tokens = self._count_tokens(s)
+                    if overlap_count + s_tokens > overlap_tokens:
+                        break
+                    overlap_text.insert(0, s)
+                    overlap_count += s_tokens
+
+                current_chunk = overlap_text
+                current_tokens = overlap_count
+
+            current_chunk.append(sentence)
+            current_tokens += sentence_tokens
+
+        if current_chunk:
+            chunks.append(" ".join(current_chunk))
+
+        logger.info(
+            "Split transcript into %d chunks (total %d tokens, %d per chunk)",
+            len(chunks), total_tokens, max_tokens_per_chunk,
+        )
+        return chunks
+
+    def _parse_summarization_response(self, content: str) -> SummarizationResult:
+        """Parse a summarization response into structured result."""
+        summary = ""
+        key_points = []
+        action_items = []
+        topics = []
+        named_entities = []
+
+        current_section = None
+        list_sections = ("key_points", "action_items", "topics", "named_entities")
+        for line in content.split("\n"):
+            line = line.strip()
+            upper = line.upper()
+            if upper.startswith("SUMMARY:"):
+                current_section = "summary"
+                summary = line[8:].strip()
+            elif upper.startswith("KEY POINTS:") or upper.startswith("KEY_POINTS:"):
+                current_section = "key_points"
+            elif upper.startswith("ACTION ITEMS:") or upper.startswith("ACTION_ITEMS:"):
+                current_section = "action_items"
+            elif upper.startswith("TOPICS:"):
+                current_section = "topics"
+            elif upper.startswith("NAMED ENTITIES:") or upper.startswith("NAMED_ENTITIES:") or upper.startswith("PEOPLE:"):
+                current_section = "named_entities"
+            elif current_section in list_sections and line:
+                item = re.sub(r'^(?:[-*•]\s*|\d+[.)]\s*)', '', line).strip()
+                if not item:
+                    continue
+                if current_section == "key_points":
+                    key_points.append(item)
+                elif current_section == "action_items":
+                    action_items.append(item)
+                elif current_section == "topics":
+                    topics.append(item)
+                elif current_section == "named_entities":
+                    named_entities.append(item)
+            elif current_section == "summary" and line:
+                summary += " " + line
+
+        return SummarizationResult(
+            summary=summary.strip(),
+            key_points=key_points if key_points else None,
+            action_items=action_items if action_items else None,
+            topics=topics if topics else None,
+            named_entities=named_entities if named_entities else None,
+        )
 
     async def chat(
         self,
@@ -243,7 +383,11 @@ class LlamaCppAIService(IAIService):
         transcript_text: str,
         options: ChatOptions | None = None,
     ) -> SummarizationResult:
-        """Generate a summary of a transcript."""
+        """Generate a summary of a transcript.
+
+        Uses single-pass summarization when the transcript fits in context,
+        otherwise falls back to map-reduce chunked processing.
+        """
         options = options or ChatOptions()
 
         system_prompt = """You are a transcript summarization assistant.
@@ -278,75 +422,106 @@ NAMED ENTITIES:
 - [Person 2]
 ..."""
 
-        # Truncate transcript to fit within context window.
-        # Reserve tokens for: system prompt (~200), user prefix (~10), response (max_tokens).
-        max_tokens = options.max_tokens or 2048
-        reserved = 300 + max_tokens
-        available_tokens = self._n_ctx - reserved
-        # Rough estimate: 1 token ≈ 4 characters
-        max_chars = available_tokens * 4
-        if len(transcript_text) > max_chars:
-            transcript_text = transcript_text[:max_chars]
-            logger.info(
-                "Transcript truncated to %d chars to fit context window (%d tokens)",
-                max_chars,
-                self._n_ctx,
-            )
+        max_response = options.max_tokens or 2048
+        self._ensure_loaded()
+        system_tokens = self._count_tokens(system_prompt) + 20  # +20 for message framing
+        available_tokens = self._n_ctx - system_tokens - max_response
 
+        transcript_tokens = self._count_tokens(transcript_text)
+
+        if transcript_tokens <= available_tokens:
+            logger.info(
+                "Summarize: single-pass (%d tokens, context has %d available)",
+                transcript_tokens, available_tokens,
+            )
+            return await self._summarize_single(transcript_text, system_prompt, options)
+        else:
+            logger.info(
+                "Summarize: map-reduce — transcript (%d tokens) exceeds single-pass capacity (%d tokens)",
+                transcript_tokens, available_tokens,
+            )
+            return await self._summarize_chunked(transcript_text, system_prompt, options)
+
+    async def _summarize_single(
+        self,
+        transcript_text: str,
+        system_prompt: str,
+        options: ChatOptions,
+    ) -> SummarizationResult:
+        """Summarize a transcript that fits within a single context window."""
         messages = [
             ChatMessage(role="system", content=system_prompt),
             ChatMessage(role="user", content=f"Please summarize this transcript:\n\n{transcript_text}"),
         ]
 
         response = await self.chat(messages, options)
+        return self._parse_summarization_response(response.content)
 
-        # Parse the response
-        content = response.content
-        summary = ""
-        key_points = []
-        action_items = []
-        topics = []
-        named_entities = []
+    async def _summarize_chunked(
+        self,
+        transcript_text: str,
+        system_prompt: str,
+        options: ChatOptions,
+    ) -> SummarizationResult:
+        """Summarize a long transcript using map-reduce chunked processing.
 
-        current_section = None
-        list_sections = ("key_points", "action_items", "topics", "named_entities")
-        for line in content.split("\n"):
-            line = line.strip()
-            upper = line.upper()
-            if upper.startswith("SUMMARY:"):
-                current_section = "summary"
-                summary = line[8:].strip()
-            elif upper.startswith("KEY POINTS:") or upper.startswith("KEY_POINTS:"):
-                current_section = "key_points"
-            elif upper.startswith("ACTION ITEMS:") or upper.startswith("ACTION_ITEMS:"):
-                current_section = "action_items"
-            elif upper.startswith("TOPICS:"):
-                current_section = "topics"
-            elif upper.startswith("NAMED ENTITIES:") or upper.startswith("NAMED_ENTITIES:") or upper.startswith("PEOPLE:"):
-                current_section = "named_entities"
-            elif current_section in list_sections and line:
-                # Strip common list prefixes: "- ", "* ", "• ", "1. ", "1) "
-                item = re.sub(r'^(?:[-*•]\s*|\d+[.)]\s*)', '', line).strip()
-                if not item:
-                    continue
-                if current_section == "key_points":
-                    key_points.append(item)
-                elif current_section == "action_items":
-                    action_items.append(item)
-                elif current_section == "topics":
-                    topics.append(item)
-                elif current_section == "named_entities":
-                    named_entities.append(item)
-            elif current_section == "summary" and line:
-                summary += " " + line
+        MAP phase: Summarize each chunk independently with a concise prompt.
+        REDUCE phase: Combine chunk summaries using the full system prompt.
+        """
+        max_response = options.max_tokens or 2048
 
-        return SummarizationResult(
-            summary=summary.strip(),
-            key_points=key_points if key_points else None,
-            action_items=action_items if action_items else None,
-            topics=topics if topics else None,
-            named_entities=named_entities if named_entities else None,
+        # --- MAP phase ---
+        chunk_prompt = """You are summarizing a section of a larger transcript.
+Provide a concise summary of this section, noting:
+- Key points discussed
+- Any action items mentioned
+- Main topics covered
+- People mentioned or speaking
+
+Be thorough — your summary will be combined with summaries of other sections."""
+
+        chunk_response_tokens = min(1024, max_response)
+        chunk_prompt_tokens = self._count_tokens(chunk_prompt) + 20
+        chunk_available = self._n_ctx - chunk_prompt_tokens - chunk_response_tokens
+
+        chunks = self._split_into_chunks(transcript_text, chunk_available)
+
+        chunk_options = ChatOptions(
+            max_tokens=chunk_response_tokens,
+            temperature=options.temperature,
+            top_p=options.top_p,
         )
+
+        chunk_summaries = []
+        for i, chunk in enumerate(chunks):
+            logger.info("Summarizing chunk %d/%d", i + 1, len(chunks))
+            messages = [
+                ChatMessage(role="system", content=chunk_prompt),
+                ChatMessage(role="user", content=f"Summarize this section:\n\n{chunk}"),
+            ]
+            response = await self.chat(messages, chunk_options)
+            chunk_summaries.append(f"--- Section {i + 1} ---\n{response.content}")
+
+        # --- REDUCE phase ---
+        logger.info("Map phase complete (%d chunks). Starting reduce phase...", len(chunks))
+        combined = "\n\n".join(chunk_summaries)
+
+        # Safety net: truncate combined summaries if they still exceed available space
+        system_tokens = self._count_tokens(system_prompt) + 20
+        reduce_available = self._n_ctx - system_tokens - max_response
+        combined = self._truncate_to_fit(combined, reduce_available)
+
+        messages = [
+            ChatMessage(role="system", content=system_prompt),
+            ChatMessage(
+                role="user",
+                content=f"Combine these summaries of transcript sections into a single comprehensive summary:\n\n{combined}",
+            ),
+        ]
+
+        response = await self.chat(messages, options)
+        logger.info("Summarization complete (map-reduce, %d chunks)", len(chunks))
+        return self._parse_summarization_response(response.content)
 
     async def analyze_transcript(
         self,
@@ -354,7 +529,11 @@ NAMED ENTITIES:
         analysis_type: str,
         options: ChatOptions | None = None,
     ) -> AnalysisResult:
-        """Perform analysis on a transcript."""
+        """Perform analysis on a transcript.
+
+        Uses single-pass analysis when the transcript fits in context,
+        otherwise falls back to map-reduce chunked processing.
+        """
         options = options or ChatOptions()
 
         prompts = {
@@ -367,17 +546,81 @@ NAMED ENTITIES:
 
         prompt = prompts.get(analysis_type, f"Perform {analysis_type} analysis on this transcript.")
 
-        messages = [
-            ChatMessage(role="system", content=f"You are a transcript analyst. {prompt}"),
-            ChatMessage(role="user", content=f"Analyze this transcript:\n\n{transcript_text}"),
-        ]
+        system_content = f"You are a transcript analyst. {prompt}"
+        self._ensure_loaded()
+        max_response = options.max_tokens or 512
+        system_tokens = self._count_tokens(system_content) + 20
+        available_tokens = self._n_ctx - system_tokens - max_response
 
-        response = await self.chat(messages, options)
+        transcript_tokens = self._count_tokens(transcript_text)
 
-        return AnalysisResult(
-            analysis_type=analysis_type,
-            content={"raw_analysis": response.content},
-        )
+        if transcript_tokens <= available_tokens:
+            # Single pass — transcript fits in context
+            messages = [
+                ChatMessage(role="system", content=system_content),
+                ChatMessage(role="user", content=f"Analyze this transcript:\n\n{transcript_text}"),
+            ]
+
+            response = await self.chat(messages, options)
+
+            return AnalysisResult(
+                analysis_type=analysis_type,
+                content={"raw_analysis": response.content},
+            )
+        else:
+            # Map-reduce chunked analysis
+            logger.info(
+                "Transcript (%d tokens) exceeds single-pass capacity (%d tokens) for %s analysis, using map-reduce",
+                transcript_tokens, available_tokens, analysis_type,
+            )
+
+            # --- MAP phase ---
+            chunk_response_tokens = min(1024, max_response)
+            chunk_system_tokens = self._count_tokens(system_content) + 20
+            chunk_available = self._n_ctx - chunk_system_tokens - chunk_response_tokens
+
+            chunks = self._split_into_chunks(transcript_text, chunk_available)
+
+            chunk_options = ChatOptions(
+                max_tokens=chunk_response_tokens,
+                temperature=options.temperature,
+                top_p=options.top_p,
+            )
+
+            chunk_analyses = []
+            for i, chunk in enumerate(chunks):
+                logger.info("Analyzing chunk %d/%d (%s)", i + 1, len(chunks), analysis_type)
+                messages = [
+                    ChatMessage(role="system", content=system_content),
+                    ChatMessage(role="user", content=f"Analyze this transcript section:\n\n{chunk}"),
+                ]
+                response = await self.chat(messages, chunk_options)
+                chunk_analyses.append(f"--- Section {i + 1} ---\n{response.content}")
+
+            # --- REDUCE phase ---
+            combined = "\n\n".join(chunk_analyses)
+
+            reduce_system = f"You are a transcript analyst. Merge these section-level analyses into one cohesive {analysis_type} analysis."
+            reduce_system_tokens = self._count_tokens(reduce_system) + 20
+            reduce_available = self._n_ctx - reduce_system_tokens - max_response
+
+            # Safety net: truncate combined analyses if they still exceed available space
+            combined = self._truncate_to_fit(combined, reduce_available)
+
+            messages = [
+                ChatMessage(role="system", content=reduce_system),
+                ChatMessage(
+                    role="user",
+                    content=f"Merge these section analyses into a single comprehensive {analysis_type} analysis:\n\n{combined}",
+                ),
+            ]
+
+            response = await self.chat(messages, options)
+
+            return AnalysisResult(
+                analysis_type=analysis_type,
+                content={"raw_analysis": response.content},
+            )
 
     async def get_available_models(self) -> list[dict[str, str]]:
         """Get list of available models."""

@@ -1043,6 +1043,18 @@ export interface TranscriptionSettingsUpdate {
   external_api_key?: string;
 }
 
+// AI Settings Types
+export interface AISettingsResponse {
+  context_size: number;
+  available_context_sizes: number[];
+  max_model_context: number;
+  ram_estimates: Record<number, string>;
+}
+
+export interface AISettingsUpdate {
+  context_size?: number;
+}
+
 // System Info Types
 export interface StoragePaths {
   data_dir: string;
@@ -2550,6 +2562,16 @@ class ApiClient {
 
     updateTranscription: (data: TranscriptionSettingsUpdate) =>
       this.request<TranscriptionSettings>('/api/config/transcription', {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      }),
+
+    // AI Settings
+    getAI: () =>
+      this.request<AISettingsResponse>('/api/config/ai'),
+
+    updateAI: (data: AISettingsUpdate) =>
+      this.request<AISettingsResponse>('/api/config/ai', {
         method: 'PUT',
         body: JSON.stringify(data),
       }),

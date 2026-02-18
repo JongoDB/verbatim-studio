@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { api, getApiUrl, type ArchiveInfo, type TranscriptionSettings, type AIModel, type AIModelDownloadEvent, type OCRModel, type OCRModelDownloadEvent, type WhisperModel, type WhisperModelDownloadEvent, type DiarizationModel, type DiarizationModelDownloadEvent, type SystemInfo, type MLStatus, type StorageLocation, type MigrationStatus, type TransferStatus, type SyncResult, type StorageType, type StorageSubtype, type StorageLocationConfig, type OAuthStatusResponse, type CategoryCount, type ClearableCategory, type GpuStatus } from '@/lib/api';
+import { api, getApiUrl, type ArchiveInfo, type TranscriptionSettings, type AIModel, type AIModelDownloadEvent, type AISettingsResponse, type OCRModel, type OCRModelDownloadEvent, type WhisperModel, type WhisperModelDownloadEvent, type DiarizationModel, type DiarizationModelDownloadEvent, type SystemInfo, type MLStatus, type StorageLocation, type MigrationStatus, type TransferStatus, type SyncResult, type StorageType, type StorageSubtype, type StorageLocationConfig, type OAuthStatusResponse, type CategoryCount, type ClearableCategory, type GpuStatus } from '@/lib/api';
 import { useDownloadStore } from '@/stores/downloadStore';
 import { useKeybindingStore, DEFAULT_ACTIONS, formatCombo, type KeyCombo, type ActionCategory } from '@/stores/keybindingStore';
 import { StorageTypeSelector } from '@/components/storage/StorageTypeSelector';
@@ -255,6 +255,11 @@ export function SettingsPage({ theme, onThemeChange, pluginSettingsTabs }: Setti
   const [aiError, setAiError] = useState<string | null>(null);
   const downloadAbortRef = useRef<{ abort: () => void } | null>(null);
 
+  // AI context window settings
+  const [aiSettings, setAiSettings] = useState<AISettingsResponse | null>(null);
+  const [pendingContextSize, setPendingContextSize] = useState<number | null>(null);
+  const [savingAiSettings, setSavingAiSettings] = useState(false);
+
   // OCR model state
   const [ocrModels, setOcrModels] = useState<OCRModel[]>([]);
   const [ocrDownloading, setOcrDownloading] = useState<string | null>(null);
@@ -362,6 +367,7 @@ export function SettingsPage({ theme, onThemeChange, pluginSettingsTabs }: Setti
     api.archive.info().then(setArchiveInfo).catch(console.error);
     api.config.getTranscription().then(setTxSettings).catch(console.error);
     api.ai.listModels().then((r) => setAiModels(r.models)).catch(console.error);
+    api.config.getAI().then(setAiSettings).catch(console.error);
     api.ocr.listModels().then((r) => setOcrModels(r.models)).catch(console.error);
     api.whisper.listModels().then((r) => setWhisperModels(r.models)).catch(console.error);
     api.diarization.listModels().then((r) => {
@@ -2874,6 +2880,84 @@ export function SettingsPage({ theme, onThemeChange, pluginSettingsTabs }: Setti
               )}
             </div>
           </div>
+
+          {/* Context Window Size */}
+          {aiSettings && (
+            <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Context Window Size
+              </label>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+                Larger context windows let the AI process longer transcripts in a single pass,
+                but require more RAM. Transcripts that exceed the context window are automatically
+                processed in chunks.
+              </p>
+
+              <div className="flex items-center gap-4">
+                <input
+                  type="range"
+                  min={0}
+                  max={aiSettings.available_context_sizes.length - 1}
+                  value={aiSettings.available_context_sizes.indexOf(
+                    pendingContextSize ?? aiSettings.context_size
+                  )}
+                  onChange={(e) => {
+                    const idx = parseInt(e.target.value, 10);
+                    const size = aiSettings.available_context_sizes[idx];
+                    setPendingContextSize(size !== aiSettings.context_size ? size : null);
+                  }}
+                  className="flex-1 accent-blue-600"
+                  step={1}
+                />
+                <span className="text-sm font-mono text-gray-700 dark:text-gray-300 w-20 text-right">
+                  {((pendingContextSize ?? aiSettings.context_size) / 1024).toFixed(0)}K tokens
+                </span>
+              </div>
+
+              <div className="flex justify-between text-xs text-gray-400 dark:text-gray-500 mt-1 px-0.5">
+                {aiSettings.available_context_sizes.map((size) => (
+                  <span key={size}>{(size / 1024).toFixed(0)}K</span>
+                ))}
+              </div>
+
+              {/* RAM estimate */}
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                Estimated RAM:{' '}
+                <span className="font-medium">
+                  {aiSettings.ram_estimates[pendingContextSize ?? aiSettings.context_size] ?? 'Unknown'}
+                </span>
+              </p>
+
+              {/* Warning for large context sizes */}
+              {(pendingContextSize ?? aiSettings.context_size) > 32768 && (
+                <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                  Context sizes above 32K require significant RAM and may cause slowdowns on systems with less than 16 GB.
+                </p>
+              )}
+
+              {/* Apply button */}
+              {pendingContextSize !== null && (
+                <button
+                  onClick={async () => {
+                    setSavingAiSettings(true);
+                    try {
+                      const updated = await api.config.updateAI({ context_size: pendingContextSize });
+                      setAiSettings(updated);
+                      setPendingContextSize(null);
+                    } catch (err) {
+                      console.error('Failed to update AI settings:', err);
+                    } finally {
+                      setSavingAiSettings(false);
+                    }
+                  }}
+                  disabled={savingAiSettings}
+                  className="mt-3 px-4 py-1.5 text-sm font-medium rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {savingAiSettings ? 'Applying...' : 'Apply'}
+                </button>
+              )}
+            </div>
+          )}
 
           <p className="text-xs text-gray-500 dark:text-gray-400 border-t border-gray-200 dark:border-gray-700 pt-3">
             Models are downloaded from HuggingFace and stored locally. All AI processing happens on your machine.

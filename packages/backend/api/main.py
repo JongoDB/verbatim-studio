@@ -65,9 +65,17 @@ try:
 except ImportError:
     pass  # torch or omegaconf not installed yet
 
+import logging
 import subprocess
 from contextlib import asynccontextmanager
 from pathlib import Path
+
+# Configure logging for Verbatim backend modules
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+    datefmt="%H:%M:%S",
+)
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -91,6 +99,8 @@ from persistence import init_db
 from core.plugins import load_plugins, get_registry
 from services.file_watcher import FileWatcherService
 from services.jobs import job_queue
+
+logger = logging.getLogger(__name__)
 
 # Global file watcher instance
 file_watcher: FileWatcherService | None = None
@@ -146,6 +156,18 @@ async def lifespan(app: FastAPI):
     await _plugin_registry.run_startup_hooks()
 
     await init_db()
+
+    # Load persisted AI settings (context window size) from DB
+    try:
+        from core.ai_settings import get_ai_settings
+        ai_config = await get_ai_settings()
+        settings.AI_N_CTX = ai_config["context_size"]
+        logger.info(
+            "[Startup] AI context window: %dK tokens (%d)",
+            ai_config["context_size"] // 1024, ai_config["context_size"],
+        )
+    except Exception:
+        logger.warning("Failed to load AI settings from DB, using defaults", exc_info=True)
 
     # Register plugin job handlers (async-safe during lifespan)
     _plugin_registry.apply_job_handlers(job_queue)

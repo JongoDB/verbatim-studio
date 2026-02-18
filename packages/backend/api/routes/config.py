@@ -6,7 +6,14 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from core.ai_settings import (
+    CONTEXT_RAM_ESTIMATES,
+    VALID_CONTEXT_SIZES,
+    get_ai_settings,
+    save_ai_settings,
+)
 from core.config import settings
+from core.model_catalog import MODEL_CATALOG
 from core.oauth_credentials import (
     OAUTH_PROVIDERS,
     PROVIDER_INFO,
@@ -86,6 +93,80 @@ async def get_config_status() -> ConfigStatus:
             gpu_layers=settings.AI_N_GPU_LAYERS,
         ),
     )
+
+
+# --- AI Settings ---
+
+
+class AISettingsResponse(BaseModel):
+    context_size: int
+    available_context_sizes: list[int]
+    max_model_context: int
+    ram_estimates: dict[int, str]
+
+
+class AISettingsUpdate(BaseModel):
+    context_size: int | None = None
+
+
+async def _get_ai_config() -> AISettingsResponse:
+    """Build AISettingsResponse from current state."""
+    from api.routes.ai import _read_active_model
+
+    effective = await get_ai_settings()
+    active_model = _read_active_model()
+    max_context = 131072
+    if active_model and active_model in MODEL_CATALOG:
+        max_context = MODEL_CATALOG[active_model].get("max_context", 131072)
+
+    available_sizes = [s for s in VALID_CONTEXT_SIZES if s <= max_context]
+
+    return AISettingsResponse(
+        context_size=effective["context_size"],
+        available_context_sizes=available_sizes,
+        max_model_context=max_context,
+        ram_estimates=CONTEXT_RAM_ESTIMATES,
+    )
+
+
+@router.get("/ai", response_model=AISettingsResponse)
+async def get_ai_config() -> AISettingsResponse:
+    """Get effective AI settings and available options."""
+    return await _get_ai_config()
+
+
+@router.put("/ai", response_model=AISettingsResponse)
+async def update_ai_config(body: AISettingsUpdate) -> AISettingsResponse:
+    """Update AI settings. Only provided fields are changed."""
+    updates: dict[str, Any] = {}
+
+    if body.context_size is not None:
+        if body.context_size not in VALID_CONTEXT_SIZES:
+            raise HTTPException(
+                400,
+                f"Invalid context_size: {body.context_size}. Must be one of: {VALID_CONTEXT_SIZES}",
+            )
+        updates["context_size"] = body.context_size
+
+    if not updates:
+        raise HTTPException(400, "No valid fields provided")
+
+    await save_ai_settings(updates)
+
+    # Update runtime setting
+    if "context_size" in updates:
+        old_ctx = settings.AI_N_CTX
+        settings.AI_N_CTX = updates["context_size"]
+        logger.info(
+            "Context window changed: %dK -> %dK tokens. Unloading model (will reload on next request).",
+            old_ctx // 1024, updates["context_size"] // 1024,
+        )
+
+    # Force model reload to pick up new context size
+    from adapters.ai.llama_cpp import cleanup_llama_service
+    cleanup_llama_service()
+
+    return await _get_ai_config()
 
 
 # --- Transcription Settings ---
