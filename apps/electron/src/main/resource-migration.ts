@@ -11,7 +11,7 @@
 import { app } from 'electron';
 import * as path from 'path';
 import { createHash } from 'crypto';
-import { existsSync, readFileSync } from 'fs';
+import { existsSync, lstatSync, readFileSync, readlinkSync } from 'fs';
 import { chmod, cp, mkdir, readFile, rename, rm, writeFile } from 'fs/promises';
 
 const TEMP_MIGRATION_SUFFIX = '.migrating';
@@ -50,9 +50,18 @@ export async function migrateResourcesToUserData(
   const hasBundledPython = existsSync(bundledPythonDir);
   const hasUserPython = existsSync(pythonBin);
 
+  // Check if the Python binary is a symlink pointing into the app bundle.
+  // Earlier migrations used fs.cp without dereference, so symlinks were
+  // preserved with absolute paths back to the bundle. When a stripped update
+  // replaces the app, these symlinks break. Detect this and force re-migration.
+  const hasBrokenSymlink = isPythonSymlinkedToBundle(pythonBin);
+  if (hasBrokenSymlink && hasBundledPython) {
+    console.log('[Migration] Python binary is symlinked to app bundle — forcing re-migration');
+  }
+
   // No bundled Python — this is an update install
   if (!hasBundledPython) {
-    if (hasUserPython) {
+    if (hasUserPython && !hasBrokenSymlink) {
       console.log('[Migration] Update variant — using existing Python from user data');
     } else {
       // This happens when a user upgrades from a pre-migration version using a
@@ -79,7 +88,7 @@ export async function migrateResourcesToUserData(
   }
 
   // Full install with bundled Python — check if we need to (re)migrate
-  if (hasUserPython) {
+  if (hasUserPython && !hasBrokenSymlink) {
     const depsChanged = await haveDepsChanged(userDataDir);
     if (!depsChanged) {
       console.log('[Migration] Python already in user data and deps unchanged, skipping');
@@ -97,7 +106,7 @@ export async function migrateResourcesToUserData(
 
   const startTime = Date.now();
   await mkdir(tempPythonDir, { recursive: true });
-  await cp(bundledPythonDir, tempPythonDir, { recursive: true });
+  await cp(bundledPythonDir, tempPythonDir, { recursive: true, dereference: true });
 
   // Ensure Python binary is executable (fs.cp preserves permissions on most
   // systems, but this guarantees it works on all filesystems)
@@ -157,6 +166,25 @@ async function migrateDir(
   await mkdir(destDir, { recursive: true });
   await cp(srcDir, destDir, { recursive: true });
   console.log(`[Migration] ${label} migration complete`);
+}
+
+/**
+ * Check if the Python binary at the given path is a symlink whose target
+ * lives inside the app bundle. Such symlinks break when a stripped update
+ * replaces the app (the target disappears).
+ */
+function isPythonSymlinkedToBundle(pythonBinPath: string): boolean {
+  try {
+    const stat = lstatSync(pythonBinPath);
+    if (!stat.isSymbolicLink()) {
+      return false;
+    }
+    const target = readlinkSync(pythonBinPath);
+    // Absolute symlinks pointing into the app bundle are broken after updates
+    return target.includes('/Contents/Resources/python/');
+  } catch {
+    return false;
+  }
 }
 
 /**

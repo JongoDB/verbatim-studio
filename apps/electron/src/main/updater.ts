@@ -1,7 +1,7 @@
 import { app, BrowserWindow } from 'electron';
 import { execFile, spawn } from 'child_process';
 import { promisify } from 'util';
-import { createWriteStream, existsSync } from 'fs';
+import { createWriteStream, existsSync, lstatSync, readlinkSync } from 'fs';
 import { mkdir, rm } from 'fs/promises';
 import path from 'path';
 import https from 'https';
@@ -42,15 +42,38 @@ let mainWindow: BrowserWindow | null = null;
 let isCheckingForUpdates = false;
 
 /**
- * Checks if the Python environment has been migrated to user data.
+ * Checks if the Python environment has been properly migrated to user data.
  * Stripped "update" releases only work if this returns true.
+ *
+ * Returns false if the Python binary is a symlink into the app bundle,
+ * because such symlinks break when a stripped update replaces the app.
  */
 function hasMigratedPython(): boolean {
   const userDataDir = app.getPath('userData');
   const pythonBin = process.platform === 'win32'
     ? path.join(userDataDir, 'python', 'python.exe')
     : path.join(userDataDir, 'python', 'bin', 'python3');
-  return existsSync(pythonBin);
+
+  if (!existsSync(pythonBin)) {
+    return false;
+  }
+
+  // Symlinks pointing into the app bundle will break after a stripped update
+  try {
+    const stat = lstatSync(pythonBin);
+    if (stat.isSymbolicLink()) {
+      const target = readlinkSync(pythonBin);
+      if (target.includes('/Contents/Resources/python/')) {
+        console.log('[Updater] Python binary is symlinked to app bundle — not safely migrated');
+        return false;
+      }
+    }
+  } catch {
+    // If we can't check, assume it's not safely migrated
+    return false;
+  }
+
+  return true;
 }
 
 /**
