@@ -191,20 +191,20 @@ export function Sidebar({ currentTab, onNavigate, theme, onCycleTheme, version, 
             </button>
           ) : (
             // Expanded: show text wordmark with icon + tagline
-            <div className="flex items-center gap-2.5">
-              <img
-                src={logoIcon}
-                alt=""
-                className="h-7 w-7 shrink-0"
-              />
-              <div className="flex flex-col min-w-0">
+            <div className="flex flex-col min-w-0">
+              <div className="flex items-center gap-2.5">
+                <img
+                  src={logoIcon}
+                  alt=""
+                  className="h-9 w-9 shrink-0"
+                />
                 <span className="text-[15px] font-semibold leading-tight tracking-tight text-foreground">
                   Verbatim<span className="font-light text-muted-foreground">{' '}Studio</span>
                 </span>
-                <span className="text-[10px] text-muted-foreground tracking-wide">
-                  Transcription you can trust
-                </span>
               </div>
+              <span className="text-[10px] text-muted-foreground tracking-wide -mt-0.5">
+                Transcription you can trust
+              </span>
             </div>
           )}
           {/* Desktop collapse toggle (hidden when collapsed — V logo expands instead) */}
