@@ -28,6 +28,17 @@ class ExportSegment:
 
 
 @dataclass
+class SpeakerStats:
+    """Per-speaker statistics."""
+
+    speaker_name: str
+    word_count: int
+    speaking_time: float  # seconds
+    word_percent: float   # 0-100
+    time_percent: float   # 0-100
+
+
+@dataclass
 class ExportData:
     """Data structure for transcript export."""
 
@@ -38,6 +49,40 @@ class ExportData:
     duration_seconds: float | None
     segments: list[ExportSegment]
     speakers: dict[str, str]  # speaker_label -> speaker_name
+    speaker_stats: list[SpeakerStats] | None = None
+    ai_summary: dict | None = None
+
+
+def compute_speaker_stats(
+    segments: list[ExportSegment],
+    speakers: dict[str, str],
+) -> list[SpeakerStats]:
+    """Compute per-speaker word count and speaking time from segments."""
+    from collections import defaultdict
+
+    words_by_speaker: dict[str, int] = defaultdict(int)
+    time_by_speaker: dict[str, float] = defaultdict(float)
+
+    for seg in segments:
+        name = speakers.get(seg.speaker or "", seg.speaker or "Unknown")
+        words_by_speaker[name] += len(seg.text.split())
+        time_by_speaker[name] += max(0, seg.end_time - seg.start_time)
+
+    total_words = sum(words_by_speaker.values()) or 1
+    total_time = sum(time_by_speaker.values()) or 1.0
+
+    stats = []
+    for name in speakers.values():
+        if name in words_by_speaker:
+            stats.append(SpeakerStats(
+                speaker_name=name,
+                word_count=words_by_speaker[name],
+                speaking_time=time_by_speaker[name],
+                word_percent=round(words_by_speaker[name] / total_words * 100, 1),
+                time_percent=round(time_by_speaker[name] / total_time * 100, 1),
+            ))
+
+    return sorted(stats, key=lambda s: s.word_count, reverse=True)
 
 
 def format_timestamp_srt(seconds: float) -> str:
