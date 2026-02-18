@@ -11,7 +11,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import settings
@@ -942,6 +942,20 @@ async def summarize_transcript(
     try:
         options = ChatOptions(temperature=temperature, max_tokens=2048)
         result = await ai_service.summarize_transcript(transcript_text, options)
+
+        # Persist summary to transcript record
+        await db.execute(
+            update(Transcript)
+            .where(Transcript.id == transcript_id)
+            .values(ai_summary={
+                "summary": result.summary,
+                "key_points": result.key_points,
+                "action_items": result.action_items,
+                "topics": result.topics,
+                "named_entities": result.named_entities,
+            })
+        )
+        await db.commit()
 
         return SummarizationResponse(
             summary=result.summary,
