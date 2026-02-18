@@ -14,7 +14,7 @@ from sqlalchemy.orm import selectinload
 
 from persistence import get_db
 from persistence.models import Recording, Segment, SegmentComment, SegmentHighlight, Speaker, Transcript
-from services.export import ExportData, ExportSegment, export_service
+from services.export import ExportData, ExportSegment, compute_speaker_stats, export_service
 
 logger = logging.getLogger(__name__)
 
@@ -560,27 +560,31 @@ async def export_transcript(
     comments_map = await _load_segment_comments(db, segment_ids)
 
     # Build export data
+    export_segments = [
+        ExportSegment(
+            index=s.segment_index,
+            start_time=s.start_time,
+            end_time=s.end_time,
+            text=s.text,
+            speaker=s.speaker,
+            speaker_name=speaker_map.get(s.speaker) if s.speaker else None,
+            edited=s.edited,
+            highlight_color=highlight_map.get(s.id),
+            comments=comments_map.get(s.id),
+        )
+        for s in sorted_segments
+    ]
+
     export_data = ExportData(
         title=transcript.recording.title if transcript.recording else "Transcript",
         language=transcript.language,
         model_used=transcript.model_used,
         word_count=transcript.word_count,
         duration_seconds=transcript.recording.duration_seconds if transcript.recording else None,
-        segments=[
-            ExportSegment(
-                index=s.segment_index,
-                start_time=s.start_time,
-                end_time=s.end_time,
-                text=s.text,
-                speaker=s.speaker,
-                speaker_name=speaker_map.get(s.speaker) if s.speaker else None,
-                edited=s.edited,
-                highlight_color=highlight_map.get(s.id),
-                comments=comments_map.get(s.id),
-            )
-            for s in sorted_segments
-        ],
+        segments=export_segments,
         speakers=speaker_map,
+        speaker_stats=compute_speaker_stats(export_segments, speaker_map),
+        ai_summary=transcript.ai_summary,
     )
 
     # Generate filename
