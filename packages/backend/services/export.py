@@ -142,6 +142,50 @@ class ExportService:
         lines.append("-" * 50)
         lines.append("")
 
+        # Speaker statistics
+        if data.speaker_stats:
+            lines.append("Speaker Statistics")
+            lines.append("-" * 50)
+            lines.append(f"{'Speaker':<20} {'Words':>8} {'Time':>10} {'%':>6}")
+            lines.append("-" * 50)
+            for stat in data.speaker_stats:
+                time_str = format_timestamp_readable(stat.speaking_time)
+                lines.append(
+                    f"{stat.speaker_name:<20} {stat.word_count:>8,} {time_str:>10} {stat.word_percent:>5.1f}%"
+                )
+            lines.append("")
+            lines.append("-" * 50)
+            lines.append("")
+
+        # AI Summary
+        if data.ai_summary:
+            lines.append("AI Summary")
+            lines.append("-" * 50)
+            lines.append(data.ai_summary.get("summary", ""))
+            lines.append("")
+
+            key_points = data.ai_summary.get("key_points", [])
+            if key_points:
+                lines.append("Key Points:")
+                for point in key_points:
+                    lines.append(f"  • {point}")
+                lines.append("")
+
+            action_items = data.ai_summary.get("action_items", [])
+            if action_items:
+                lines.append("Action Items:")
+                for item in action_items:
+                    lines.append(f"  • {item}")
+                lines.append("")
+
+            topics = data.ai_summary.get("topics", [])
+            if topics:
+                lines.append(f"Topics: {', '.join(topics)}")
+                lines.append("")
+
+            lines.append("-" * 50)
+            lines.append("")
+
         # Segments
         for segment in data.segments:
             speaker_name = data.speakers.get(segment.speaker or "", segment.speaker)
