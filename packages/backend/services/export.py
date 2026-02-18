@@ -588,6 +588,63 @@ class ExportService:
             elements.append(t)
             elements.append(Spacer(1, 20))
 
+        # AI Summary section
+        if data.ai_summary:
+            elements.append(Paragraph("AI Summary", styles["Heading2"]))
+            elements.append(Spacer(1, 6))
+
+            summary_text = data.ai_summary.get("summary", "")
+            if summary_text:
+                elements.append(Paragraph(summary_text, styles["Normal"]))
+                elements.append(Spacer(1, 8))
+
+            key_points = data.ai_summary.get("key_points", [])
+            if key_points:
+                elements.append(Paragraph("<b>Key Points</b>", styles["Normal"]))
+                for point in key_points:
+                    elements.append(Paragraph(f"• {point}", styles["Normal"]))
+                elements.append(Spacer(1, 6))
+
+            action_items = data.ai_summary.get("action_items", [])
+            if action_items:
+                elements.append(Paragraph("<b>Action Items</b>", styles["Normal"]))
+                for item in action_items:
+                    elements.append(Paragraph(f"• {item}", styles["Normal"]))
+                elements.append(Spacer(1, 6))
+
+            topics = data.ai_summary.get("topics", [])
+            if topics:
+                elements.append(Paragraph(f"<b>Topics:</b> {', '.join(topics)}", styles["Normal"]))
+
+            elements.append(Spacer(1, 16))
+
+        # Speaker Statistics section
+        if data.speaker_stats:
+            elements.append(Paragraph("Speaker Statistics", styles["Heading2"]))
+            elements.append(Spacer(1, 6))
+
+            stat_data = [["Speaker", "Words", "Time", "%"]]
+            for stat in data.speaker_stats:
+                stat_data.append([
+                    stat.speaker_name,
+                    f"{stat.word_count:,}",
+                    format_timestamp_readable(stat.speaking_time),
+                    f"{stat.word_percent:.1f}%",
+                ])
+
+            stat_table = Table(stat_data, colWidths=[2.5 * inch, 1 * inch, 1 * inch, 0.8 * inch])
+            stat_table.setStyle(TableStyle([
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 9),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("LINEBELOW", (0, 0), (-1, 0), 1, colors.black),
+                ("LINEBELOW", (0, -1), (-1, -1), 0.5, colors.gray),
+                ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
+            ]))
+            elements.append(stat_table)
+            elements.append(Spacer(1, 16))
+
         # Transcript heading
         elements.append(Paragraph("Transcript", styles["Heading2"]))
         elements.append(Spacer(1, 10))
