@@ -17,6 +17,7 @@ class BackendManager extends EventEmitter {
   private healthCheckInterval: NodeJS.Timeout | null = null;
   private isStopping = false;
   private _port: number | null = null;
+  private _externalBackend = false;
 
   constructor(config: BackendConfig = {}) {
     super();
@@ -38,8 +39,26 @@ class BackendManager extends EventEmitter {
       return;
     }
 
-    // Verify port is available (fixed port for tunnel/remote access reliability)
-    this._port = await ensurePortAvailable(this.config.preferredPort ?? 52780);
+    const port = this.config.preferredPort ?? 52780;
+
+    try {
+      this._port = await ensurePortAvailable(port);
+    } catch (err) {
+      // In dev mode, a backend may already be running via dev.sh — reuse it
+      if (!app.isPackaged) {
+        try {
+          const res = await fetch(`http://127.0.0.1:${port}/health`);
+          if (res.ok) {
+            console.log(`[Backend] Dev backend already running on port ${port}, reusing`);
+            this._port = port;
+            this._externalBackend = true;
+            return;
+          }
+        } catch { /* not healthy, rethrow original */ }
+      }
+      throw err;
+    }
+
     console.log(`[Backend] Using port ${this._port}`);
 
     const pythonPath = this.config.pythonPath || this.getPythonPath();
@@ -107,6 +126,7 @@ class BackendManager extends EventEmitter {
         cwd: backendPath,
         env,
         stdio: ['ignore', 'pipe', 'pipe'],
+        detached: process.platform !== 'win32',
       }
     );
 
@@ -151,6 +171,12 @@ class BackendManager extends EventEmitter {
       this.healthCheckInterval = null;
     }
 
+    if (this._externalBackend) {
+      this._port = null;
+      this._externalBackend = false;
+      return;
+    }
+
     if (!this.process || this.isStopping) return;
     this.isStopping = true;
 
@@ -178,7 +204,7 @@ class BackendManager extends EventEmitter {
   }
 
   isRunning(): boolean {
-    return this.process !== null;
+    return this.process !== null || this._externalBackend;
   }
 
   /** Platform-aware process termination. */
@@ -196,7 +222,13 @@ class BackendManager extends EventEmitter {
         this.process.kill();
       }
     } else {
-      this.process.kill(force ? 'SIGKILL' : 'SIGTERM');
+      // Kill the process group so uvicorn workers are also terminated
+      const signal = force ? 'SIGKILL' : 'SIGTERM';
+      try {
+        process.kill(-this.process.pid!, signal);
+      } catch {
+        this.process.kill(signal);
+      }
     }
   }
 

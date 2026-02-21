@@ -861,12 +861,11 @@ async def chat_multi_stream(
     if is_help_intent(request.message):
         system_content += MAX_HELP_CONTEXT
 
+    max_response_tokens = 1024
+
     if context_parts:
         context_header = f"\n\nYou have access to {len(context_parts)} attached item(s) (transcripts, documents, or files):\n\n"
         full_context = "\n".join(context_parts)
-
-        # Truncate context to fit model's context window
-        max_response_tokens = 1024
         original_context_len = len(full_context)
         if hasattr(ai_service, '_truncate_to_fit'):
             # Count tokens for non-context parts
