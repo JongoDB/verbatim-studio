@@ -452,7 +452,6 @@ jobs:
         shell: bash
         run: |
           TAG="${GITHUB_REF#refs/tags/}"
-          # Find previous tag
           PREV_TAG=$(git tag --sort=-v:refname | grep -v "^${TAG}$" | head -1)
           if [ -z "$PREV_TAG" ]; then
             RANGE="HEAD"
@@ -460,24 +459,38 @@ jobs:
             RANGE="${PREV_TAG}..HEAD"
           fi
 
+          # Format a commit message as "- **Label** — Description"
+          format_bullet() {
+            local msg="$1"
+            # Extract description after "type: " or "type(scope): "
+            local desc=$(echo "$msg" | sed 's/^[a-z]*\(([^)]*)\)\{0,1\}: //')
+            # Capitalize first letter
+            local first=$(echo "${desc:0:1}" | tr '[:lower:]' '[:upper:]')
+            local rest="${desc:1}"
+            echo "- **${first}${rest}**"
+          }
+
           FEATURES=""
           FIXES=""
           IMPROVEMENTS=""
 
           while IFS= read -r line; do
-            # Strip leading hash + space
+            [ -z "$line" ] && continue
             MSG="${line#* }"
-            # Normalize: remove scope parens for categorization
+            # Skip version bump commits
+            case "$MSG" in
+              *"bump version"*|*"release v"*) continue ;;
+            esac
+            # Normalize for categorization
             CLEAN=$(echo "$MSG" | sed 's/^feat([^)]*): /feat: /; s/^fix([^)]*): /fix: /; s/^chore([^)]*): /chore: /; s/^perf([^)]*): /perf: /')
 
             case "$CLEAN" in
-              feat:*|feat\(*) FEATURES="${FEATURES}- ${MSG#*: }"$'\n' ;;
-              fix:*)           FIXES="${FIXES}- ${MSG#*: }"$'\n' ;;
-              perf:*|chore:*|refactor:*) IMPROVEMENTS="${IMPROVEMENTS}- ${MSG#*: }"$'\n' ;;
+              feat:*|feat\(*) FEATURES="${FEATURES}$(format_bullet "$MSG")"$'\n' ;;
+              fix:*)           FIXES="${FIXES}$(format_bullet "$MSG")"$'\n' ;;
+              perf:*|refactor:*) IMPROVEMENTS="${IMPROVEMENTS}$(format_bullet "$MSG")"$'\n' ;;
             esac
           done <<< "$(git log --oneline "$RANGE" -- . ':!docs/' ':!*.md')"
 
-          # Build release body
           BODY="## What's New in ${TAG}"$'\n'
 
           if [ -n "$FEATURES" ]; then
@@ -490,12 +503,12 @@ jobs:
             BODY="${BODY}"$'\n'"### 🔧 Improvements"$'\n'"${IMPROVEMENTS}"
           fi
 
-          # Fallback if no conventional commits found
           if [ -z "$FEATURES" ] && [ -z "$FIXES" ] && [ -z "$IMPROVEMENTS" ]; then
-            BODY="${BODY}"$'\n'"See [commit history](https://github.com/${{ github.repository }}/compare/${PREV_TAG}...${TAG}) for details."$'\n'
+            BODY="${BODY}"$'\n'"### 🔧 Improvements"$'\n'"- **Minor updates and refinements**"$'\n'
           fi
 
-          # Write to file (avoids escaping issues with multiline env vars)
+          BODY="${BODY}"$'\n'"**Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREV_TAG}...${TAG}"$'\n'
+
           echo "$BODY" > release-notes.md
 
       - name: Download all artifacts
