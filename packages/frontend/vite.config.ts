@@ -32,12 +32,12 @@ export default defineConfig({
     allowedHosts: true, // Allow any hostname (for tunnels, Electron, etc.)
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:8000',
+        target: 'http://127.0.0.1:52780',
         changeOrigin: true,
         ws: true,
       },
       '/health': {
-        target: 'http://127.0.0.1:8000',
+        target: 'http://127.0.0.1:52780',
         changeOrigin: true,
       },
     },

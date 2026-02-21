@@ -165,7 +165,7 @@ export function getWebSocketUrl(path: string): string {
   // In development (Vite dev server), connect directly to backend
   // Vite's WebSocket proxy is unreliable for non-HMR WebSockets
   if (import.meta.env.DEV && window.location.port === '5173') {
-    return `ws://127.0.0.1:8000${path}`;
+    return `ws://127.0.0.1:52780${path}`;
   }
 
   // Production: use same origin (assumes reverse proxy handles WS)

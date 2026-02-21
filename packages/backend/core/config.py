@@ -24,7 +24,7 @@ class Settings(BaseSettings):
 
     # API settings
     API_HOST: str = "127.0.0.1"
-    API_PORT: int = 8000
+    API_PORT: int = 52780
 
     # Database
     DATABASE_URL: str = "sqlite+aiosqlite:///./verbatim.db"

@@ -571,7 +571,7 @@ function AppContent() {
           <h1 className="text-xl font-semibold text-foreground">Connection Error</h1>
           <p className="text-muted-foreground">{error}</p>
           <p className="text-sm text-muted-foreground">
-            Make sure the backend is running on port 8000
+            Make sure the backend is running on port 52780
           </p>
         </div>
       </div>

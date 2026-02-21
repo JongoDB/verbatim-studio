@@ -47,7 +47,7 @@ cd ../.. || exit 1
 # Start all services
 echo -e "${GREEN}Starting services...${NC}"
 echo "  - Frontend: http://localhost:5173"
-echo "  - Backend:  http://localhost:8000"
+echo "  - Backend:  http://localhost:52780"
 echo ""
 echo "Press Ctrl+C to stop all services"
 echo ""
@@ -58,14 +58,14 @@ if command -v npx &> /dev/null; then
         --names "frontend,backend,electron" \
         --prefix-colors "cyan,yellow,magenta" \
         "pnpm dev:frontend" \
-        "cd packages/backend && source \".venv/bin/activate\" && uvicorn api.main:app --reload --port 8000" \
+        "cd packages/backend && source \".venv/bin/activate\" && uvicorn api.main:app --reload --port 52780" \
         "sleep 3 && cd apps/electron && pnpm start"
 else
     echo "Install concurrently globally for better dev experience: npm i -g concurrently"
     echo "Note: In fallback mode, Electron must be started manually with: cd apps/electron && pnpm start"
     # Fallback: start frontend and backend (Electron requires manual start)
     cd packages/backend || exit 1
-    source ".venv/bin/activate" && uvicorn api.main:app --reload --port 8000 &
+    source ".venv/bin/activate" && uvicorn api.main:app --reload --port 52780 &
     BACKEND_PID=$!
     cd ../.. || exit 1
     pnpm dev:frontend &

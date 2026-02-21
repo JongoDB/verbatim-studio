@@ -3,7 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import { app } from 'electron';
 import { EventEmitter } from 'events';
-import { findAvailablePort } from './utils';
+import { ensurePortAvailable } from './utils';
 
 interface BackendConfig {
   preferredPort?: number;
@@ -38,8 +38,8 @@ class BackendManager extends EventEmitter {
       return;
     }
 
-    // Find available port
-    this._port = await findAvailablePort(this.config.preferredPort ?? 8000);
+    // Verify port is available (fixed port for tunnel/remote access reliability)
+    this._port = await ensurePortAvailable(this.config.preferredPort ?? 52780);
     console.log(`[Backend] Using port ${this._port}`);
 
     const pythonPath = this.config.pythonPath || this.getPythonPath();

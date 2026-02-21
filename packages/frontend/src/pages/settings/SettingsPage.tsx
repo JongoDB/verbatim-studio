@@ -2140,7 +2140,7 @@ export function SettingsPage({ theme, onThemeChange, pluginSettingsTabs }: Setti
                   <input
                     type="text"
                     disabled
-                    placeholder="http://localhost:8000"
+                    placeholder="http://localhost:52780"
                     className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-500 dark:text-gray-400"
                   />
                 </div>
@@ -3074,7 +3074,7 @@ export function SettingsPage({ theme, onThemeChange, pluginSettingsTabs }: Setti
                   <input
                     type="text"
                     disabled
-                    placeholder="http://localhost:8000/v1"
+                    placeholder="http://localhost:52780/v1"
                     className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-500 dark:text-gray-400"
                   />
                 </div>

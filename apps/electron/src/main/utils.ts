@@ -1,23 +1,20 @@
 import net from 'net';
 
 /**
- * Find an available port starting from the preferred port.
- * Returns the first available port.
+ * Verify that the required port is available.
+ * Throws if the port is already in use instead of silently falling back.
  */
-export async function findAvailablePort(preferredPort: number = 8000): Promise<number> {
+export async function ensurePortAvailable(port: number = 52780): Promise<number> {
   return new Promise((resolve, reject) => {
     const server = net.createServer();
 
-    server.listen(preferredPort, '127.0.0.1', () => {
-      const address = server.address();
-      const port = typeof address === 'object' && address ? address.port : preferredPort;
+    server.listen(port, '127.0.0.1', () => {
       server.close(() => resolve(port));
     });
 
     server.on('error', (err: NodeJS.ErrnoException) => {
       if (err.code === 'EADDRINUSE') {
-        // Port in use, try next port
-        resolve(findAvailablePort(preferredPort + 1));
+        reject(new Error(`Port ${port} is already in use. Please close the other application using this port and restart Verbatim Studio.`));
       } else {
         reject(err);
       }

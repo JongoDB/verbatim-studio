@@ -264,7 +264,7 @@ pnpm dev
 # Or run separately
 # Terminal 1 - Backend
 cd packages/backend && source .venv/bin/activate
-python -m uvicorn api.main:app --reload --port 8000
+python -m uvicorn api.main:app --reload --port 52780
 
 # Terminal 2 - Frontend
 cd packages/frontend && pnpm dev
