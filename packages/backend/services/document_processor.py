@@ -470,6 +470,12 @@ class DocumentProcessor:
             if image.mode != "RGB":
                 image = image.convert("RGB")
 
+            # Resize large images to prevent OOM (phone photos can be 4000+ px)
+            max_dim = 1280
+            if max(image.size) > max_dim:
+                image.thumbnail((max_dim, max_dim), Image.LANCZOS)
+                logger.info(f"Resized image to {image.size[0]}x{image.size[1]} for OCR")
+
             # Run OCR
             text = _run_ocr_on_image(image, check_cancelled)
 
