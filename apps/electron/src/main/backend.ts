@@ -97,6 +97,7 @@ class BackendManager extends EventEmitter {
       VERBATIM_PORT: String(this._port),
       VERBATIM_DATA_DIR: userDataDir,
       VERBATIM_DATABASE_URL: `sqlite+aiosqlite:///${databasePath}`,
+      VERBATIM_FRONTEND_DIR: path.join(process.resourcesPath, 'frontend'),
     };
 
     this.process = spawn(
