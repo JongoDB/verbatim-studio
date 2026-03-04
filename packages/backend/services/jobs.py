@@ -541,13 +541,23 @@ async def handle_transcription(
                 )
                 session.add(speaker)
 
-            # Update recording status to completed
+            # Update recording status to completed (only if still processing — cancel may have set it to cancelled)
             await session.execute(
-                update(Recording).where(Recording.id == recording_id).values(status="completed")
+                update(Recording)
+                .where(Recording.id == recording_id, Recording.status == "processing")
+                .values(status="completed")
             )
             await session.commit()
 
+            # Check if the recording was cancelled while we were working
+            rec_result = await session.execute(select(Recording.status).where(Recording.id == recording_id))
+            rec_status = rec_result.scalar_one_or_none()
+
             transcript_id = transcript.id
+
+        if rec_status == "cancelled":
+            logger.info("Recording %s was cancelled during transcription, discarding result", recording_id)
+            return {"transcript_id": transcript_id, "cancelled": True}
 
         # Broadcast status change so frontend updates immediately
         await broadcast("recordings", "status_changed", recording_id)
@@ -603,10 +613,12 @@ async def handle_transcription(
         raise
 
     except Exception as e:
-        # Update recording status to failed
+        # Update recording status to failed (only if still processing — cancel may have set it to cancelled)
         async with get_session_factory()() as session:
             await session.execute(
-                update(Recording).where(Recording.id == recording_id).values(status="failed")
+                update(Recording)
+                .where(Recording.id == recording_id, Recording.status == "processing")
+                .values(status="failed")
             )
             await session.commit()
         # Broadcast status change so frontend updates immediately
