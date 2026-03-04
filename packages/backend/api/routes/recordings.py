@@ -1200,13 +1200,10 @@ async def cancel_recording(
             detail="Could not cancel the job",
         )
 
-    # For queued jobs, cancellation is immediate — update recording status now
-    if was_queued:
-        recording.status = "cancelled"
-        await db.commit()
-        await broadcast("recordings", "status_changed", recording_id)
-
-    # For running jobs, the cooperative cancellation in _run_job will update recording status
+    # Update recording status immediately so the UI responds right away
+    recording.status = "cancelled"
+    await db.commit()
+    await broadcast("recordings", "status_changed", recording_id)
 
     logger.info("Cancellation requested for recording %s (job %s)", recording_id, job.id)
     return MessageResponse(message="Cancellation requested", id=recording_id)

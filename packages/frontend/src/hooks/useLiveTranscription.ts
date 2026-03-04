@@ -85,6 +85,7 @@ export function useLiveTranscription(): UseLiveTranscriptionReturn {
   const isRecordingRef = useRef(false);
   const reconnectAttemptsRef = useRef(0);
   const reconnectTimeoutRef = useRef<number | null>(null);
+  const userDisconnectedRef = useRef(false);
   const sessionIdRef = useRef<string | null>(null);
 
   // Keep ref in sync for use in callbacks
@@ -228,7 +229,10 @@ export function useLiveTranscription(): UseLiveTranscriptionReturn {
     };
 
     ws.onclose = () => {
-      if (isRecordingRef.current && reconnectAttemptsRef.current < MAX_RECONNECT_ATTEMPTS) {
+      if (userDisconnectedRef.current) {
+        userDisconnectedRef.current = false;
+        setConnectionState('disconnected');
+      } else if (isRecordingRef.current && reconnectAttemptsRef.current < MAX_RECONNECT_ATTEMPTS) {
         const delay = Math.min(
           BASE_RECONNECT_DELAY_MS * Math.pow(2, reconnectAttemptsRef.current),
           30_000
@@ -252,6 +256,7 @@ export function useLiveTranscription(): UseLiveTranscriptionReturn {
 
   const connect = useCallback(async () => {
     setError(null);
+    userDisconnectedRef.current = false;
     setConnectionState('connecting');
 
     try {
@@ -281,6 +286,7 @@ export function useLiveTranscription(): UseLiveTranscriptionReturn {
   }, [createWebSocket]);
 
   const disconnect = useCallback(() => {
+    userDisconnectedRef.current = true;
     reconnectAttemptsRef.current = MAX_RECONNECT_ATTEMPTS;
     cleanup(true);
     setConnectionState('disconnected');

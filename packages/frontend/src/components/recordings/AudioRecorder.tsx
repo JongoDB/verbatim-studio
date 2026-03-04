@@ -21,6 +21,7 @@ export function AudioRecorder({ onRecordingComplete, onCancel, audioBitsPerSecon
   const timerRef = useRef<number | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animationRef = useRef<number | null>(null);
+  const cancelledRef = useRef(false);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -57,6 +58,7 @@ export function AudioRecorder({ onRecordingComplete, onCancel, audioBitsPerSecon
   const startRecording = async () => {
     try {
       setError(null);
+      cancelledRef.current = false;
       chunksRef.current = [];
 
       // Request microphone access
@@ -98,6 +100,10 @@ export function AudioRecorder({ onRecordingComplete, onCancel, audioBitsPerSecon
       };
 
       mediaRecorder.onstop = () => {
+        if (cancelledRef.current) {
+          cancelledRef.current = false;
+          return;
+        }
         // Create blob from chunks
         const blob = new Blob(chunksRef.current, { type: mimeType });
         const extension = mimeType.includes('webm') ? 'webm' : 'm4a';
@@ -171,8 +177,12 @@ export function AudioRecorder({ onRecordingComplete, onCancel, audioBitsPerSecon
   };
 
   const cancelRecording = () => {
+    cancelledRef.current = true;
     if (timerRef.current) clearInterval(timerRef.current);
     if (animationRef.current) cancelAnimationFrame(animationRef.current);
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
     }
