@@ -1,11 +1,21 @@
 import { app, BrowserWindow, dialog } from 'electron';
-import { createMainWindow } from './windows';
+import path from 'path';
+import { createMainWindow, navigateToPath } from './windows';
 import { backendManager } from './backend';
 import { registerIpcHandlers } from './ipc';
 import { initAutoUpdater } from './updater';
 import { migrateResourcesToUserData } from './resource-migration';
 import { bootstrapBundledModels } from './bootstrap-models';
 import { createSplashWindow, updateSplashStatus, closeSplashWindow } from './splash';
+
+// Register verbatim:// protocol for deep linking from browser extension
+if (process.defaultApp) {
+  if (process.argv.length >= 2) {
+    app.setAsDefaultProtocolClient('verbatim', process.execPath, [path.resolve(process.argv[1])]);
+  }
+} else {
+  app.setAsDefaultProtocolClient('verbatim');
+}
 
 // Single instance lock
 const gotTheLock = app.requestSingleInstanceLock();
@@ -14,6 +24,29 @@ if (!gotTheLock) {
 }
 
 let mainWindow: BrowserWindow | null = null;
+let pendingDeepLink: string | null = null;
+
+/** Extract the path from a verbatim:// URL, e.g. "verbatim://recordings/abc" -> "/recordings/abc" */
+function parseDeepLink(url: string): string | null {
+  if (!url.startsWith('verbatim://')) return null;
+  // verbatim://recordings/abc -> /recordings/abc
+  const path = '/' + url.replace('verbatim://', '');
+  return path;
+}
+
+function handleDeepLink(url: string) {
+  const deepPath = parseDeepLink(url);
+  if (!deepPath) return;
+
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    navigateToPath(mainWindow, deepPath);
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
+  } else {
+    // App is still starting — save for when the window is ready
+    pendingDeepLink = deepPath;
+  }
+}
 
 async function bootstrap(): Promise<void> {
   // Show splash screen immediately so the user sees feedback
@@ -91,6 +124,12 @@ async function bootstrap(): Promise<void> {
     // Close splash once the main window is visible
     mainWindow.once('ready-to-show', () => {
       closeSplashWindow();
+
+      // If we received a deep link while the app was still starting, navigate now
+      if (pendingDeepLink) {
+        navigateToPath(mainWindow!, pendingDeepLink);
+        pendingDeepLink = null;
+      }
     });
 
     // Initialize auto-updater
@@ -162,15 +201,25 @@ app.on('window-all-closed', () => {
   app.quit();
 });
 
-app.on('second-instance', () => {
+app.on('second-instance', (_event, argv) => {
   try {
-    if (mainWindow && !mainWindow.isDestroyed()) {
+    // On Windows/Linux, the deep link URL is passed as the last argument
+    const deepLinkUrl = argv.find(arg => arg.startsWith('verbatim://'));
+    if (deepLinkUrl) {
+      handleDeepLink(deepLinkUrl);
+    } else if (mainWindow && !mainWindow.isDestroyed()) {
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.focus();
     }
   } catch (error) {
     console.error('[Main] Error handling second instance:', error);
   }
+});
+
+// macOS: handle verbatim:// URLs
+app.on('open-url', (event, url) => {
+  event.preventDefault();
+  handleDeepLink(url);
 });
 
 // Handle backend health failures with recovery

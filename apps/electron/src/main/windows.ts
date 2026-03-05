@@ -138,3 +138,26 @@ export function createMainWindow(): BrowserWindow {
 
   return mainWindow;
 }
+
+/**
+ * Navigate an existing main window to a given in-app path (e.g. "/recordings/abc").
+ * In development we reload from the Vite dev server URL; in production we reload
+ * the bundled index.html and then push the path via History API so the React router
+ * picks it up.
+ */
+export function navigateToPath(win: BrowserWindow, deepPath: string): void {
+  if (!app.isPackaged) {
+    // Dev: just load the Vite URL with the path
+    win.loadURL(`http://localhost:5173${deepPath}`);
+  } else {
+    // Production: the frontend reads window.location.pathname on mount via
+    // pathToNavigation(). We can push the path via executeJavaScript so the
+    // React state picks it up without a full page reload.
+    win.webContents.executeJavaScript(`
+      window.history.pushState(null, '', ${JSON.stringify(deepPath)});
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    `).catch((err) => {
+      console.error('[Window] navigateToPath failed:', err);
+    });
+  }
+}
