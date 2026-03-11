@@ -80,6 +80,12 @@ function handleInvalidation(
       queryClient.invalidateQueries({ queryKey: queryKeys.documents.all, ...refetchOptions });
       break;
 
+    case 'transcripts':
+      // Invalidate transcript queries so quality review results refresh
+      queryClient.invalidateQueries({ queryKey: ['transcript'], ...refetchOptions });
+      queryClient.invalidateQueries({ queryKey: queryKeys.recordings.all, ...refetchOptions });
+      break;
+
     default:
       console.warn(`[DataSync] Unknown resource: ${resource}`);
   }
@@ -95,6 +101,8 @@ function getTaskName(jobType: TaskType, message: JobProgressMessage): string {
       return 'Embeddings';
     case 'process_document':
       return 'Document Processing';
+    case 'quality_review':
+      return 'AI Quality Review';
     default:
       return message.task_name || 'Processing';
   }

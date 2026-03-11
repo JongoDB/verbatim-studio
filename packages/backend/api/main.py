@@ -94,6 +94,7 @@ from api.routes.conversations import router as conversations_router
 from api.routes.sync import router as sync_router
 from api.routes.whisper import router as whisper_router
 from api.routes.diarization import router as diarization_router
+from api.routes.quality_review import router as quality_review_router
 from core.config import settings
 from persistence import init_db
 from core.plugins import load_plugins, get_registry
@@ -236,6 +237,7 @@ app.include_router(conversations_router, prefix="/api")
 app.include_router(sync_router, prefix="/api")  # WebSocket sync endpoint
 app.include_router(whisper_router, prefix="/api")
 app.include_router(diarization_router, prefix="/api")
+app.include_router(quality_review_router, prefix="/api")
 
 
 @app.get("/api/plugins/manifest")

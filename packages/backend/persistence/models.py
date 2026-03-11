@@ -226,7 +226,8 @@ class Segment(Base):
     end_time: Mapped[float] = mapped_column(Float, nullable=False)
     text: Mapped[str] = mapped_column(Text, nullable=False)
     confidence: Mapped[float | None] = mapped_column(Float)
-    edited: Mapped[bool] = mapped_column(Boolean, default=False)
+    edited_by: Mapped[str | None] = mapped_column(String(20), nullable=True, default=None)
+    original_text: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(default=func.now())
     updated_at: Mapped[datetime] = mapped_column(default=func.now(), onupdate=func.now())
 
@@ -464,3 +465,22 @@ class SearchHistory(Base):
     result_count: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(default=func.now())
     updated_at: Mapped[datetime] = mapped_column(default=func.now(), onupdate=func.now(), index=True)
+
+
+class QualityReviewRecord(Base):
+    """Record of an AI quality review run on a transcript."""
+
+    __tablename__ = "quality_review_records"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    transcript_id: Mapped[str] = mapped_column(
+        ForeignKey("transcripts.id", ondelete="CASCADE"), nullable=False
+    )
+    job_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    status: Mapped[str] = mapped_column(String(30), default="pending")
+    context_hint: Mapped[str | None] = mapped_column(Text, nullable=True)
+    aggressiveness: Mapped[str] = mapped_column(String(20), default="moderate")
+    corrections_json: Mapped[dict | None] = mapped_column(JSON, default=None)
+    stats_json: Mapped[dict | None] = mapped_column(JSON, default=None)
+    applied_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    created_at: Mapped[datetime] = mapped_column(default=func.now())

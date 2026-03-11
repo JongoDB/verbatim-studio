@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { api, type TranscriptWithSegments, type Segment, type Speaker, type Recording, type HighlightColor } from '@/lib/api';
+import { api, type TranscriptWithSegments, type Segment, type Speaker, type Recording, type HighlightColor, type QualityReviewRecord } from '@/lib/api';
 import { WaveformPlayer, type WaveformPlayerRef } from '@/components/audio/WaveformPlayer';
 import { EditableSegment } from '@/components/transcript/EditableSegment';
 import { ExportButton } from '@/components/transcript/ExportButton';
@@ -7,6 +7,8 @@ import { SpeakerPanel } from '@/components/transcript/SpeakerPanel';
 import { AIAnalysisPanel } from '@/components/ai/AIAnalysisPanel';
 import { BulkHighlightToolbar } from '@/components/transcript/BulkHighlightToolbar';
 import { TranscriptSearch, highlightSearchMatches } from '@/components/transcript/TranscriptSearch';
+import { QualityReviewButton } from '@/components/transcript/QualityReviewButton';
+import { QualityReviewPanel } from '@/components/transcript/QualityReviewPanel';
 import { useKeyboardShortcuts, getPlaybackShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useKeybindingStore } from '@/stores/keybindingStore';
 
@@ -33,6 +35,10 @@ export function TranscriptPage({ recordingId, onBack, initialSeekTime }: Transcr
   const [error, setError] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
   const audioRef = useRef<WaveformPlayerRef>(null);
+
+  // Quality review state
+  const [qualityReviewJobId, setQualityReviewJobId] = useState<string | null>(null);
+  const [qualityReviewRecord, setQualityReviewRecord] = useState<QualityReviewRecord | null>(null);
 
   const loadData = useCallback(async () => {
     try {
@@ -84,6 +90,28 @@ export function TranscriptPage({ recordingId, onBack, initialSeekTime }: Transcr
       }, 500);
     }
   }, [initialSeekTime, isLoading, transcript]);
+
+  // Poll for quality review results when a job is running
+  useEffect(() => {
+    if (!qualityReviewJobId || !transcript) return;
+    let cancelled = false;
+
+    const poll = async () => {
+      try {
+        const result = await api.qualityReview.getResult(transcript.id, qualityReviewJobId);
+        if (!cancelled && result && result.status === 'completed') {
+          setQualityReviewRecord(result);
+          setQualityReviewJobId(null);
+        }
+      } catch {
+        // Record not yet created, keep polling
+      }
+    };
+
+    const interval = setInterval(poll, 2000);
+    poll(); // Check immediately
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [qualityReviewJobId, transcript]);
 
   // Handle segment text/speaker updates
   const handleSegmentUpdate = (updated: Segment) => {
@@ -568,6 +596,10 @@ export function TranscriptPage({ recordingId, onBack, initialSeekTime }: Transcr
               </svg>
               <span className="hidden sm:inline">Shortcuts</span>
             </button>
+            <QualityReviewButton
+              transcriptId={transcript.id}
+              onJobStarted={(jobId) => setQualityReviewJobId(jobId)}
+            />
             <ExportButton transcriptId={transcript.id} title={recording.title} />
           </div>
         </div>
@@ -712,6 +744,16 @@ export function TranscriptPage({ recordingId, onBack, initialSeekTime }: Transcr
 
       {/* AI Analysis Panel */}
       <AIAnalysisPanel transcriptId={transcript.id} existingSummary={transcript.ai_summary} onSummaryComplete={loadData} />
+
+      {/* Quality Review Panel */}
+      {qualityReviewRecord && (
+        <QualityReviewPanel
+          record={qualityReviewRecord}
+          transcriptId={transcript.id}
+          onApplied={() => loadData()}
+          onDismiss={() => setQualityReviewRecord(null)}
+        />
+      )}
 
       {/* Editable Segments */}
       <div>

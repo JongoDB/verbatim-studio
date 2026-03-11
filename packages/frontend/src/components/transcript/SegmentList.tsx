@@ -90,7 +90,7 @@ export function SegmentList({ segments, transcriptId }: SegmentListProps) {
             <div className="flex-1 min-w-0">
               <p
                 className={`text-sm text-foreground leading-relaxed ${
-                  segment.edited ? 'italic' : ''
+                  segment.edited_by ? 'italic' : ''
                 }`}
               >
                 {segment.text}

@@ -108,7 +108,8 @@ def segment_to_entity(model: Segment) -> SegmentEntity:
         text=model.text,
         speaker=model.speaker,
         confidence=model.confidence,
-        edited=model.edited,
+        edited_by=model.edited_by,
+        original_text=model.original_text,
         created_at=model.created_at,
         updated_at=model.updated_at,
     )
@@ -126,7 +127,8 @@ def entity_to_segment(entity: SegmentEntity, model: Segment | None = None) -> Se
     model.text = entity.text
     model.speaker = entity.speaker
     model.confidence = entity.confidence
-    model.edited = entity.edited
+    model.edited_by = entity.edited_by
+    model.original_text = entity.original_text
     return model
 
 

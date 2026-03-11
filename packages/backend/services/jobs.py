@@ -1151,3 +1151,118 @@ def _chunk_document_text(text: str, max_tokens: int = 500) -> list[dict]:
 
 # Register document processing handler
 job_queue.register_handler("process_document", handle_document_processing)
+
+
+async def handle_quality_review(
+    payload: dict[str, Any], progress_callback: ProgressCallback
+) -> dict[str, Any]:
+    """Run AI quality review on a transcript.
+
+    Args:
+        payload: Job payload with:
+            - transcript_id: Required transcript ID
+            - job_id: Job ID for progress broadcasting
+            - context_hint: Optional context about the recording
+            - aggressiveness: Review level (conservative/moderate/aggressive)
+        progress_callback: Callback to report progress.
+
+    Returns:
+        Result dictionary with review stats.
+    """
+    from api.routes.ai import _ensure_active_model_loaded
+    from api.routes.sync import broadcast_job_progress
+    from core.factory import get_factory
+    from services.quality_review import run_quality_review
+
+    transcript_id = payload.get("transcript_id")
+    job_id = payload.get("job_id")
+    context_hint = payload.get("context_hint")
+    aggressiveness = payload.get("aggressiveness", "moderate")
+
+    if not transcript_id:
+        raise ValueError("Missing transcript_id in payload")
+
+    # Resolve recording_id for broadcast
+    recording_id = None
+    async with get_session_factory()() as session:
+        from persistence.models import Transcript
+        result = await session.execute(
+            select(Transcript.recording_id).where(Transcript.id == transcript_id)
+        )
+        row = result.first()
+        if row:
+            recording_id = row[0]
+
+    async def broadcast_progress(progress: float, status: str = "running"):
+        if job_id:
+            try:
+                await broadcast_job_progress(
+                    job_id=job_id,
+                    job_type="quality_review",
+                    status=status,
+                    progress=progress,
+                    task_name="AI Quality Review",
+                    recording_id=recording_id,
+                    transcript_id=transcript_id,
+                )
+            except Exception as e:
+                logger.warning("Failed to broadcast quality review progress: %s", e)
+
+    logger.info("Starting quality review job %s for transcript %s", job_id, transcript_id)
+
+    await progress_callback(5)
+    await broadcast_progress(5)
+
+    # Ensure AI model is loaded
+    _ensure_active_model_loaded()
+
+    factory = get_factory()
+    ai_service = factory.create_ai_service()
+
+    if not await ai_service.is_available():
+        await broadcast_progress(0, "failed")
+        return {"success": False, "skipped": True, "reason": "AI service not available"}
+
+    await progress_callback(10)
+    await broadcast_progress(10)
+
+    try:
+        async def combined_progress(progress: float):
+            await progress_callback(progress)
+            await broadcast_progress(progress)
+
+        review_result = await run_quality_review(
+            transcript_id=transcript_id,
+            job_id=job_id,
+            context_hint=context_hint,
+            aggressiveness=aggressiveness,
+            ai_service=ai_service,
+            progress_callback=combined_progress,
+        )
+
+        await progress_callback(100)
+        await broadcast_progress(100, "completed")
+
+        # Broadcast completion so frontend refreshes
+        await broadcast("transcripts", "quality_review_complete", transcript_id)
+
+        logger.info("Quality review complete for transcript %s", transcript_id)
+        return {
+            "success": True,
+            "transcript_id": transcript_id,
+            "stats": {
+                "corrections": review_result.stats.corrections,
+                "removals": review_result.stats.removals,
+                "merges": review_result.stats.merges,
+                "blank_removals": review_result.stats.blank_removals,
+            },
+        }
+
+    except Exception as e:
+        logger.exception("Quality review failed for transcript %s", transcript_id)
+        await broadcast_progress(0, "failed")
+        return {"success": False, "error": str(e)}
+
+
+# Register the quality review handler
+job_queue.register_handler("quality_review", handle_quality_review)

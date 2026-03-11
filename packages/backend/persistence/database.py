@@ -174,3 +174,7 @@ async def _run_migrations(conn) -> None:
     # Add indexes on segments table for query performance
     from migrations.add_segment_indexes import migrate as migrate_segment_indexes
     await conn.run_sync(lambda _: migrate_segment_indexes(db_path))
+
+    # Add quality review support (edited_by, original_text, quality_review_records)
+    from migrations.add_quality_review import migrate as migrate_quality_review
+    await conn.run_sync(lambda _: migrate_quality_review(db_path))

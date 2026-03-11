@@ -68,7 +68,8 @@ class SegmentResponse(BaseModel):
     end_time: float
     text: str
     confidence: float | None
-    edited: bool
+    edited_by: str | None = None
+    original_text: str | None = None
     highlight_color: str | None = None
     comment_count: int = 0
     created_at: str
@@ -433,7 +434,8 @@ async def reassign_segment(request: ReassignSegmentRequest) -> ReassignSegmentRe
                 end_time=segment.end_time,
                 text=segment.text,
                 confidence=segment.confidence,
-                edited=segment.edited,
+                edited_by=segment.edited_by,
+                original_text=segment.original_text,
                 highlight_color=highlight_color,
                 comment_count=comment_count,
                 created_at=segment.created_at.isoformat(),

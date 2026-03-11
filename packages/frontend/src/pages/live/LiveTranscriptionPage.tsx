@@ -533,7 +533,7 @@ export function LiveTranscriptionPage({ onNavigateToRecordings: _onNavigateToRec
                 <div className="flex items-center gap-4">
                   <span>{segments.length} segments</span>
                   <span>{wordCount} words</span>
-                  {segments.some(s => s.edited) && (
+                  {segments.some(s => s.edited_by) && (
                     <span className="text-purple-500">Edited</span>
                   )}
                 </div>

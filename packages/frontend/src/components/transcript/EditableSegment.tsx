@@ -187,13 +187,21 @@ export function EditableSegment({
             <p
               onClick={() => setIsEditing(true)}
               className={`text-sm leading-relaxed cursor-text hover:bg-gray-100 dark:hover:bg-gray-700/50 rounded p-1 -m-1 ${
-                segment.edited ? 'text-gray-600 dark:text-gray-400' : 'text-gray-900 dark:text-gray-100'
+                segment.edited_by ? 'text-gray-600 dark:text-gray-400' : 'text-gray-900 dark:text-gray-100'
               }`}
               title="Click to edit"
             >
               {highlightedText ?? segment.text}
-              {segment.edited && (
+              {segment.edited_by === 'human' && (
                 <span className="ml-2 text-xs text-gray-500 dark:text-gray-500">(edited)</span>
+              )}
+              {segment.edited_by === 'ai' && (
+                <span
+                  className="ml-2 text-xs text-purple-500 dark:text-purple-400"
+                  title={segment.original_text ? `Original: ${segment.original_text}` : undefined}
+                >
+                  AI corrected
+                </span>
               )}
             </p>
           )}

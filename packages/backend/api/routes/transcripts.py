@@ -32,7 +32,8 @@ class SegmentResponse(BaseModel):
     end_time: float
     text: str
     confidence: float | None
-    edited: bool
+    edited_by: str | None = None
+    original_text: str | None = None
     highlight_color: str | None = None
     comment_count: int = 0
     created_at: datetime
@@ -173,7 +174,8 @@ def _build_segment_response(
         end_time=s.end_time,
         text=s.text,
         confidence=s.confidence,
-        edited=s.edited,
+        edited_by=s.edited_by,
+        original_text=s.original_text,
         highlight_color=highlight_map.get(s.id),
         comment_count=comment_count_map.get(s.id, 0),
         created_at=s.created_at,
@@ -353,7 +355,8 @@ async def update_segment(
     # Update fields
     if update_data.text is not None:
         segment.text = update_data.text
-        segment.edited = True
+        segment.edited_by = "human"
+        segment.original_text = None
         logger.info("Segment %s text updated", segment_id)
 
     if update_data.speaker is not None:
@@ -568,7 +571,7 @@ async def export_transcript(
             text=s.text,
             speaker=s.speaker,
             speaker_name=speaker_map.get(s.speaker) if s.speaker else None,
-            edited=s.edited,
+            edited=bool(s.edited_by),
             highlight_color=highlight_map.get(s.id),
             comments=comments_map.get(s.id),
         )

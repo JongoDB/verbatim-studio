@@ -394,7 +394,7 @@ async def live_transcribe(websocket: WebSocket):
                             "speaker": speaker or seg.speaker,
                             "confidence": seg.confidence,
                             "words": words_data,
-                            "edited": False,
+                            "edited_by": None,
                         }
                         session.segments.append(segment_data)
 
@@ -553,7 +553,7 @@ async def save_live_session(
             end_time=seg_data["end"],
             text=seg_data["text"],
             confidence=seg_data.get("confidence"),
-            edited=seg_data.get("edited", False),
+            edited_by=seg_data.get("edited_by"),
         )
         db.add(segment)
 

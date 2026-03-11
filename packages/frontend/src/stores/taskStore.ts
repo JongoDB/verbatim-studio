@@ -4,7 +4,7 @@
  */
 import { create } from 'zustand';
 
-export type TaskType = 'summarize' | 'transcribe' | 'embed' | 'process_document';
+export type TaskType = 'summarize' | 'transcribe' | 'embed' | 'process_document' | 'quality_review';
 
 export interface TaskProgress {
   taskId: string;

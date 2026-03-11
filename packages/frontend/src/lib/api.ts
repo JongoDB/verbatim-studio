@@ -297,7 +297,8 @@ export interface Segment {
   end_time: number;
   text: string;
   confidence: number | null;
-  edited: boolean;
+  edited_by: 'human' | 'ai' | null;
+  original_text: string | null;
   highlight_color: HighlightColor | null;
   comment_count: number;
   created_at: string;
@@ -322,6 +323,66 @@ export interface AISummary {
   action_items: string[];
   topics: string[];
   named_entities: string[];
+}
+
+// Quality Review types
+export interface QualityReviewRequest {
+  context_hint?: string;
+  aggressiveness: 'conservative' | 'moderate' | 'aggressive';
+}
+
+export interface CorrectedSegmentResult {
+  segment_id: string;
+  original_text: string;
+  corrected_text: string;
+  correction_type: string;
+  confidence: number;
+  explanation: string;
+}
+
+export interface MergedSegmentResult {
+  segment_ids: string[];
+  merged_text: string;
+  explanation: string;
+}
+
+export interface QualityReviewStats {
+  total_segments: number;
+  corrections: number;
+  removals: number;
+  merges: number;
+  blank_removals: number;
+}
+
+export interface QualityReviewCorrections {
+  corrected_segments: CorrectedSegmentResult[];
+  removed_segment_ids: string[];
+  merge_suggestions: MergedSegmentResult[];
+}
+
+export interface QualityReviewRecord {
+  id: string;
+  transcript_id: string;
+  job_id: string | null;
+  status: string;
+  context_hint: string | null;
+  aggressiveness: string;
+  corrections_json: QualityReviewCorrections | null;
+  stats_json: QualityReviewStats | null;
+  applied_at: string | null;
+  created_at: string;
+}
+
+export interface ApplySelectionsRequest {
+  accepted_correction_ids: string[];
+  accepted_removal_ids: string[];
+  accepted_merge_indexes: number[];
+}
+
+export interface ApplyResponse {
+  applied_corrections: number;
+  applied_removals: number;
+  applied_merges: number;
 }
 
 export interface Transcript {
@@ -1655,6 +1716,32 @@ class ApiClient {
     },
 
     get: (id: string) => this.request<Job>(`/api/jobs/${id}`),
+  };
+
+  // Quality Review
+  qualityReview = {
+    start: (transcriptId: string, request: QualityReviewRequest) =>
+      this.request<{ job_id: string }>(`/api/quality-review/${transcriptId}/start`, {
+        method: 'POST',
+        body: JSON.stringify(request),
+      }),
+
+    getResult: (transcriptId: string, jobId: string) =>
+      this.request<QualityReviewRecord>(`/api/quality-review/${transcriptId}/${jobId}`),
+
+    getLatest: (transcriptId: string) =>
+      this.request<QualityReviewRecord | null>(`/api/quality-review/${transcriptId}/latest`),
+
+    applySelections: (transcriptId: string, jobId: string, request: ApplySelectionsRequest) =>
+      this.request<ApplyResponse>(`/api/quality-review/${transcriptId}/${jobId}/apply`, {
+        method: 'POST',
+        body: JSON.stringify(request),
+      }),
+
+    applyAll: (transcriptId: string, jobId: string) =>
+      this.request<ApplyResponse>(`/api/quality-review/${transcriptId}/${jobId}/apply-all`, {
+        method: 'POST',
+      }),
   };
 
   // Transcripts

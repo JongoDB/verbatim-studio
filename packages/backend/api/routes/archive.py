@@ -122,7 +122,8 @@ async def _export_data(db: AsyncSession) -> dict:
             "end_time": seg.end_time,
             "text": seg.text,
             "confidence": seg.confidence,
-            "edited": seg.edited,
+            "edited_by": seg.edited_by,
+            "original_text": seg.original_text,
             "created_at": seg.created_at.isoformat(),
             "updated_at": seg.updated_at.isoformat(),
         })
@@ -414,7 +415,7 @@ async def import_archive(
                             end_time=seg_data["end_time"],
                             text=seg_data["text"],
                             confidence=seg_data.get("confidence"),
-                            edited=seg_data.get("edited", False),
+                            edited_by=seg_data.get("edited_by") or ("human" if seg_data.get("edited") else None),
                         )
                         db.add(segment)
                     except Exception as e:

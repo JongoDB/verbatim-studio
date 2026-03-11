@@ -62,7 +62,7 @@ export function LiveSegment({ segment, onEditText, onDelete, index, showTimestam
     <div
       className={`group flex gap-2 py-1.5 px-2 rounded-md transition-colors ${
         isEditing ? 'bg-purple-50 dark:bg-purple-900/20' : 'hover:bg-gray-50 dark:hover:bg-gray-800'
-      } ${segment.edited ? 'border-l-2 border-purple-400' : ''}`}
+      } ${segment.edited_by ? 'border-l-2 border-purple-400' : ''}`}
     >
       {/* Timestamp */}
       {showTimestamps && (

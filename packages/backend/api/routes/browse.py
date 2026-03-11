@@ -477,7 +477,7 @@ async def _copy_recording(
                 text=seg.text,
                 speaker=seg.speaker,
                 confidence=seg.confidence,
-                edited=seg.edited,
+                edited_by=seg.edited_by,
             )
             db.add(new_segment)
 

@@ -70,7 +70,8 @@ class SegmentEntity:
     text: str
     speaker: str | None = None
     confidence: float | None = None
-    edited: bool = False
+    edited_by: str | None = None
+    original_text: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 

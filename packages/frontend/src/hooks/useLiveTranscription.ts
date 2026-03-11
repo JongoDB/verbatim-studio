@@ -19,7 +19,7 @@ export interface TranscriptSegment {
   speaker?: string | null;
   confidence?: number | null;
   words?: WordData[] | null;
-  edited?: boolean;
+  edited_by?: 'human' | 'ai' | null;
 }
 
 export interface LiveError {
@@ -176,7 +176,7 @@ export function useLiveTranscription(): UseLiveTranscriptionReturn {
           speaker: (data.speaker as string) ?? null,
           confidence: (data.confidence as number) ?? null,
           words: (data.words as WordData[]) ?? null,
-          edited: false,
+          edited_by: null,
         }]);
         break;
 
@@ -418,7 +418,7 @@ export function useLiveTranscription(): UseLiveTranscriptionReturn {
   // Edit a segment's text before saving
   const updateSegmentText = useCallback((index: number, newText: string) => {
     setSegments(prev => prev.map((seg, i) =>
-      i === index ? { ...seg, text: newText, edited: true } : seg
+      i === index ? { ...seg, text: newText, edited_by: 'human' as const } : seg
     ));
   }, []);
 
