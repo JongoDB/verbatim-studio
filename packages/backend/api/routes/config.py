@@ -121,11 +121,17 @@ async def _get_ai_config() -> AISettingsResponse:
 
     available_sizes = [s for s in VALID_CONTEXT_SIZES if s <= max_context]
 
+    ram_estimates = CONTEXT_RAM_ESTIMATES  # default fallback
+    if active_model and active_model in MODEL_CATALOG:
+        model_ram = MODEL_CATALOG[active_model].get("ram_estimates")
+        if model_ram:
+            ram_estimates = model_ram
+
     return AISettingsResponse(
         context_size=effective["context_size"],
         available_context_sizes=available_sizes,
         max_model_context=max_context,
-        ram_estimates=CONTEXT_RAM_ESTIMATES,
+        ram_estimates=ram_estimates,
     )
 
 

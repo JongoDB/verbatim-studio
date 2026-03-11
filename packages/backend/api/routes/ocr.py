@@ -55,6 +55,7 @@ class OCRModelInfo(BaseModel):
     ram_gb: int | None = None
     active: bool = False
     requires_hf_token: bool = False
+    license_url: str | None = None
     legacy_note: str | None = None
 
 
@@ -156,6 +157,7 @@ async def list_ocr_models() -> OCRModelListResponse:
                 ram_gb=entry.get("ram_gb"),
                 active=(model_id == active_id),
                 requires_hf_token=entry.get("requires_hf_token", False),
+                license_url=entry.get("license_url"),
                 legacy_note=entry.get("legacy_note"),
             )
         )

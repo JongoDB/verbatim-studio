@@ -659,6 +659,8 @@ export function SettingsPage({ theme, onThemeChange, pluginSettingsTabs }: Setti
     try {
       await api.ai.activateModel(modelId);
       refreshAiModels();
+      // Refresh AI settings so context slider shows correct RAM estimates for the new model
+      api.config.getAI().then(setAiSettings).catch(console.error);
       // Notify other components that AI status has changed
       window.dispatchEvent(new Event('ai-status-changed'));
     } catch (err) {
@@ -670,6 +672,8 @@ export function SettingsPage({ theme, onThemeChange, pluginSettingsTabs }: Setti
     try {
       await api.ai.deactivateModel(modelId);
       refreshAiModels();
+      // Refresh AI settings so context slider shows default RAM estimates
+      api.config.getAI().then(setAiSettings).catch(console.error);
       window.dispatchEvent(new Event('ai-status-changed'));
     } catch (err) {
       setAiError(err instanceof Error ? err.message : 'Deactivation failed');
@@ -2754,7 +2758,17 @@ export function SettingsPage({ theme, onThemeChange, pluginSettingsTabs }: Setti
                           </span>
                         )}
                       </div>
-                      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{model.description}</p>
+                      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                        {model.description}
+                        {model.requires_hf_token && model.license_url && (
+                          <>
+                            {' '}
+                            <a href={model.license_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline">
+                              Accept license on HuggingFace
+                            </a>
+                          </>
+                        )}
+                      </p>
                       {model.legacy_note && (
                         <p className="mt-0.5 text-xs text-amber-600 dark:text-amber-400 italic">{model.legacy_note}</p>
                       )}

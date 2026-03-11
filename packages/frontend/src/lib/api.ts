@@ -807,6 +807,7 @@ export interface OCRModel {
   ram_gb: number | null;
   active: boolean;
   requires_hf_token: boolean;
+  license_url: string | null;
   legacy_note: string | null;
 }
 

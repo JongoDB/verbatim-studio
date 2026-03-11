@@ -14,6 +14,15 @@ MODEL_CATALOG: dict[str, dict] = {
         "max_context": 131072,
         "tier": "standard",
         "ram_gb": 5,
+        "ram_estimates": {
+            2048: "~5 GB",
+            4096: "~5.5 GB",
+            8192: "~6 GB",
+            16384: "~7 GB",
+            32768: "~9 GB",
+            65536: "~13 GB",
+            131072: "~21 GB",
+        },
     },
     "mistral-small-3.2-24b": {
         "repo": "bartowski/mistralai_Mistral-Small-3.2-24B-Instruct-2506-GGUF",
@@ -25,6 +34,15 @@ MODEL_CATALOG: dict[str, dict] = {
         "max_context": 131072,
         "tier": "pro",
         "ram_gb": 14,
+        "ram_estimates": {
+            2048: "~14 GB",
+            4096: "~15 GB",
+            8192: "~16 GB",
+            16384: "~18 GB",
+            32768: "~22 GB",
+            65536: "~30 GB",
+            131072: "~46 GB",
+        },
     },
     "llama-3.3-70b": {
         "repo": "bartowski/Llama-3.3-70B-Instruct-GGUF",
@@ -36,5 +54,14 @@ MODEL_CATALOG: dict[str, dict] = {
         "max_context": 131072,
         "tier": "max",
         "ram_gb": 40,
+        "ram_estimates": {
+            2048: "~40 GB",
+            4096: "~41 GB",
+            8192: "~42 GB",
+            16384: "~44 GB",
+            32768: "~48 GB",
+            65536: "~56 GB",
+            131072: "~72 GB",
+        },
     },
 }
