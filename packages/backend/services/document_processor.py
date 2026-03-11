@@ -18,6 +18,7 @@ class ProcessingCancelledError(Exception):
 _ocr_model = None
 _ocr_processor = None
 _ocr_model_lock = threading.Lock()
+_ocr_loaded_model_id = None  # Track which model is loaded
 
 
 def _get_device():
@@ -30,80 +31,201 @@ def _get_device():
     return "cpu"
 
 
-def _get_ocr_model_path() -> str | None:
-    """Get the path to the downloaded OCR model."""
+def _get_active_ocr_model_id() -> str | None:
+    """Get the active OCR model ID from the catalog."""
     try:
-        from core.ocr_catalog import get_model_path, is_model_downloaded
-        if is_model_downloaded("qwen2-vl-ocr"):
-            path = get_model_path("qwen2-vl-ocr")
+        from core.ocr_catalog import _read_active_ocr_model
+        return _read_active_ocr_model()
+    except ImportError:
+        return None
+
+
+def _get_ocr_model_path() -> str | None:
+    """Get the path to the active downloaded OCR model."""
+    try:
+        from core.ocr_catalog import get_model_path, is_model_downloaded, _read_active_ocr_model
+        active_id = _read_active_ocr_model()
+        if active_id and is_model_downloaded(active_id):
+            path = get_model_path(active_id)
             return str(path) if path else None
     except ImportError:
         pass
     return None
 
 
-def _is_ocr_model_ready() -> bool:
-    """Check if OCR model is downloaded and ready."""
+def _get_ocr_architecture() -> str | None:
+    """Get the architecture of the active OCR model."""
     try:
-        from core.ocr_catalog import is_model_downloaded
-        return is_model_downloaded("qwen2-vl-ocr")
+        from core.ocr_catalog import OCR_MODEL_CATALOG, _read_active_ocr_model
+        active_id = _read_active_ocr_model()
+        if active_id:
+            entry = OCR_MODEL_CATALOG.get(active_id)
+            if entry:
+                return entry.get("architecture")
     except ImportError:
-        return False
+        pass
+    return None
+
+
+def _is_ocr_model_ready() -> bool:
+    """Check if an OCR model is downloaded and ready."""
+    try:
+        from core.ocr_catalog import is_model_downloaded, _read_active_ocr_model
+        active_id = _read_active_ocr_model()
+        if active_id:
+            return is_model_downloaded(active_id)
+    except ImportError:
+        pass
+    return False
+
+
+def _load_qwen2_vl(model_path: str, device: str):
+    """Load Qwen2-VL model and processor."""
+    import torch
+    from transformers import Qwen2VLForConditionalGeneration, AutoProcessor
+
+    processor = AutoProcessor.from_pretrained(
+        model_path,
+        trust_remote_code=True,
+    )
+
+    if device == "cuda":
+        model = Qwen2VLForConditionalGeneration.from_pretrained(
+            model_path,
+            torch_dtype=torch.bfloat16,
+            device_map="auto",
+            trust_remote_code=True,
+        )
+    elif device == "mps":
+        model = Qwen2VLForConditionalGeneration.from_pretrained(
+            model_path,
+            torch_dtype=torch.float16,
+            trust_remote_code=True,
+        ).to(device)
+    else:
+        model = Qwen2VLForConditionalGeneration.from_pretrained(
+            model_path,
+            torch_dtype=torch.float32,
+            trust_remote_code=True,
+        )
+
+    model.eval()
+    return model, processor
+
+
+def _load_granite_vision(model_path: str, device: str):
+    """Load Granite Vision model and processor."""
+    import torch
+    from transformers import AutoModelForVision2Seq, AutoProcessor
+
+    processor = AutoProcessor.from_pretrained(
+        model_path,
+        trust_remote_code=True,
+    )
+
+    if device == "cuda":
+        model = AutoModelForVision2Seq.from_pretrained(
+            model_path,
+            torch_dtype=torch.bfloat16,
+            device_map="auto",
+            trust_remote_code=True,
+        )
+    elif device == "mps":
+        model = AutoModelForVision2Seq.from_pretrained(
+            model_path,
+            torch_dtype=torch.float16,
+            trust_remote_code=True,
+        ).to(device)
+    else:
+        model = AutoModelForVision2Seq.from_pretrained(
+            model_path,
+            torch_dtype=torch.float32,
+            trust_remote_code=True,
+        )
+
+    model.eval()
+    return model, processor
+
+
+def _load_llama_vision(model_path: str, device: str):
+    """Load Llama Vision model and processor."""
+    import torch
+    from transformers import MllamaForConditionalGeneration, AutoProcessor
+
+    processor = AutoProcessor.from_pretrained(
+        model_path,
+        trust_remote_code=True,
+    )
+
+    if device == "cuda":
+        model = MllamaForConditionalGeneration.from_pretrained(
+            model_path,
+            torch_dtype=torch.bfloat16,
+            device_map="auto",
+            trust_remote_code=True,
+        )
+    elif device == "mps":
+        model = MllamaForConditionalGeneration.from_pretrained(
+            model_path,
+            torch_dtype=torch.float16,
+            trust_remote_code=True,
+        ).to(device)
+    else:
+        model = MllamaForConditionalGeneration.from_pretrained(
+            model_path,
+            torch_dtype=torch.float32,
+            trust_remote_code=True,
+        )
+
+    model.eval()
+    return model, processor
 
 
 def get_ocr_model():
     """Get or create the singleton OCR model and processor."""
-    global _ocr_model, _ocr_processor
+    global _ocr_model, _ocr_processor, _ocr_loaded_model_id
     with _ocr_model_lock:
-        if _ocr_model is None:
-            import torch
-            from transformers import Qwen2VLForConditionalGeneration, AutoProcessor
+        active_id = _get_active_ocr_model_id()
 
+        # If the active model changed, clear the old one
+        if _ocr_model is not None and _ocr_loaded_model_id != active_id:
+            logger.info("Active OCR model changed from %s to %s, reloading...", _ocr_loaded_model_id, active_id)
+            del _ocr_model
+            del _ocr_processor
+            _ocr_model = None
+            _ocr_processor = None
+            _ocr_loaded_model_id = None
+            gc.collect()
+
+        if _ocr_model is None:
             model_path = _get_ocr_model_path()
             if not model_path:
                 raise RuntimeError("OCR model not downloaded. Download it in Settings > AI.")
 
+            architecture = _get_ocr_architecture()
             device = _get_device()
-            logger.info(f"Loading Qwen2-VL-OCR model from {model_path} on {device}...")
+            logger.info("Loading OCR model (arch=%s) from %s on %s...", architecture, model_path, device)
 
-            # Load processor
-            _ocr_processor = AutoProcessor.from_pretrained(
-                model_path,
-                trust_remote_code=True,
-            )
-
-            # Load model with appropriate settings for the device
-            if device == "cuda":
-                _ocr_model = Qwen2VLForConditionalGeneration.from_pretrained(
-                    model_path,
-                    torch_dtype=torch.bfloat16,
-                    device_map="auto",
-                    trust_remote_code=True,
-                )
-            elif device == "mps":
-                # MPS doesn't support bfloat16 well, use float16
-                _ocr_model = Qwen2VLForConditionalGeneration.from_pretrained(
-                    model_path,
-                    torch_dtype=torch.float16,
-                    trust_remote_code=True,
-                ).to(device)
+            if architecture == "qwen2-vl":
+                _ocr_model, _ocr_processor = _load_qwen2_vl(model_path, device)
+            elif architecture == "granite-vision":
+                _ocr_model, _ocr_processor = _load_granite_vision(model_path, device)
+            elif architecture == "llama-vision":
+                _ocr_model, _ocr_processor = _load_llama_vision(model_path, device)
             else:
-                # CPU - use float32 for compatibility
-                _ocr_model = Qwen2VLForConditionalGeneration.from_pretrained(
-                    model_path,
-                    torch_dtype=torch.float32,
-                    trust_remote_code=True,
-                )
+                # Fallback: try AutoModelForVision2Seq
+                logger.warning("Unknown architecture '%s', attempting generic load", architecture)
+                _ocr_model, _ocr_processor = _load_granite_vision(model_path, device)
 
-            _ocr_model.eval()
-            logger.info("Qwen2-VL-OCR model loaded successfully")
+            _ocr_loaded_model_id = active_id
+            logger.info("OCR model loaded successfully (model_id=%s)", active_id)
 
         return _ocr_model, _ocr_processor
 
 
 def cleanup_ocr_model():
     """Unload the OCR model to free memory."""
-    global _ocr_model, _ocr_processor
+    global _ocr_model, _ocr_processor, _ocr_loaded_model_id
     with _ocr_model_lock:
         if _ocr_model is not None:
             logger.info("Unloading OCR model to free memory...")
@@ -112,6 +234,7 @@ def cleanup_ocr_model():
             del _ocr_processor
             _ocr_model = None
             _ocr_processor = None
+            _ocr_loaded_model_id = None
 
             # Multiple gc.collect() calls - some objects need multiple passes
             gc.collect()
@@ -134,19 +257,9 @@ def cleanup_ocr_model():
             logger.info("OCR model unloaded")
 
 
-def _run_ocr_on_image(image, check_cancelled: Callable[[], bool] | None = None) -> str:
-    """Run OCR on a single image using Qwen2-VL-OCR."""
-    import torch
-    from qwen_vl_utils import process_vision_info
-
-    if check_cancelled and check_cancelled():
-        raise ProcessingCancelledError("Processing cancelled before OCR")
-
-    model, processor = get_ocr_model()
-    device = _get_device()
-
-    # Prepare the message for OCR
-    messages = [
+def _format_ocr_messages_qwen2vl(image):
+    """Format OCR prompt for Qwen2-VL models."""
+    return [
         {
             "role": "user",
             "content": [
@@ -156,15 +269,19 @@ def _run_ocr_on_image(image, check_cancelled: Callable[[], bool] | None = None) 
         }
     ]
 
-    # Apply chat template
+
+def _run_ocr_qwen2vl(image, model, processor, device, check_cancelled):
+    """Run OCR using Qwen2-VL model."""
+    import torch
+    from qwen_vl_utils import process_vision_info
+
+    messages = _format_ocr_messages_qwen2vl(image)
+
     text = processor.apply_chat_template(
         messages, tokenize=False, add_generation_prompt=True
     )
-
-    # Process vision info
     image_inputs, video_inputs = process_vision_info(messages)
 
-    # Prepare inputs
     inputs = processor(
         text=[text],
         images=image_inputs,
@@ -173,33 +290,86 @@ def _run_ocr_on_image(image, check_cancelled: Callable[[], bool] | None = None) 
         return_tensors="pt",
     )
 
-    # Move to device
     if device != "cpu":
         inputs = inputs.to(device)
 
     if check_cancelled and check_cancelled():
         raise ProcessingCancelledError("Processing cancelled during preparation")
 
-    # Generate
     with torch.no_grad():
-        generated_ids = model.generate(
-            **inputs,
-            max_new_tokens=2048,
-            do_sample=False,
-        )
+        generated_ids = model.generate(**inputs, max_new_tokens=2048, do_sample=False)
 
-    # Decode output (skip input tokens)
     generated_ids_trimmed = [
         out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
     ]
     output_text = processor.batch_decode(
-        generated_ids_trimmed,
-        skip_special_tokens=True,
-        clean_up_tokenization_spaces=False,
+        generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False
     )[0]
 
-    # Clean up tensors to free memory
     del inputs, generated_ids, generated_ids_trimmed, image_inputs, video_inputs
+    return output_text
+
+
+def _run_ocr_generic(image, model, processor, device, check_cancelled):
+    """Run OCR using Granite Vision or Llama Vision models (standard HF transformers API)."""
+    import torch
+
+    prompt = "Extract and transcribe all text from this image. Preserve the layout and formatting as much as possible."
+
+    messages = [
+        {
+            "role": "user",
+            "content": [
+                {"type": "image"},
+                {"type": "text", "text": prompt},
+            ],
+        }
+    ]
+
+    input_text = processor.apply_chat_template(
+        messages, add_generation_prompt=True, tokenize=False
+    )
+
+    inputs = processor(
+        text=input_text,
+        images=[image],
+        return_tensors="pt",
+    )
+
+    if device != "cpu":
+        inputs = inputs.to(device)
+
+    if check_cancelled and check_cancelled():
+        raise ProcessingCancelledError("Processing cancelled during preparation")
+
+    with torch.no_grad():
+        generated_ids = model.generate(**inputs, max_new_tokens=2048, do_sample=False)
+
+    # Trim input tokens from output
+    generated_ids_trimmed = generated_ids[:, inputs["input_ids"].shape[-1]:]
+    output_text = processor.batch_decode(
+        generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False
+    )[0]
+
+    del inputs, generated_ids, generated_ids_trimmed
+    return output_text
+
+
+def _run_ocr_on_image(image, check_cancelled: Callable[[], bool] | None = None) -> str:
+    """Run OCR on a single image using the active vision model."""
+    import torch
+
+    if check_cancelled and check_cancelled():
+        raise ProcessingCancelledError("Processing cancelled before OCR")
+
+    model, processor = get_ocr_model()
+    device = _get_device()
+    architecture = _get_ocr_architecture()
+
+    if architecture == "qwen2-vl":
+        output_text = _run_ocr_qwen2vl(image, model, processor, device, check_cancelled)
+    else:
+        output_text = _run_ocr_generic(image, model, processor, device, check_cancelled)
 
     # Clear device cache
     if device == "mps":
@@ -208,7 +378,7 @@ def _run_ocr_on_image(image, check_cancelled: Callable[[], bool] | None = None) 
         torch.cuda.empty_cache()
 
     # Clean up any remaining special tokens that weren't filtered
-    for token in ["<|im_end|>", "<|im_start|>", "<|endoftext|>"]:
+    for token in ["<|im_end|>", "<|im_start|>", "<|endoftext|>", "<|eot_id|>"]:
         output_text = output_text.replace(token, "")
 
     return output_text.strip()
@@ -358,6 +528,7 @@ class DocumentProcessor:
 
             doc.close()
 
+            active_id = _get_active_ocr_model_id() or "ocr"
             combined_markdown = "\n\n".join(markdown_parts)
             plain_text = combined_markdown.replace("#", "").replace("*", "").replace("|", " ")
 
@@ -365,7 +536,7 @@ class DocumentProcessor:
                 "text": plain_text,
                 "markdown": combined_markdown,
                 "page_count": len(markdown_parts),
-                "metadata": {"ocr_engine": "qwen2-vl-ocr"},
+                "metadata": {"ocr_engine": active_id},
             }
         except ProcessingCancelledError:
             raise
@@ -461,7 +632,8 @@ class DocumentProcessor:
 
             from PIL import Image
 
-            logger.info(f"Processing {file_path.name} with Qwen2-VL OCR")
+            active_id = _get_active_ocr_model_id() or "ocr"
+            logger.info(f"Processing {file_path.name} with OCR model {active_id}")
 
             # Load image
             image = Image.open(file_path)
@@ -483,7 +655,7 @@ class DocumentProcessor:
                 "text": text,
                 "markdown": text,
                 "page_count": 1,
-                "metadata": {"ocr_engine": "qwen2-vl-ocr"},
+                "metadata": {"ocr_engine": active_id},
             }
         except ProcessingCancelledError:
             raise

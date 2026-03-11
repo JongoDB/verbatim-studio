@@ -714,6 +714,8 @@ export interface AIModel {
   downloaded: boolean;
   active: boolean;
   download_path: string | null;
+  tier: string | null;
+  ram_gb: number | null;
 }
 
 export interface AIModelListResponse {
@@ -740,6 +742,11 @@ export interface OCRModel {
   downloaded: boolean;
   downloading: boolean;
   size_on_disk: number | null;
+  tier: string | null;
+  ram_gb: number | null;
+  active: boolean;
+  requires_hf_token: boolean;
+  legacy_note: string | null;
 }
 
 export interface OCRModelListResponse {
@@ -753,7 +760,7 @@ export interface OCRStatusResponse {
 }
 
 export interface OCRModelDownloadEvent {
-  status: 'starting' | 'progress' | 'complete' | 'error';
+  status: 'starting' | 'progress' | 'complete' | 'activated' | 'error';
   model_id?: string;
   path?: string;
   error?: string;
@@ -1105,6 +1112,13 @@ export interface SystemInfo {
   storage_breakdown: StorageBreakdown;
   content_counts: ContentCounts;
   max_upload_bytes: number;
+}
+
+export interface HardwareInfo {
+  platform: string;  // "macos" | "windows" | "linux"
+  total_ram_gb: number;
+  gpu_vram_gb: number | null;
+  cuda_available: boolean;
 }
 
 export interface MLStatus {
@@ -2117,6 +2131,18 @@ class ApiClient {
         `/api/ocr/models/${modelId}/cancel`,
         { method: 'POST' }
       ),
+
+    activateModel: (modelId: string) =>
+      this.request<{ status: string; model_id: string }>(
+        `/api/ocr/models/${modelId}/activate`,
+        { method: 'POST' }
+      ),
+
+    deactivateModel: (modelId: string) =>
+      this.request<{ status: string; model_id: string }>(
+        `/api/ocr/models/${modelId}/deactivate`,
+        { method: 'POST' }
+      ),
   };
 
   // Whisper (Transcription Models)
@@ -2599,6 +2625,7 @@ class ApiClient {
   system = {
     info: () => this.request<SystemInfo>('/api/system/info'),
     mlStatus: () => this.request<MLStatus>('/api/system/ml-status'),
+    getHardware: () => this.request<HardwareInfo>('/api/system/hardware'),
     installMl: async function* (): AsyncGenerator<MLInstallEvent> {
       const baseUrl = getApiBaseUrl();
       const response = await fetch(`${baseUrl}/api/system/install-ml`, {

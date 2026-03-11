@@ -300,6 +300,8 @@ class AIModelInfo(BaseModel):
     downloaded: bool
     active: bool
     download_path: str | None
+    tier: str | None = None
+    ram_gb: int | None = None
 
 
 class AIModelListResponse(BaseModel):
@@ -330,6 +332,8 @@ async def list_models() -> AIModelListResponse:
             downloaded=downloaded,
             active=(model_id == active_id),
             download_path=str(file_path) if downloaded else None,
+            tier=entry.get("tier"),
+            ram_gb=entry.get("ram_gb"),
         ))
 
     return AIModelListResponse(models=items)

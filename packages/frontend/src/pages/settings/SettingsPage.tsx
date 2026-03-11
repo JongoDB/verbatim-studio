@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { api, getApiUrl, type ArchiveInfo, type TranscriptionSettings, type AIModel, type AIModelDownloadEvent, type AISettingsResponse, type OCRModel, type OCRModelDownloadEvent, type WhisperModel, type WhisperModelDownloadEvent, type DiarizationModel, type DiarizationModelDownloadEvent, type SystemInfo, type MLStatus, type StorageLocation, type MigrationStatus, type TransferStatus, type SyncResult, type StorageType, type StorageSubtype, type StorageLocationConfig, type OAuthStatusResponse, type CategoryCount, type ClearableCategory, type GpuStatus } from '@/lib/api';
+import { api, getApiUrl, type ArchiveInfo, type TranscriptionSettings, type AIModel, type AIModelDownloadEvent, type AISettingsResponse, type OCRModel, type OCRModelDownloadEvent, type WhisperModel, type WhisperModelDownloadEvent, type DiarizationModel, type DiarizationModelDownloadEvent, type SystemInfo, type MLStatus, type HardwareInfo, type StorageLocation, type MigrationStatus, type TransferStatus, type SyncResult, type StorageType, type StorageSubtype, type StorageLocationConfig, type OAuthStatusResponse, type CategoryCount, type ClearableCategory, type GpuStatus } from '@/lib/api';
 import { useDownloadStore } from '@/stores/downloadStore';
 import { useKeybindingStore, DEFAULT_ACTIONS, formatCombo, type KeyCombo, type ActionCategory } from '@/stores/keybindingStore';
 import { StorageTypeSelector } from '@/components/storage/StorageTypeSelector';
@@ -285,6 +285,12 @@ export function SettingsPage({ theme, onThemeChange, pluginSettingsTabs }: Setti
   const [diarizationError, setDiarizationError] = useState<string | null>(null);
   const diarizationDownloadAbortRef = useRef<{ abort: () => void } | null>(null);
 
+  // Hardware info (for memory-aware model recommendations)
+  const [hardwareInfo, setHardwareInfo] = useState<HardwareInfo | null>(null);
+
+  // Large download confirmation dialog
+  const [confirmDownload, setConfirmDownload] = useState<{ modelId: string; modelLabel: string; sizeBytes: number; ramGb: number; type: 'ai' | 'ocr' } | null>(null);
+
   // System info state
   const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
 
@@ -377,6 +383,7 @@ export function SettingsPage({ theme, onThemeChange, pluginSettingsTabs }: Setti
     }).catch(console.error);
     api.system.info().then(setSystemInfo).catch(console.error);
     api.system.mlStatus().then(setMlStatus).catch(console.error);
+    api.system.getHardware().then(setHardwareInfo).catch(console.error);
     api.system.getCategoryCounts().then((r) => setCategoryCounts(r.categories)).catch(console.error);
     // Fetch GPU status on Windows
     if (window.electronAPI?.platform === 'win32') {
@@ -704,7 +711,7 @@ export function SettingsPage({ theme, onThemeChange, pluginSettingsTabs }: Setti
         setOcrDownloadProgress({ percent, downloaded, total });
         setOcrDownloadMessage(`Downloading... ${percent}%`);
         updateProgress(modelId, downloaded, total, `Downloading... ${percent}%`);
-      } else if (event.status === 'complete') {
+      } else if (event.status === 'complete' || event.status === 'activated') {
         setOcrDownloading(null);
         setOcrDownloadMessage(null);
         setOcrDownloadProgress(null);
@@ -722,6 +729,26 @@ export function SettingsPage({ theme, onThemeChange, pluginSettingsTabs }: Setti
     });
 
     ocrDownloadAbortRef.current = handle;
+  }, [refreshOcrModels]);
+
+  const handleActivateOcrModel = useCallback(async (modelId: string) => {
+    try {
+      await api.ocr.activateModel(modelId);
+      refreshOcrModels();
+      window.dispatchEvent(new Event('ocr-status-changed'));
+    } catch (err) {
+      setOcrError(err instanceof Error ? err.message : 'Activation failed');
+    }
+  }, [refreshOcrModels]);
+
+  const handleDeactivateOcrModel = useCallback(async (modelId: string) => {
+    try {
+      await api.ocr.deactivateModel(modelId);
+      refreshOcrModels();
+      window.dispatchEvent(new Event('ocr-status-changed'));
+    } catch (err) {
+      setOcrError(err instanceof Error ? err.message : 'Deactivation failed');
+    }
   }, [refreshOcrModels]);
 
   const handleDeleteOcrModel = useCallback(async (modelId: string) => {
@@ -2551,15 +2578,79 @@ export function SettingsPage({ theme, onThemeChange, pluginSettingsTabs }: Setti
         </div>
       )}
 
-      {/* Vision Language Model Section */}
+      {/* Large Download Confirmation Dialog */}
+      {confirmDownload && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setConfirmDownload(null)}>
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl p-6 max-w-md mx-4" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">Large Download</h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+              <strong>{confirmDownload.modelLabel}</strong> is a large model:
+            </p>
+            <div className="space-y-2 mb-4">
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500 dark:text-gray-400">Download size:</span>
+                <span className="font-medium text-gray-900 dark:text-gray-100">{formatBytes(confirmDownload.sizeBytes)}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500 dark:text-gray-400">RAM/VRAM required:</span>
+                <span className="font-medium text-gray-900 dark:text-gray-100">~{confirmDownload.ramGb} GB</span>
+              </div>
+              {hardwareInfo && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500 dark:text-gray-400">Your system:</span>
+                  <span className="font-medium text-gray-900 dark:text-gray-100">
+                    {hardwareInfo.gpu_vram_gb
+                      ? `${hardwareInfo.gpu_vram_gb} GB VRAM + ${hardwareInfo.total_ram_gb} GB RAM`
+                      : `${hardwareInfo.total_ram_gb} GB RAM`}
+                  </span>
+                </div>
+              )}
+            </div>
+            {hardwareInfo && confirmDownload.ramGb > (hardwareInfo.gpu_vram_gb || hardwareInfo.total_ram_gb) && (
+              <div className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-xs text-red-600 dark:text-red-400 mb-4">
+                This model may exceed your available memory. Performance could be severely degraded.
+              </div>
+            )}
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setConfirmDownload(null)}
+                className="px-4 py-2 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  const { modelId, type } = confirmDownload;
+                  setConfirmDownload(null);
+                  if (type === 'ai') {
+                    handleDownloadModel(modelId);
+                  } else {
+                    handleDownloadOcrModel(modelId);
+                  }
+                }}
+                className="px-4 py-2 text-sm font-medium rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+              >
+                Download Anyway
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Vision Models (OCR) Section */}
       <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
         <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Vision Language Model</h2>
-            {ocrModels.some((m) => m.downloaded) ? (
+            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Vision Models (OCR)</h2>
+            {ocrModels.some((m) => m.active) ? (
               <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300">
                 <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
-                Ready ({ocrModels.find((m) => m.downloaded)?.label})
+                Active ({ocrModels.find((m) => m.active)?.label})
+              </span>
+            ) : ocrModels.some((m) => m.downloaded) ? (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300">
+                <span className="w-1.5 h-1.5 rounded-full bg-yellow-500" />
+                Downloaded (not active)
               </span>
             ) : (
               <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400">
@@ -2584,11 +2675,26 @@ export function SettingsPage({ theme, onThemeChange, pluginSettingsTabs }: Setti
               {ocrModels.map((model) => {
                 const isDownloading = ocrDownloading === model.id || model.downloading;
                 const isInstalled = model.downloaded && !model.downloading;
+                const tierColors: Record<string, string> = {
+                  legacy: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400',
+                  standard: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
+                  pro: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300',
+                  max: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+                };
+                const tierLabel = model.tier ? model.tier.charAt(0).toUpperCase() + model.tier.slice(1) : null;
+                const availableMemoryGb = hardwareInfo
+                  ? (hardwareInfo.platform === 'windows' && hardwareInfo.cuda_available && hardwareInfo.gpu_vram_gb
+                      ? hardwareInfo.gpu_vram_gb
+                      : hardwareInfo.total_ram_gb)
+                  : null;
+                const memoryRatio = model.ram_gb && availableMemoryGb ? model.ram_gb / availableMemoryGb : null;
+                const showMemoryWarning = memoryRatio !== null && memoryRatio > 0.6 && model.tier !== 'legacy' && model.tier !== 'standard';
+
                 return (
                 <div
                   key={model.id}
                   className={`p-4 rounded-lg border transition-all ${
-                    isInstalled
+                    model.active
                       ? 'border-green-300 dark:border-green-700 bg-green-50/50 dark:bg-green-900/10'
                       : isDownloading
                       ? 'border-blue-300 dark:border-blue-700 bg-blue-50/50 dark:bg-blue-900/10'
@@ -2598,10 +2704,23 @@ export function SettingsPage({ theme, onThemeChange, pluginSettingsTabs }: Setti
                   <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
+                        {tierLabel && (
+                          <span className={`px-1.5 py-0.5 text-xs rounded font-medium ${tierColors[model.tier || ''] || tierColors.standard}`}>
+                            {tierLabel}
+                          </span>
+                        )}
                         <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{model.label}</span>
                         {model.is_default && (
                           <span className="px-1.5 py-0.5 text-xs rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">
                             Recommended
+                          </span>
+                        )}
+                        {model.active && (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs rounded bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300">
+                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                            </svg>
+                            Active
                           </span>
                         )}
                         {isDownloading && (
@@ -2613,32 +2732,73 @@ export function SettingsPage({ theme, onThemeChange, pluginSettingsTabs }: Setti
                             Downloading
                           </span>
                         )}
-                        {isInstalled && (
-                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs rounded bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300">
-                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                            </svg>
+                        {!isDownloading && isInstalled && !model.active && (
+                          <span className="px-1.5 py-0.5 text-xs rounded bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400">
                             Installed
+                          </span>
+                        )}
+                        {showMemoryWarning && memoryRatio !== null && (
+                          memoryRatio > 1 ? (
+                            <span className="px-1.5 py-0.5 text-xs rounded bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400" title={`Requires ~${model.ram_gb} GB but your system has ${availableMemoryGb?.toFixed(0)} GB available`}>
+                              Exceeds memory
+                            </span>
+                          ) : (
+                            <span className="px-1.5 py-0.5 text-xs rounded bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400" title={`Requires ~${model.ram_gb} GB (${Math.round(memoryRatio * 100)}% of available ${availableMemoryGb?.toFixed(0)} GB)`}>
+                              High memory
+                            </span>
+                          )
+                        )}
+                        {model.requires_hf_token && (
+                          <span className="px-1.5 py-0.5 text-xs rounded bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400">
+                            Requires HF Token
                           </span>
                         )}
                       </div>
                       <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{model.description}</p>
+                      {model.legacy_note && (
+                        <p className="mt-0.5 text-xs text-amber-600 dark:text-amber-400 italic">{model.legacy_note}</p>
+                      )}
                       <p className="mt-0.5 text-xs text-gray-400 dark:text-gray-500">
                         {isInstalled && model.size_on_disk
                           ? `${formatBytes(model.size_on_disk)} on disk`
                           : isDownloading && model.size_on_disk
                           ? `${formatBytes(model.size_on_disk)} / ${formatBytes(model.size_bytes)}`
                           : `~${formatBytes(model.size_bytes)} download`}
+                        {model.ram_gb ? ` | ~${model.ram_gb} GB RAM` : ''}
                       </p>
                     </div>
 
                     <div className="flex items-center gap-2 flex-wrap sm:shrink-0">
                       {!isInstalled && !isDownloading && (
                         <button
-                          onClick={() => handleDownloadOcrModel(model.id)}
+                          onClick={() => {
+                            if (model.size_bytes > 20_000_000_000) {
+                              setConfirmDownload({ modelId: model.id, modelLabel: model.label, sizeBytes: model.size_bytes, ramGb: model.ram_gb || 0, type: 'ocr' });
+                            } else {
+                              handleDownloadOcrModel(model.id, model.label);
+                            }
+                          }}
                           className="px-3 py-1.5 text-xs font-medium rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
                         >
                           Download
+                        </button>
+                      )}
+
+                      {isInstalled && !model.active && (
+                        <button
+                          onClick={() => handleActivateOcrModel(model.id)}
+                          className="px-3 py-1.5 text-xs font-medium rounded-lg bg-success text-success-foreground hover:bg-success/90 transition-colors"
+                        >
+                          Activate
+                        </button>
+                      )}
+
+                      {isInstalled && model.active && (
+                        <button
+                          onClick={() => handleDeactivateOcrModel(model.id)}
+                          className="px-3 py-1.5 text-xs font-medium rounded-lg border border-amber-500/50 text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 transition-colors"
+                        >
+                          Deactivate
                         </button>
                       )}
 
@@ -2674,7 +2834,6 @@ export function SettingsPage({ theme, onThemeChange, pluginSettingsTabs }: Setti
                                   setOcrDownloading(null);
                                   setOcrDownloadProgress(null);
                                   setOcrDownloadMessage(null);
-                                  // Also cancel on backend to clean up .downloading marker
                                   await api.ocr.cancelDownload(model.id).catch(() => {});
                                   api.ocr.listModels().then((r) => setOcrModels(r.models)).catch(console.error);
                                 }}
@@ -2700,7 +2859,6 @@ export function SettingsPage({ theme, onThemeChange, pluginSettingsTabs }: Setti
                               setOcrDownloading(null);
                               setOcrDownloadProgress(null);
                               setOcrDownloadMessage(null);
-                              // Cancel on backend to clean up .downloading marker
                               await api.ocr.cancelDownload(model.id).catch(() => {});
                               api.ocr.listModels().then((r) => setOcrModels(r.models)).catch(console.error);
                             }}
@@ -2728,25 +2886,25 @@ export function SettingsPage({ theme, onThemeChange, pluginSettingsTabs }: Setti
           </div>
 
           <p className="text-xs text-gray-500 dark:text-gray-400 border-t border-gray-200 dark:border-gray-700 pt-3">
-            OCR enables high-quality text extraction from scanned PDFs and images. Models run locally on your machine.
+            OCR enables high-quality text extraction from scanned PDFs and images. Models run locally on your machine. Only one vision model can be active at a time.
           </p>
         </div>
       </div>
 
-      {/* Large Language Model Section */}
+      {/* Language Models (Summarization + Chat) Section */}
       <div className="mt-6 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
         <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Large Language Model</h2>
+            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Language Models (Summarization + Chat)</h2>
             {aiModels.some((m) => m.active) ? (
               <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300">
                 <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
-                Ready ({aiModels.find((m) => m.active)?.label})
+                Active ({aiModels.find((m) => m.active)?.label})
               </span>
             ) : (
               <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400">
                 <span className="w-1.5 h-1.5 rounded-full bg-gray-400" />
-                No model downloaded
+                No model active
               </span>
             )}
           </div>
@@ -2763,7 +2921,22 @@ export function SettingsPage({ theme, onThemeChange, pluginSettingsTabs }: Setti
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Available Models</label>
             <div className="space-y-3">
-              {aiModels.map((model) => (
+              {aiModels.map((model) => {
+                const tierColors: Record<string, string> = {
+                  standard: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
+                  pro: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300',
+                  max: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+                };
+                const tierLabel = model.tier ? model.tier.charAt(0).toUpperCase() + model.tier.slice(1) : null;
+                const availableMemoryGb = hardwareInfo
+                  ? (hardwareInfo.platform === 'windows' && hardwareInfo.cuda_available && hardwareInfo.gpu_vram_gb
+                      ? hardwareInfo.gpu_vram_gb
+                      : hardwareInfo.total_ram_gb)
+                  : null;
+                const memoryRatio = model.ram_gb && availableMemoryGb ? model.ram_gb / availableMemoryGb : null;
+                const showMemoryWarning = memoryRatio !== null && memoryRatio > 0.6 && model.tier !== 'standard';
+
+                return (
                 <div
                   key={model.id}
                   className={`p-4 rounded-lg border transition-all ${
@@ -2775,6 +2948,11 @@ export function SettingsPage({ theme, onThemeChange, pluginSettingsTabs }: Setti
                   <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
+                        {tierLabel && (
+                          <span className={`px-1.5 py-0.5 text-xs rounded font-medium ${tierColors[model.tier || ''] || tierColors.standard}`}>
+                            {tierLabel}
+                          </span>
+                        )}
                         <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{model.label}</span>
                         {model.is_default && (
                           <span className="px-1.5 py-0.5 text-xs rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">
@@ -2789,15 +2967,40 @@ export function SettingsPage({ theme, onThemeChange, pluginSettingsTabs }: Setti
                             Active
                           </span>
                         )}
+                        {model.downloaded && !model.active && (
+                          <span className="px-1.5 py-0.5 text-xs rounded bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400">
+                            Downloaded
+                          </span>
+                        )}
+                        {showMemoryWarning && memoryRatio !== null && (
+                          memoryRatio > 1 ? (
+                            <span className="px-1.5 py-0.5 text-xs rounded bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400" title={`Requires ~${model.ram_gb} GB but your system has ${availableMemoryGb?.toFixed(0)} GB available`}>
+                              Exceeds memory
+                            </span>
+                          ) : (
+                            <span className="px-1.5 py-0.5 text-xs rounded bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400" title={`Requires ~${model.ram_gb} GB (${Math.round(memoryRatio * 100)}% of available ${availableMemoryGb?.toFixed(0)} GB)`}>
+                              High memory
+                            </span>
+                          )
+                        )}
                       </div>
                       <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{model.description}</p>
-                      <p className="mt-0.5 text-xs text-gray-400 dark:text-gray-500">{formatBytes(model.size_bytes)}</p>
+                      <p className="mt-0.5 text-xs text-gray-400 dark:text-gray-500">
+                        ~{formatBytes(model.size_bytes)} download
+                        {model.ram_gb ? ` | ~${model.ram_gb} GB RAM` : ''}
+                      </p>
                     </div>
 
                     <div className="flex items-center gap-2 flex-wrap sm:shrink-0">
                       {!model.downloaded && aiDownloading !== model.id && (
                         <button
-                          onClick={() => handleDownloadModel(model.id)}
+                          onClick={() => {
+                            if (model.size_bytes > 20_000_000_000) {
+                              setConfirmDownload({ modelId: model.id, modelLabel: model.label, sizeBytes: model.size_bytes, ramGb: model.ram_gb || 0, type: 'ai' });
+                            } else {
+                              handleDownloadModel(model.id, model.label);
+                            }
+                          }}
                           className="px-3 py-1.5 text-xs font-medium rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
                         >
                           Download
@@ -2831,47 +3034,48 @@ export function SettingsPage({ theme, onThemeChange, pluginSettingsTabs }: Setti
                         </button>
                       )}
                     </div>
-
-                    {/* Download progress bar */}
-                    {aiDownloading === model.id && (
-                      <div className="mt-3">
-                        <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
-                          <span>Downloading...</span>
-                          <div className="flex items-center gap-3">
-                            <span>
-                              {aiTotalBytes > 0
-                                ? `${formatBytes(aiDownloadedBytes)} / ${formatBytes(aiTotalBytes)}`
-                                : 'Starting...'}
-                            </span>
-                            <button
-                              onClick={() => {
-                                downloadAbortRef.current?.abort();
-                                setAiDownloading(null);
-                                setAiDownloadedBytes(0);
-                                setAiTotalBytes(0);
-                              }}
-                              className="px-2 py-0.5 text-xs font-medium rounded bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors"
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        </div>
-                        <div className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-blue-600 rounded-full transition-all duration-300"
-                            style={{ width: aiTotalBytes > 0 ? `${Math.min(100, (aiDownloadedBytes / aiTotalBytes) * 100)}%` : '0%' }}
-                          />
-                        </div>
-                        {aiTotalBytes > 0 && (
-                          <div className="text-right text-xs text-gray-400 dark:text-gray-500 mt-0.5">
-                            {Math.round((aiDownloadedBytes / aiTotalBytes) * 100)}%
-                          </div>
-                        )}
-                      </div>
-                    )}
                   </div>
+
+                  {/* Download progress bar */}
+                  {aiDownloading === model.id && (
+                    <div className="mt-3">
+                      <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
+                        <span>Downloading...</span>
+                        <div className="flex items-center gap-3">
+                          <span>
+                            {aiTotalBytes > 0
+                              ? `${formatBytes(aiDownloadedBytes)} / ${formatBytes(aiTotalBytes)}`
+                              : 'Starting...'}
+                          </span>
+                          <button
+                            onClick={() => {
+                              downloadAbortRef.current?.abort();
+                              setAiDownloading(null);
+                              setAiDownloadedBytes(0);
+                              setAiTotalBytes(0);
+                            }}
+                            className="px-2 py-0.5 text-xs font-medium rounded bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                      <div className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-blue-600 rounded-full transition-all duration-300"
+                          style={{ width: aiTotalBytes > 0 ? `${Math.min(100, (aiDownloadedBytes / aiTotalBytes) * 100)}%` : '0%' }}
+                        />
+                      </div>
+                      {aiTotalBytes > 0 && (
+                        <div className="text-right text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                          {Math.round((aiDownloadedBytes / aiTotalBytes) * 100)}%
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
-              ))}
+              );
+              })}
 
               {aiModels.length === 0 && (
                 <p className="text-sm text-gray-500 dark:text-gray-400 py-2">
@@ -2960,7 +3164,7 @@ export function SettingsPage({ theme, onThemeChange, pluginSettingsTabs }: Setti
           )}
 
           <p className="text-xs text-gray-500 dark:text-gray-400 border-t border-gray-200 dark:border-gray-700 pt-3">
-            Models are downloaded from HuggingFace and stored locally. All AI processing happens on your machine.
+            Models are downloaded from HuggingFace and stored locally. All AI processing happens on your machine. Only one language model can be active at a time.
           </p>
         </div>
       </div>

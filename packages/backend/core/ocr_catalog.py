@@ -4,9 +4,13 @@ Defines available OCR models that can be downloaded from HuggingFace.
 Models are stored in the Verbatim Studio models directory alongside LLM models.
 """
 
+import json
+import logging
 from pathlib import Path
 
 from core.config import settings
+
+logger = logging.getLogger(__name__)
 
 # Qwen2-VL OCR model repository (fine-tuned for OCR)
 QWEN2_VL_OCR_REPO = "prithivMLmods/Qwen2-VL-OCR-2B-Instruct"
@@ -17,7 +21,48 @@ OCR_MODEL_CATALOG: dict[str, dict] = {
         "size_bytes": 4_750_000_000,  # ~4.42 GB (2B params, BF16 + tokenizer)
         "label": "Qwen2-VL OCR (2B)",
         "description": "Lightweight vision-language model fine-tuned for OCR. Fast inference on CPU/GPU/MPS with good accuracy.",
+        "default": False,
+        "tier": "legacy",
+        "ram_gb": 5,
+        "requires_hf_token": False,
+        "legacy_note": "Granite Vision 3.3 is now the recommended default.",
+        "architecture": "qwen2-vl",
+    },
+    "granite-vision-3.3-2b": {
+        "repo": "ibm-granite/granite-vision-3.3-2b",
+        "size_bytes": 5_960_000_000,  # ~5.96 GB
+        "label": "Granite Vision 3.3 2B",
+        "description": "IBM's latest vision model. Improved accuracy over Qwen2-VL with similar speed.",
         "default": True,
+        "tier": "standard",
+        "ram_gb": 2,
+        "requires_hf_token": False,
+        "legacy_note": None,
+        "architecture": "granite-vision",
+    },
+    "llama-3.2-vision-11b": {
+        "repo": "meta-llama/Llama-3.2-11B-Vision-Instruct",
+        "size_bytes": 21_000_000_000,  # ~21 GB
+        "label": "Llama 3.2 Vision 11B",
+        "description": "Meta's 11B vision model. Higher quality OCR for complex documents. Requires HuggingFace token.",
+        "default": False,
+        "tier": "pro",
+        "ram_gb": 7,
+        "requires_hf_token": True,
+        "legacy_note": None,
+        "architecture": "llama-vision",
+    },
+    "llama-3.2-vision-90b": {
+        "repo": "meta-llama/Llama-3.2-90B-Vision-Instruct",
+        "size_bytes": 176_000_000_000,  # ~176 GB
+        "label": "Llama 3.2 Vision 90B",
+        "description": "Meta's flagship 90B vision model. Best quality for complex layouts. Requires 50+ GB RAM/VRAM and HuggingFace token.",
+        "default": False,
+        "tier": "max",
+        "ram_gb": 50,
+        "requires_hf_token": True,
+        "legacy_note": None,
+        "architecture": "llama-vision",
     },
 }
 
@@ -72,3 +117,49 @@ def get_model_size_on_disk(model_id: str) -> int | None:
             total_size += file.stat().st_size
 
     return total_size if total_size > 0 else None
+
+
+# ── Active OCR model tracking ────────────────────────────────────────
+
+def _active_ocr_model_path() -> Path:
+    """Path to the JSON file tracking which OCR model is active."""
+    return get_ocr_models_dir() / "active_ocr_model.json"
+
+
+def _read_active_ocr_model() -> str | None:
+    """Read the currently active OCR model ID from disk.
+
+    Handles fresh installs vs existing installs:
+    - If file exists, respect its content (explicit user choice)
+    - If file doesn't exist AND granite-vision is downloaded, return granite-vision (fresh install default)
+    - If file doesn't exist AND only qwen2-vl-ocr is downloaded, return qwen2-vl-ocr (existing install)
+    """
+    p = _active_ocr_model_path()
+    if p.exists():
+        try:
+            data = json.loads(p.read_text())
+            return data.get("model_id")
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    # No explicit choice -- pick the best downloaded model
+    if is_model_downloaded("granite-vision-3.3-2b"):
+        return "granite-vision-3.3-2b"
+    if is_model_downloaded("qwen2-vl-ocr"):
+        return "qwen2-vl-ocr"
+
+    # Check other models in tier order
+    for model_id in ("llama-3.2-vision-11b", "llama-3.2-vision-90b"):
+        if is_model_downloaded(model_id):
+            return model_id
+
+    return None
+
+
+def _write_active_ocr_model(model_id: str) -> None:
+    """Persist the active OCR model ID."""
+    settings.ensure_directories()
+    ocr_dir = get_ocr_models_dir()
+    ocr_dir.mkdir(parents=True, exist_ok=True)
+    _active_ocr_model_path().write_text(json.dumps({"model_id": model_id}))
+    logger.info("Active OCR model set to: %s", model_id)

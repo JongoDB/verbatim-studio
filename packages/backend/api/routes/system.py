@@ -235,6 +235,98 @@ def count_ocr_models(models_dir: Path) -> tuple[int, int]:
     return count, size
 
 
+class HardwareInfo(BaseModel):
+    """Hardware information for memory-aware model recommendations."""
+
+    platform: str  # "macos" | "windows" | "linux"
+    total_ram_gb: float
+    gpu_vram_gb: float | None  # NVIDIA VRAM on Windows, None on macOS
+    cuda_available: bool
+
+
+# Cache hardware info per session (doesn't change)
+_cached_hardware_info: HardwareInfo | None = None
+
+
+@router.get("/hardware", response_model=HardwareInfo)
+async def get_hardware_info() -> HardwareInfo:
+    """Get system hardware information for model recommendations.
+
+    Returns platform, total RAM, GPU VRAM (if available), and CUDA status.
+    Cached per session since hardware doesn't change.
+    """
+    global _cached_hardware_info
+    if _cached_hardware_info is not None:
+        return _cached_hardware_info
+
+    plat = sys.platform
+    if plat == "darwin":
+        platform_name = "macos"
+    elif plat == "win32":
+        platform_name = "windows"
+    else:
+        platform_name = "linux"
+
+    # Get total RAM
+    total_ram_gb = 0.0
+    try:
+        import psutil
+        total_ram_gb = round(psutil.virtual_memory().total / (1024 ** 3), 1)
+    except ImportError:
+        # Fallback: read from /proc/meminfo on Linux or sysctl on macOS
+        try:
+            if plat == "darwin":
+                result = subprocess.run(
+                    ["sysctl", "-n", "hw.memsize"],
+                    capture_output=True, text=True, timeout=5,
+                )
+                if result.returncode == 0:
+                    total_ram_gb = round(int(result.stdout.strip()) / (1024 ** 3), 1)
+            elif plat == "linux":
+                with open("/proc/meminfo") as f:
+                    for line in f:
+                        if line.startswith("MemTotal:"):
+                            kb = int(line.split()[1])
+                            total_ram_gb = round(kb / (1024 ** 2), 1)
+                            break
+        except Exception:
+            pass
+
+    # Get GPU VRAM
+    gpu_vram_gb = None
+    cuda_available = False
+
+    try:
+        import torch
+        if torch.cuda.is_available():
+            cuda_available = True
+            gpu_vram_gb = round(torch.cuda.get_device_properties(0).total_memory / (1024 ** 3), 1)
+    except (ImportError, Exception):
+        pass
+
+    # Fallback: try nvidia-smi for VRAM
+    if gpu_vram_gb is None and plat == "win32":
+        try:
+            result = subprocess.run(
+                ["nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader,nounits"],
+                capture_output=True, text=True, timeout=5,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                vram_mb = int(result.stdout.strip().split("\n")[0])
+                gpu_vram_gb = round(vram_mb / 1024, 1)
+        except (FileNotFoundError, subprocess.TimeoutExpired, ValueError):
+            pass
+
+    _cached_hardware_info = HardwareInfo(
+        platform=platform_name,
+        total_ram_gb=total_ram_gb,
+        gpu_vram_gb=gpu_vram_gb,
+        cuda_available=cuda_available,
+    )
+
+    return _cached_hardware_info
+
+
 @router.get("/info", response_model=SystemInfo)
 async def get_system_info() -> SystemInfo:
     """Get system information including storage usage and content counts."""

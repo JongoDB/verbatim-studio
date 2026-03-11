@@ -21,6 +21,9 @@ from core.ocr_catalog import (
     is_model_downloaded,
     is_model_downloading,
     get_model_size_on_disk,
+    _read_active_ocr_model,
+    _write_active_ocr_model,
+    _active_ocr_model_path,
 )
 
 logger = logging.getLogger(__name__)
@@ -48,6 +51,11 @@ class OCRModelInfo(BaseModel):
     downloaded: bool
     downloading: bool
     size_on_disk: int | None
+    tier: str | None = None
+    ram_gb: int | None = None
+    active: bool = False
+    requires_hf_token: bool = False
+    legacy_note: str | None = None
 
 
 class OCRModelListResponse(BaseModel):
@@ -124,6 +132,7 @@ def _install_ocr_deps_sync() -> tuple[bool, str]:
 @router.get("/models", response_model=OCRModelListResponse)
 async def list_ocr_models() -> OCRModelListResponse:
     """Return the OCR model catalog with download status."""
+    active_id = _read_active_ocr_model()
     items: list[OCRModelInfo] = []
 
     for model_id, entry in OCR_MODEL_CATALOG.items():
@@ -143,6 +152,11 @@ async def list_ocr_models() -> OCRModelListResponse:
                 downloaded=downloaded,
                 downloading=downloading,
                 size_on_disk=size_on_disk,
+                tier=entry.get("tier"),
+                ram_gb=entry.get("ram_gb"),
+                active=(model_id == active_id),
+                requires_hf_token=entry.get("requires_hf_token", False),
+                legacy_note=entry.get("legacy_note"),
             )
         )
 
@@ -152,28 +166,74 @@ async def list_ocr_models() -> OCRModelListResponse:
 @router.get("/status", response_model=OCRStatusResponse)
 async def get_ocr_status() -> OCRStatusResponse:
     """Get OCR service status."""
-    # Check if qwen2-vl-ocr model is available
-    model_downloaded = is_model_downloaded("qwen2-vl-ocr")
+    active_id = _read_active_ocr_model()
     deps_installed = _check_ocr_deps_installed()
 
-    if model_downloaded and deps_installed:
-        path = get_model_path("qwen2-vl-ocr")
+    if active_id and is_model_downloaded(active_id) and deps_installed:
+        path = get_model_path(active_id)
         return OCRStatusResponse(
             available=True,
-            model_id="qwen2-vl-ocr",
+            model_id=active_id,
             model_path=str(path) if path else None,
             deps_installed=True,
         )
 
     return OCRStatusResponse(
         available=False,
-        model_id="qwen2-vl-ocr" if model_downloaded else None,
-        model_path=str(get_model_path("qwen2-vl-ocr")) if model_downloaded else None,
+        model_id=active_id,
+        model_path=str(get_model_path(active_id)) if active_id else None,
         deps_installed=deps_installed,
     )
 
 
-def _do_download_sync(model_id: str, repo: str, dest_path: Path, marker_file: Path):
+@router.post("/models/{model_id}/activate")
+async def activate_ocr_model(model_id: str):
+    """Set a downloaded OCR model as the active model."""
+    entry = OCR_MODEL_CATALOG.get(model_id)
+    if not entry:
+        raise HTTPException(status_code=404, detail="Model not in catalog")
+
+    if not is_model_downloaded(model_id):
+        raise HTTPException(status_code=400, detail="Model is not downloaded")
+
+    _write_active_ocr_model(model_id)
+
+    # Clear the loaded OCR model singleton so the next call loads the new model
+    try:
+        from services.document_processor import cleanup_ocr_model
+        cleanup_ocr_model()
+    except Exception:
+        pass
+
+    return {"status": "activated", "model_id": model_id}
+
+
+@router.post("/models/{model_id}/deactivate")
+async def deactivate_ocr_model(model_id: str):
+    """Deactivate the active OCR model and unload it from memory."""
+    entry = OCR_MODEL_CATALOG.get(model_id)
+    if not entry:
+        raise HTTPException(status_code=404, detail="Model not in catalog")
+
+    active_id = _read_active_ocr_model()
+    if model_id != active_id:
+        raise HTTPException(status_code=400, detail="Model is not currently active")
+
+    # Clear active model state
+    _active_ocr_model_path().unlink(missing_ok=True)
+
+    # Unload from memory
+    try:
+        from services.document_processor import cleanup_ocr_model
+        cleanup_ocr_model()
+    except Exception:
+        pass
+
+    logger.info("Deactivated and unloaded OCR model %s", model_id)
+    return {"status": "deactivated", "model_id": model_id}
+
+
+def _do_download_sync(model_id: str, repo: str, dest_path: Path, marker_file: Path, hf_token: str | None = None):
     """Synchronous download function that runs in a thread.
 
     Handles its own cleanup regardless of SSE connection state.
@@ -200,7 +260,7 @@ def _do_download_sync(model_id: str, repo: str, dest_path: Path, marker_file: Pa
 
         # Only download files needed for inference (exclude demos, docs, examples)
         # Note: resume_download=True is the default, allowing interrupted downloads to resume
-        result = snapshot_download(
+        download_kwargs = dict(
             repo_id=repo,
             repo_type="model",
             local_dir=str(dest_path),
@@ -229,6 +289,9 @@ def _do_download_sync(model_id: str, repo: str, dest_path: Path, marker_file: Pa
                 "Qwen2vl*/*",
             ],
         )
+        if hf_token:
+            download_kwargs["token"] = hf_token
+        result = snapshot_download(**download_kwargs)
         logger.info("OCR model download complete: %s -> %s", model_id, result)
 
         # Verify essential model files exist (weights + processor config)
@@ -276,6 +339,22 @@ async def download_ocr_model(model_id: str) -> StreamingResponse:
     except ImportError:
         raise HTTPException(status_code=500, detail="huggingface-hub is not installed")
 
+    # Get HF token for gated models (reuses token from Settings > Transcription)
+    hf_token = None
+    if entry.get("requires_hf_token"):
+        try:
+            from core.transcription_settings import get_transcription_settings
+            tx_settings = await get_transcription_settings()
+            hf_token = tx_settings.get("hf_token")
+        except Exception:
+            pass
+        if not hf_token:
+            raise HTTPException(
+                status_code=400,
+                detail="HuggingFace token required. This model is gated and requires authentication. "
+                       "Set your token in Settings > Transcription."
+            )
+
     # Ensure directories exist
     settings.ensure_directories()
     ocr_dir = get_ocr_models_dir()
@@ -291,7 +370,7 @@ async def download_ocr_model(model_id: str) -> StreamingResponse:
 
     # Start download in background thread - it manages its own cleanup
     future = _download_executor.submit(
-        _do_download_sync, model_id, entry["repo"], dest_path, marker_file
+        _do_download_sync, model_id, entry["repo"], dest_path, marker_file, hf_token
     )
     _download_futures[model_id] = future
 
@@ -329,6 +408,10 @@ async def download_ocr_model(model_id: str) -> StreamingResponse:
                     future.result()  # Raises exception if download failed
                     final_size = get_model_size_on_disk(model_id) or 0
                     yield f"data: {json.dumps({'status': 'complete', 'model_id': model_id, 'size_bytes': final_size})}\n\n"
+                    # Auto-activate if no model is currently active
+                    if _read_active_ocr_model() is None:
+                        _write_active_ocr_model(model_id)
+                        yield f"data: {json.dumps({'status': 'activated', 'model_id': model_id})}\n\n"
                 except Exception as exc:
                     yield f"data: {json.dumps({'status': 'error', 'error': str(exc)})}\n\n"
         else:
@@ -336,6 +419,10 @@ async def download_ocr_model(model_id: str) -> StreamingResponse:
             if is_model_downloaded(model_id):
                 final_size = get_model_size_on_disk(model_id) or 0
                 yield f"data: {json.dumps({'status': 'complete', 'model_id': model_id, 'size_bytes': final_size})}\n\n"
+                # Auto-activate if no model is currently active
+                if _read_active_ocr_model() is None:
+                    _write_active_ocr_model(model_id)
+                    yield f"data: {json.dumps({'status': 'activated', 'model_id': model_id})}\n\n"
             else:
                 yield f"data: {json.dumps({'status': 'error', 'error': 'Download failed'})}\n\n"
 
@@ -414,13 +501,23 @@ async def cancel_ocr_download(model_id: str):
 
 @router.delete("/models/{model_id}")
 async def delete_ocr_model(model_id: str):
-    """Delete a downloaded OCR model."""
+    """Delete a downloaded OCR model. If it's the active model, deactivate first."""
     entry = OCR_MODEL_CATALOG.get(model_id)
     if not entry:
         raise HTTPException(status_code=404, detail="Model not in catalog")
 
     if not is_model_downloaded(model_id):
         raise HTTPException(status_code=404, detail="Model not downloaded")
+
+    # If this is the active model, clear the active state
+    active_id = _read_active_ocr_model()
+    if model_id == active_id:
+        _active_ocr_model_path().unlink(missing_ok=True)
+        try:
+            from services.document_processor import cleanup_ocr_model
+            cleanup_ocr_model()
+        except Exception:
+            pass
 
     path = get_model_path(model_id)
     if path and path.exists():
