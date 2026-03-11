@@ -447,7 +447,24 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Check for existing release notes
+        id: existing
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          # Check if a release already exists with manually-written notes
+          EXISTING_BODY=$(gh release view "$TAG" --json body -q '.body' 2>/dev/null || echo "")
+          if [ -n "$EXISTING_BODY" ] && ! echo "$EXISTING_BODY" | grep -q "Minor updates and refinements"; then
+            echo "has_notes=true" >> "$GITHUB_OUTPUT"
+            echo "Release $TAG already has manual notes — preserving them"
+          else
+            echo "has_notes=false" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Generate release notes
+        if: steps.existing.outputs.has_notes != 'true'
         id: notes
         shell: bash
         run: |
@@ -516,10 +533,19 @@ jobs:
         with:
           path: artifacts
 
-      - name: Create Release
+      - name: Create Release (with generated notes)
+        if: steps.existing.outputs.has_notes != 'true'
         uses: softprops/action-gh-release@v2
         with:
           files: artifacts/**/*
           body_path: release-notes.md
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create Release (preserve existing notes)
+        if: steps.existing.outputs.has_notes == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
