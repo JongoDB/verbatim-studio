@@ -17,7 +17,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/github/v/tag/JongoDB/verbatim-studio?label=version&color=blue" alt="Version">
-  <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License">
+  <img src="https://img.shields.io/badge/license-AGPL--3.0-green.svg" alt="License">
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey.svg" alt="Platform">
 </p>
 
@@ -426,7 +426,7 @@ cd packages/frontend && pnpm typecheck
 
 ## License
 
-MIT License. See [LICENSE](LICENSE) for details.
+AGPL-3.0 License. See [LICENSE](LICENSE) for details.
 
 ---
 
