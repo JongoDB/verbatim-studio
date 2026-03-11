@@ -32,10 +32,19 @@ def migrate(db_path: Path) -> None:
                 "ALTER TABLE segments ADD COLUMN edited_by TEXT DEFAULT NULL"
             )
             # Migrate existing edited=True rows to edited_by='human'
-            cursor.execute(
-                "UPDATE segments SET edited_by = 'human' WHERE edited = 1"
-            )
+            if "edited" in columns:
+                cursor.execute(
+                    "UPDATE segments SET edited_by = 'human' WHERE edited = 1"
+                )
             logger.info("Added edited_by column and migrated existing edited flags")
+
+        # Drop the legacy 'edited' column (replaced by edited_by)
+        # Re-read columns in case they changed above
+        cursor.execute("PRAGMA table_info(segments)")
+        columns = [col[1] for col in cursor.fetchall()]
+        if "edited" in columns:
+            cursor.execute("ALTER TABLE segments DROP COLUMN edited")
+            logger.info("Dropped legacy 'edited' column from segments")
 
         # Add original_text column
         if "original_text" not in columns:

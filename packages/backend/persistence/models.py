@@ -231,6 +231,11 @@ class Segment(Base):
     created_at: Mapped[datetime] = mapped_column(default=func.now())
     updated_at: Mapped[datetime] = mapped_column(default=func.now(), onupdate=func.now())
 
+    @property
+    def edited(self) -> bool:
+        """Whether this segment has been edited (by human or AI)."""
+        return self.edited_by is not None
+
     transcript: Mapped[Transcript] = relationship(back_populates="segments")
     comments: Mapped[list["SegmentComment"]] = relationship(
         back_populates="segment", cascade="all, delete-orphan"
