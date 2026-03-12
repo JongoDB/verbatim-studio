@@ -107,11 +107,10 @@ export function DocumentViewerPage({ documentId, onBack }: DocumentViewerPagePro
   const documentSupportsOcr = document &&
     document.status === 'completed' &&
     (document.mime_type.startsWith('image/') || document.mime_type === 'application/pdf') &&
-    document.metadata?.ocr_engine !== 'qwen2-vl-ocr';
+    !document.metadata?.ocr_engine;
 
-  // Check if document has extracted text (OCR or PyMuPDF)
-  const hasExtractedText = document?.metadata?.ocr_engine &&
-    ['qwen2-vl-ocr', 'pymupdf', 'pypdf'].includes(document.metadata.ocr_engine as string);
+  // Check if document has extracted text (any OCR model or PDF extractor)
+  const hasExtractedText = !!document?.metadata?.ocr_engine;
 
   // Fetch OCR content when document has OCR results
   useEffect(() => {

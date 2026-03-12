@@ -131,9 +131,11 @@ def _load_granite_vision(model_path: str, device: str):
             trust_remote_code=True,
         )
     elif device == "mps":
+        # Granite Vision produces empty output with float16 on MPS; bfloat16 works
+        # and uses half the memory of float32
         model = AutoModelForVision2Seq.from_pretrained(
             model_path,
-            torch_dtype=torch.float16,
+            torch_dtype=torch.bfloat16,
             trust_remote_code=True,
         ).to(device)
     else:
@@ -643,7 +645,9 @@ class DocumentProcessor:
                 image = image.convert("RGB")
 
             # Resize large images to prevent OOM (phone photos can be 4000+ px)
-            max_dim = 1280
+            # Granite Vision uses 384px tiles — large images create many tiles and spike memory
+            architecture = _get_ocr_architecture()
+            max_dim = 768 if architecture == "granite-vision" else 1280
             if max(image.size) > max_dim:
                 image.thumbnail((max_dim, max_dim), Image.LANCZOS)
                 logger.info(f"Resized image to {image.size[0]}x{image.size[1]} for OCR")
