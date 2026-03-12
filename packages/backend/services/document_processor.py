@@ -312,13 +312,14 @@ def _run_ocr_qwen2vl(image, model, processor, device, check_cancelled):
     return output_text
 
 
-def _run_ocr_generic(image, model, processor, device, check_cancelled):
-    """Run OCR using Granite Vision or Llama Vision models (standard HF transformers API)."""
+def _run_ocr_vlm(image, model, processor, device, check_cancelled, prompt: str, system: str | None = None, max_new_tokens: int = 2048):
+    """Run OCR using a vision-language model with the standard HF transformers API."""
     import torch
 
-    prompt = "Extract and transcribe all text from this image. Preserve the layout and formatting as much as possible."
-
-    messages = [
+    messages = []
+    if system:
+        messages.append({"role": "system", "content": system})
+    messages.append(
         {
             "role": "user",
             "content": [
@@ -326,7 +327,7 @@ def _run_ocr_generic(image, model, processor, device, check_cancelled):
                 {"type": "text", "text": prompt},
             ],
         }
-    ]
+    )
 
     input_text = processor.apply_chat_template(
         messages, add_generation_prompt=True, tokenize=False
@@ -345,7 +346,7 @@ def _run_ocr_generic(image, model, processor, device, check_cancelled):
         raise ProcessingCancelledError("Processing cancelled during preparation")
 
     with torch.no_grad():
-        generated_ids = model.generate(**inputs, max_new_tokens=2048, do_sample=False)
+        generated_ids = model.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=False)
 
     # Trim input tokens from output
     generated_ids_trimmed = generated_ids[:, inputs["input_ids"].shape[-1]:]
@@ -355,6 +356,20 @@ def _run_ocr_generic(image, model, processor, device, check_cancelled):
 
     del inputs, generated_ids, generated_ids_trimmed
     return output_text
+
+
+# Architecture-specific OCR prompts
+_OCR_PROMPT_DEFAULT = "Extract and transcribe all text from this image. Preserve the layout and formatting as much as possible."
+
+_OCR_PROMPT_LLAMA = (
+    "You are an OCR engine. Read all text in this image and output it exactly as written. "
+    "Do not describe the image. Do not add commentary. Only output the text content, preserving line breaks."
+)
+
+_OCR_SYSTEM_LLAMA = (
+    "You are an OCR system. You read images and output the text exactly as written. "
+    "Never describe images. Never add commentary or analysis."
+)
 
 
 def _run_ocr_on_image(image, check_cancelled: Callable[[], bool] | None = None) -> str:
@@ -370,8 +385,10 @@ def _run_ocr_on_image(image, check_cancelled: Callable[[], bool] | None = None) 
 
     if architecture == "qwen2-vl":
         output_text = _run_ocr_qwen2vl(image, model, processor, device, check_cancelled)
+    elif architecture == "llama-vision":
+        output_text = _run_ocr_vlm(image, model, processor, device, check_cancelled, prompt=_OCR_PROMPT_LLAMA, system=_OCR_SYSTEM_LLAMA)
     else:
-        output_text = _run_ocr_generic(image, model, processor, device, check_cancelled)
+        output_text = _run_ocr_vlm(image, model, processor, device, check_cancelled, prompt=_OCR_PROMPT_DEFAULT)
 
     # Clear device cache
     if device == "mps":
@@ -645,9 +662,14 @@ class DocumentProcessor:
                 image = image.convert("RGB")
 
             # Resize large images to prevent OOM (phone photos can be 4000+ px)
-            # Granite Vision uses 384px tiles — large images create many tiles and spike memory
+            # Granite Vision uses 384px tiles; Llama Vision 11B uses ~22GB at float16
             architecture = _get_ocr_architecture()
-            max_dim = 768 if architecture == "granite-vision" else 1280
+            if architecture == "granite-vision":
+                max_dim = 768
+            elif architecture == "llama-vision":
+                max_dim = 1024
+            else:
+                max_dim = 1280
             if max(image.size) > max_dim:
                 image.thumbnail((max_dim, max_dim), Image.LANCZOS)
                 logger.info(f"Resized image to {image.size[0]}x{image.size[1]} for OCR")
