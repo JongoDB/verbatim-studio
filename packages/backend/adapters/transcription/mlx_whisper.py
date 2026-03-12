@@ -279,19 +279,53 @@ class MlxWhisperTranscriptionEngine(ITranscriptionEngine):
     def cleanup(self) -> None:
         """Clean up resources after transcription.
 
-        MLX Whisper loads models on-demand per transcription call,
-        so there's no persistent model to unload. This method clears
-        any GPU cache and runs garbage collection for consistency.
+        MLX Whisper caches the model in a class-level singleton (ModelHolder).
+        We must clear it explicitly to free memory. MLX uses its own Metal
+        memory pool separate from PyTorch MPS.
         """
         import gc
 
+        try:
+            from mlx_whisper.transcribe import ModelHolder
+            if ModelHolder.model is not None:
+                logger.info("Unloading MLX Whisper model from ModelHolder cache")
+                ModelHolder.model = None
+                ModelHolder.model_path = None
+            else:
+                logger.info("ModelHolder.model was already None — nothing to unload")
+        except (ImportError, AttributeError) as e:
+            logger.warning("Could not access ModelHolder for cleanup: %s", e)
+
         gc.collect()
 
-        # Clear MPS cache
+        # Clear MLX Metal memory cache
+        try:
+            import mlx.core as mx
+            if mx.metal.is_available():
+                active_before = mx.metal.get_active_memory() / (1024 ** 3)
+                cache_before = mx.metal.get_cache_memory() / (1024 ** 3)
+                logger.info(
+                    "MLX Metal memory before cleanup: active=%.1fGB, cache=%.1fGB",
+                    active_before, cache_before,
+                )
+                # Force MLX to release cached buffers by temporarily setting cache limit to 0
+                old_limit = mx.metal.set_cache_limit(0)
+                mx.metal.clear_cache()
+                mx.metal.set_cache_limit(old_limit)
+                active_after = mx.metal.get_active_memory() / (1024 ** 3)
+                cache_after = mx.metal.get_cache_memory() / (1024 ** 3)
+                logger.info(
+                    "MLX Metal memory after cleanup: active=%.1fGB, cache=%.1fGB",
+                    active_after, cache_after,
+                )
+        except (ImportError, AttributeError) as e:
+            logger.debug("Could not clear MLX Metal cache: %s", e)
+
+        # Clear PyTorch MPS cache (used by whisperx diarization)
         try:
             import torch
-            if torch.backends.mps.is_available():
+            if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
                 torch.mps.empty_cache()
-                logger.debug("Cleared MPS cache")
+                logger.debug("Cleared PyTorch MPS cache")
         except (ImportError, AttributeError):
-            pass  # torch may not be available
+            pass

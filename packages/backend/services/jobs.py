@@ -745,6 +745,13 @@ async def handle_embedding(
 
     await progress_callback(100)
 
+    # Clean up embedding model to free memory
+    try:
+        embedding_service.cleanup()
+        logger.debug("Cleaned up embedding model")
+    except Exception as e:
+        logger.debug("Error cleaning up embedding model: %s", e)
+
     logger.info(
         "Embeddings complete for transcript %s: %d segments",
         transcript_id,

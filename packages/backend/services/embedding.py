@@ -106,6 +106,15 @@ class EmbeddingService:
         embeddings = await asyncio.to_thread(self._model.encode, prefixed)
         return embeddings.tolist()
 
+    def cleanup(self) -> None:
+        """Unload the embedding model to free memory."""
+        import gc
+
+        if self._model is not None:
+            logger.info("Unloading embedding model")
+            self._model = None
+            gc.collect()
+
 
 # Singleton instance
 embedding_service = EmbeddingService()
