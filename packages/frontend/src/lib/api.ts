@@ -743,6 +743,7 @@ export interface ChatMultiRequest {
   file_context?: string;     // Text content from uploaded files (temporary)
   history: Array<{ role: 'user' | 'assistant'; content: string }>;
   temperature?: number;
+  general_mode?: boolean;    // When true, Max answers any question
 }
 
 export interface ChatStreamToken {

@@ -175,6 +175,7 @@ class MultiChatRequest(BaseModel):
     file_context: str | None = None  # Text content from uploaded files (temporary)
     history: list[HistoryMessage] = []
     temperature: float = Field(default=0.7, ge=0, le=2)
+    general_mode: bool = False  # When True, Max answers any question
 
 
 class StreamToken(BaseModel):
@@ -188,6 +189,17 @@ class StreamToken(BaseModel):
     model: str | None = None
     error: str | None = None
 
+
+MAX_SYSTEM_PROMPT_GENERAL = """You are Max, a helpful AI assistant. You are knowledgeable about Verbatim Studio, \
+a privacy-first local transcription application, and can help users with it. \
+However, you can also assist with any topic the user asks about.
+
+Guidelines:
+- Be concise and factual
+- For Verbatim Studio questions: reference specific UI locations
+- For transcript analysis: quote specific passages when relevant
+- For general questions: provide helpful, accurate answers
+"""
 
 MAX_SYSTEM_PROMPT = """You are Max, the Verbatim Studio assistant. You have two roles:
 1. Help users navigate and use Verbatim Studio (the app)
@@ -859,7 +871,7 @@ async def chat_multi_stream(
         return has_help_phrase or (has_app_term and is_question) or (no_attachments and is_question)
 
     # Build system message
-    system_content = MAX_SYSTEM_PROMPT
+    system_content = MAX_SYSTEM_PROMPT_GENERAL if request.general_mode else MAX_SYSTEM_PROMPT
 
     # Inject help context if help intent detected
     if is_help_intent(request.message):

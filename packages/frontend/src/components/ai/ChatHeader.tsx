@@ -8,6 +8,8 @@ interface ChatHeaderProps {
   onSave?: () => void;
   onViewHistory?: () => void;
   hasMessages?: boolean;
+  generalMode?: boolean;
+  onToggleGeneralMode?: () => void;
 }
 
 export function ChatHeader({
@@ -18,6 +20,8 @@ export function ChatHeader({
   onSave,
   onViewHistory,
   hasMessages = false,
+  generalMode = false,
+  onToggleGeneralMode,
 }: ChatHeaderProps) {
   return (
     <div className="border-b border-gray-200 dark:border-gray-700 px-4 py-3">
@@ -31,6 +35,23 @@ export function ChatHeader({
           <h2 className="font-semibold text-gray-900 dark:text-gray-100">Max</h2>
         </div>
         <div className="flex items-center gap-1">
+          {/* General mode toggle */}
+          {onToggleGeneralMode && (
+            <button
+              onClick={onToggleGeneralMode}
+              className={`min-w-touch min-h-touch flex items-center justify-center rounded transition-colors ${
+                generalMode
+                  ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30'
+                  : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700'
+              }`}
+              aria-label={generalMode ? 'Switch to Verbatim Studio mode' : 'Switch to General mode'}
+              title={generalMode ? 'General mode (click for Verbatim Studio mode)' : 'Verbatim Studio mode (click for General mode)'}
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </button>
+          )}
           {/* History button */}
           {onViewHistory && (
             <button

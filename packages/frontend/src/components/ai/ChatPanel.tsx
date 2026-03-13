@@ -30,6 +30,7 @@ export function ChatPanel({
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [saveTitle, setSaveTitle] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [generalMode, setGeneralMode] = useState(false);
 
   const handleSend = useCallback(async (message: string) => {
     const userMessage: ChatMessage = {
@@ -68,6 +69,7 @@ export function ChatPanel({
         file_context: fileTexts.length > 0 ? fileTexts.join('\n\n') : undefined,
         history,
         temperature: 0.7,
+        general_mode: generalMode || undefined,
       })) {
         if (token.error) {
           throw new Error(token.error);
@@ -98,7 +100,7 @@ export function ChatPanel({
       setIsStreaming(false);
       setStreamingContent('');
     }
-  }, [messages, attached, setMessages]);
+  }, [messages, attached, setMessages, generalMode]);
 
   const handleAttach = useCallback((attachment: ChatAttachment) => {
     setAttached((prev) => [...prev, attachment]);
@@ -170,6 +172,8 @@ export function ChatPanel({
         onSave={handleSave}
         onViewHistory={onNavigateToChats ? handleViewHistory : undefined}
         hasMessages={messages.length > 0}
+        generalMode={generalMode}
+        onToggleGeneralMode={() => setGeneralMode((prev) => !prev)}
       />
       <ChatMessages
         messages={messages}
