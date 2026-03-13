@@ -314,12 +314,18 @@ class LlamaCppAIService(IAIService):
 
         msgs = [{"role": m.role, "content": m.content} for m in messages]
 
+        kwargs: dict[str, Any] = {
+            "messages": msgs,
+            "max_tokens": options.max_tokens or 512,
+            "temperature": options.temperature,
+            "top_p": options.top_p,
+        }
+        if options.response_format:
+            kwargs["response_format"] = options.response_format
+
         result = await asyncio.to_thread(
             self._llm.create_chat_completion,
-            messages=msgs,
-            max_tokens=options.max_tokens or 512,
-            temperature=options.temperature,
-            top_p=options.top_p,
+            **kwargs,
         )
 
         content = result["choices"][0]["message"]["content"]
@@ -348,13 +354,19 @@ class LlamaCppAIService(IAIService):
         msgs = [{"role": m.role, "content": m.content} for m in messages]
 
         # Create the streaming generator in a thread-safe way
+        kwargs: dict[str, Any] = {
+            "messages": msgs,
+            "max_tokens": options.max_tokens or 512,
+            "temperature": options.temperature,
+            "top_p": options.top_p,
+            "stream": True,
+        }
+        if options.response_format:
+            kwargs["response_format"] = options.response_format
+
         stream = await asyncio.to_thread(
             self._llm.create_chat_completion,
-            messages=msgs,
-            max_tokens=options.max_tokens or 512,
-            temperature=options.temperature,
-            top_p=options.top_p,
-            stream=True,
+            **kwargs,
         )
 
         # Iterate over the synchronous generator using to_thread for each chunk

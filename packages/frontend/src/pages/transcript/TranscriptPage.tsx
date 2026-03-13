@@ -11,6 +11,7 @@ import { QualityReviewButton } from '@/components/transcript/QualityReviewButton
 import { QualityReviewPanel } from '@/components/transcript/QualityReviewPanel';
 import { useKeyboardShortcuts, getPlaybackShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useKeybindingStore } from '@/stores/keybindingStore';
+import { useTaskStore } from '@/stores/taskStore';
 
 interface SearchMatch {
   segmentId: string;
@@ -40,10 +41,12 @@ export function TranscriptPage({ recordingId, onBack, initialSeekTime }: Transcr
   const [qualityReviewJobId, setQualityReviewJobId] = useState<string | null>(null);
   const [qualityReviewRecord, setQualityReviewRecord] = useState<QualityReviewRecord | null>(null);
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (silent = false) => {
     try {
-      setIsLoading(true);
-      setError(null);
+      if (!silent) {
+        setIsLoading(true);
+        setError(null);
+      }
 
       // Load transcript and recording data in parallel
       const [transcriptData, recordingData] = await Promise.all([
@@ -63,9 +66,13 @@ export function TranscriptPage({ recordingId, onBack, initialSeekTime }: Transcr
         setSpeakers([]);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load transcript');
+      if (!silent) {
+        setError(err instanceof Error ? err.message : 'Failed to load transcript');
+      }
     } finally {
-      setIsLoading(false);
+      if (!silent) {
+        setIsLoading(false);
+      }
     }
   }, [recordingId]);
 
@@ -91,26 +98,39 @@ export function TranscriptPage({ recordingId, onBack, initialSeekTime }: Transcr
     }
   }, [initialSeekTime, isLoading, transcript]);
 
-  // Poll for quality review results when a job is running
+  // Watch for quality review completion or cancellation via task store
   useEffect(() => {
     if (!qualityReviewJobId || !transcript) return;
-    let cancelled = false;
 
-    const poll = async () => {
-      try {
-        const result = await api.qualityReview.getResult(transcript.id, qualityReviewJobId);
-        if (!cancelled && result && result.status === 'completed') {
-          setQualityReviewRecord(result);
-          setQualityReviewJobId(null);
-        }
-      } catch {
-        // Record not yet created, keep polling
+    const unsubscribe = useTaskStore.subscribe((state) => {
+      const task = state.tasks.get(qualityReviewJobId);
+
+      if (task?.status === 'complete') {
+        // Job completed — fetch the result
+        api.qualityReview.getResult(transcript.id, qualityReviewJobId)
+          .then((result) => {
+            if (result) {
+              setQualityReviewRecord(result);
+            }
+          })
+          .catch(console.error)
+          .finally(() => setQualityReviewJobId(null));
       }
-    };
+    });
 
-    const interval = setInterval(poll, 2000);
-    poll(); // Check immediately
-    return () => { cancelled = true; clearInterval(interval); };
+    // Also check if task was removed (cancelled) — poll for that since
+    // Zustand subscribe only fires on changes, not on initial missing state
+    const interval = setInterval(() => {
+      const tasks = useTaskStore.getState().tasks;
+      if (!tasks.has(qualityReviewJobId)) {
+        setQualityReviewJobId(null);
+      }
+    }, 2000);
+
+    return () => {
+      unsubscribe();
+      clearInterval(interval);
+    };
   }, [qualityReviewJobId, transcript]);
 
   // Handle segment text/speaker updates
@@ -496,7 +516,7 @@ export function TranscriptPage({ recordingId, onBack, initialSeekTime }: Transcr
           </h3>
           <p className="text-sm text-red-600/80 dark:text-red-400/80">{error}</p>
           <button
-            onClick={loadData}
+            onClick={() => loadData()}
             className="mt-4 inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
           >
             Try Again
@@ -750,7 +770,7 @@ export function TranscriptPage({ recordingId, onBack, initialSeekTime }: Transcr
         <QualityReviewPanel
           record={qualityReviewRecord}
           transcriptId={transcript.id}
-          onApplied={() => loadData()}
+          onApplied={() => loadData(true)}
           onDismiss={() => setQualityReviewRecord(null)}
         />
       )}

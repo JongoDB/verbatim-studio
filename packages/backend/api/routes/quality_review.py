@@ -56,6 +56,7 @@ class ApplyResponse(BaseModel):
     applied_corrections: int
     applied_removals: int
     applied_merges: int
+    already_removed: int = 0
 
 
 # --- Endpoints ---
@@ -160,6 +161,18 @@ async def _apply_corrections(
     applied_corrections = 0
     applied_removals = 0
     applied_merges = 0
+    already_removed = 0
+
+    logger.info(
+        "Applying corrections: %d edits, %d removals, %d merges available; "
+        "accepted: %d edits, %d removals, %d merges",
+        len(corrections_data.get("corrected_segments", [])),
+        len(corrections_data.get("removed_segment_ids", [])),
+        len(corrections_data.get("merge_suggestions", [])),
+        len(accepted_correction_ids),
+        len(accepted_removal_ids),
+        len(accepted_merge_indexes),
+    )
 
     # Apply text corrections
     for corr in corrections_data.get("corrected_segments", []):
@@ -178,17 +191,25 @@ async def _apply_corrections(
         applied_corrections += 1
 
     # Apply removals
-    for seg_id in corrections_data.get("removed_segment_ids", []):
+    removal_ids_in_data = corrections_data.get("removed_segment_ids", [])
+    skipped_removals = 0
+    for seg_id in removal_ids_in_data:
         if seg_id not in accepted_removal_ids:
+            skipped_removals += 1
             continue
 
         seg_result = await db.execute(select(Segment).where(Segment.id == seg_id))
         segment = seg_result.scalar_one_or_none()
         if segment is None:
+            # Segment was already deleted (likely by a previous review apply)
+            already_removed += 1
             continue
 
         await db.delete(segment)
         applied_removals += 1
+    if already_removed > 0:
+        logger.info("Removals: %d applied, %d already removed (prior apply), %d skipped",
+                     applied_removals, already_removed, skipped_removals)
 
     # Apply merges
     for idx, merge in enumerate(corrections_data.get("merge_suggestions", [])):
@@ -220,14 +241,14 @@ async def _apply_corrections(
 
         applied_merges += 1
 
-    # Update record status
-    has_any = applied_corrections > 0 or applied_removals > 0 or applied_merges > 0
+    # Update record status — count already_removed as "applied" for status purposes
+    has_any = applied_corrections > 0 or applied_removals > 0 or applied_merges > 0 or already_removed > 0
     total_available = (
         len(corrections_data.get("corrected_segments", []))
         + len(corrections_data.get("removed_segment_ids", []))
         + len(corrections_data.get("merge_suggestions", []))
     )
-    total_applied = applied_corrections + applied_removals + applied_merges
+    total_applied = applied_corrections + applied_removals + already_removed + applied_merges
 
     if has_any:
         record.status = "applied" if total_applied >= total_available else "partially_applied"
@@ -235,10 +256,16 @@ async def _apply_corrections(
 
     await db.commit()
 
+    logger.info(
+        "Applied: %d corrections, %d removals (%d already removed), %d merges (status=%s)",
+        applied_corrections, applied_removals, already_removed, applied_merges, record.status,
+    )
+
     return ApplyResponse(
         applied_corrections=applied_corrections,
         applied_removals=applied_removals,
         applied_merges=applied_merges,
+        already_removed=already_removed,
     )
 
 

@@ -145,7 +145,7 @@ async def cancel_job(job_id: str) -> MessageResponse:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Job cannot be cancelled (status: {job.status}). "
-            "Only queued jobs can be cancelled.",
+            "Only queued or running jobs can be cancelled.",
         )
 
     return MessageResponse(

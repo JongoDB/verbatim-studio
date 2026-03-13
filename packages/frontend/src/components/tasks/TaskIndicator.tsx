@@ -4,6 +4,7 @@
  */
 import { useState } from 'react';
 import { useActiveTasks, useTotalTaskProgress, useTaskStore, type TaskType } from '@/stores/taskStore';
+import { api } from '@/lib/api';
 
 interface TaskIndicatorProps {
   collapsed?: boolean;
@@ -151,10 +152,14 @@ export function TaskIndicator({ collapsed }: TaskIndicatorProps) {
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
+                      // Cancel the backend job, then remove from UI
+                      api.jobs.cancel(task.jobId).catch(() => {
+                        // Job may already be completed/cancelled
+                      });
                       removeTask(task.jobId);
                     }}
                     className="text-muted-foreground hover:text-foreground p-1"
-                    title="Dismiss"
+                    title="Cancel"
                   >
                     <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />

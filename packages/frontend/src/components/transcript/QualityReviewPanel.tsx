@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { api, type QualityReviewRecord, type ApplyResponse } from '@/lib/api';
+import { useState, useMemo } from 'react';
+import { api, type QualityReviewRecord, type ApplyResponse, type RemovedSegment } from '@/lib/api';
+import { DiffView } from './DiffView';
 
 interface QualityReviewPanelProps {
   record: QualityReviewRecord;
@@ -99,6 +100,17 @@ export function QualityReviewPanel({ record, transcriptId, onApplied, onDismiss 
     return null;
   }
 
+  // Build a lookup for removed segments (new format has text, old format only has IDs)
+  const removedSegmentMap = useMemo(() => {
+    const map = new Map<string, RemovedSegment>();
+    if (corrections?.removed_segments) {
+      for (const seg of corrections.removed_segments) {
+        map.set(seg.segment_id, seg);
+      }
+    }
+    return map;
+  }, [corrections?.removed_segments]);
+
   const hasCorrections = corrections.corrected_segments.length > 0;
   const hasRemovals = corrections.removed_segment_ids.length > 0;
   const hasMerges = corrections.merge_suggestions.length > 0;
@@ -113,7 +125,9 @@ export function QualityReviewPanel({ record, transcriptId, onApplied, onDismiss 
               Corrections Applied
             </h3>
             <p className="text-xs text-green-600 dark:text-green-400 mt-1">
-              {result.applied_corrections} text corrections, {result.applied_removals} removals, {result.applied_merges} merges
+              {result.applied_corrections} text corrections, {result.applied_removals} removals
+              {(result.already_removed ?? 0) > 0 && ` (${result.already_removed} already removed)`}
+              , {result.applied_merges} merges
             </p>
           </div>
           <button
@@ -197,8 +211,7 @@ export function QualityReviewPanel({ record, transcriptId, onApplied, onDismiss 
                             {Math.round(corr.confidence * 100)}% confidence
                           </span>
                         </div>
-                        <p className="text-xs text-red-600 dark:text-red-400 line-through">{corr.original_text}</p>
-                        <p className="text-xs text-green-600 dark:text-green-400 mt-0.5">{corr.corrected_text}</p>
+                        <DiffView original={corr.original_text} corrected={corr.corrected_text} />
                         {corr.explanation && (
                           <p className="text-[10px] text-gray-500 mt-0.5 italic">{corr.explanation}</p>
                         )}
@@ -224,25 +237,33 @@ export function QualityReviewPanel({ record, transcriptId, onApplied, onDismiss 
               </button>
               {expandedSection === 'removals' && (
                 <div className="divide-y divide-gray-100 dark:divide-gray-700">
-                  {corrections.removed_segment_ids.map((segId) => (
-                    <label
-                      key={segId}
-                      className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/30 ${
-                        isAlreadyApplied ? 'opacity-60 pointer-events-none' : ''
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={acceptedRemovals.has(segId)}
-                        onChange={() => toggleRemoval(segId)}
-                        className="rounded border-gray-300 text-red-600 focus:ring-red-500"
-                        disabled={isAlreadyApplied}
-                      />
-                      <span className="text-xs text-red-600 dark:text-red-400 line-through">
-                        Segment {segId.slice(0, 8)}...
-                      </span>
-                    </label>
-                  ))}
+                  {corrections.removed_segment_ids.map((segId) => {
+                    const seg = removedSegmentMap.get(segId);
+                    return (
+                      <label
+                        key={segId}
+                        className={`flex items-start gap-3 px-4 py-2.5 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/30 ${
+                          isAlreadyApplied ? 'opacity-60 pointer-events-none' : ''
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={acceptedRemovals.has(segId)}
+                          onChange={() => toggleRemoval(segId)}
+                          className="mt-0.5 rounded border-gray-300 text-red-600 focus:ring-red-500"
+                          disabled={isAlreadyApplied}
+                        />
+                        <div className="flex-1 min-w-0">
+                          {seg?.speaker && (
+                            <span className="text-[10px] text-gray-400 block mb-0.5">{seg.speaker}</span>
+                          )}
+                          <span className="text-xs text-red-600 dark:text-red-400 line-through">
+                            {seg?.text || `Segment ${segId.slice(0, 8)}...`}
+                          </span>
+                        </div>
+                      </label>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -262,33 +283,50 @@ export function QualityReviewPanel({ record, transcriptId, onApplied, onDismiss 
               </button>
               {expandedSection === 'merges' && (
                 <div className="divide-y divide-gray-100 dark:divide-gray-700">
-                  {corrections.merge_suggestions.map((merge, idx) => (
-                    <label
-                      key={idx}
-                      className={`flex items-start gap-3 px-4 py-2.5 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/30 ${
-                        isAlreadyApplied ? 'opacity-60 pointer-events-none' : ''
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={acceptedMerges.has(idx)}
-                        onChange={() => toggleMerge(idx)}
-                        className="mt-1 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                        disabled={isAlreadyApplied}
-                      />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1 mb-1">
-                          <span className="text-[10px] text-gray-400">
-                            Merge {merge.segment_ids.length} segments
-                          </span>
+                  {corrections.merge_suggestions.map((merge, idx) => {
+                    const hasOriginals = merge.original_texts && merge.original_texts.length > 0;
+                    const concatenatedOriginal = hasOriginals ? merge.original_texts!.join(' ') : '';
+                    return (
+                      <label
+                        key={idx}
+                        className={`flex items-start gap-3 px-4 py-2.5 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/30 ${
+                          isAlreadyApplied ? 'opacity-60 pointer-events-none' : ''
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={acceptedMerges.has(idx)}
+                          onChange={() => toggleMerge(idx)}
+                          className="mt-1 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                          disabled={isAlreadyApplied}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1 mb-1">
+                            <span className="text-[10px] text-gray-400">
+                              Merge {merge.segment_ids.length} segments
+                            </span>
+                          </div>
+                          {hasOriginals ? (
+                            <>
+                              <div className="mb-1.5 space-y-0.5">
+                                {merge.original_texts!.map((text, i) => (
+                                  <p key={i} className="text-xs text-gray-500 dark:text-gray-400 pl-2 border-l-2 border-gray-200 dark:border-gray-600">
+                                    {text}
+                                  </p>
+                                ))}
+                              </div>
+                              <DiffView original={concatenatedOriginal} corrected={merge.merged_text} />
+                            </>
+                          ) : (
+                            <p className="text-xs text-blue-600 dark:text-blue-400">{merge.merged_text}</p>
+                          )}
+                          {merge.explanation && (
+                            <p className="text-[10px] text-gray-500 mt-0.5 italic">{merge.explanation}</p>
+                          )}
                         </div>
-                        <p className="text-xs text-blue-600 dark:text-blue-400">{merge.merged_text}</p>
-                        {merge.explanation && (
-                          <p className="text-[10px] text-gray-500 mt-0.5 italic">{merge.explanation}</p>
-                        )}
-                      </div>
-                    </label>
-                  ))}
+                      </label>
+                    );
+                  })}
                 </div>
               )}
             </div>

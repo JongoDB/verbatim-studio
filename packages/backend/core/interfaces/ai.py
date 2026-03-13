@@ -28,6 +28,7 @@ class ChatOptions:
     top_p: float = 1.0
     stop: list[str] | None = None
     system_prompt: str | None = None
+    response_format: dict | None = None  # e.g. {"type": "json_object"}
 
 
 @dataclass

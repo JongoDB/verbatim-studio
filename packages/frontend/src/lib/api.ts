@@ -340,10 +340,17 @@ export interface CorrectedSegmentResult {
   explanation: string;
 }
 
+export interface RemovedSegment {
+  segment_id: string;
+  text: string;
+  speaker?: string;
+}
+
 export interface MergedSegmentResult {
   segment_ids: string[];
   merged_text: string;
   explanation: string;
+  original_texts?: string[];
 }
 
 export interface QualityReviewStats {
@@ -357,6 +364,7 @@ export interface QualityReviewStats {
 export interface QualityReviewCorrections {
   corrected_segments: CorrectedSegmentResult[];
   removed_segment_ids: string[];
+  removed_segments?: RemovedSegment[];
   merge_suggestions: MergedSegmentResult[];
 }
 
@@ -383,6 +391,7 @@ export interface ApplyResponse {
   applied_corrections: number;
   applied_removals: number;
   applied_merges: number;
+  already_removed?: number;
 }
 
 export interface Transcript {
@@ -1717,6 +1726,11 @@ class ApiClient {
     },
 
     get: (id: string) => this.request<Job>(`/api/jobs/${id}`),
+
+    cancel: (id: string) =>
+      this.request<{ message: string; id: string }>(`/api/jobs/${id}/cancel`, {
+        method: 'POST',
+      }),
   };
 
   // Quality Review
