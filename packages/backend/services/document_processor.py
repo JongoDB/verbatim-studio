@@ -81,6 +81,7 @@ def _is_ocr_model_ready() -> bool:
 
 def _load_qwen2_vl(model_path: str, device: str):
     """Load Qwen2-VL model and processor."""
+    import time
     import torch
     from transformers import Qwen2VLForConditionalGeneration, AutoProcessor
 
@@ -89,6 +90,7 @@ def _load_qwen2_vl(model_path: str, device: str):
         trust_remote_code=True,
     )
 
+    t0 = time.perf_counter()
     if device == "cuda":
         model = Qwen2VLForConditionalGeneration.from_pretrained(
             model_path,
@@ -108,6 +110,7 @@ def _load_qwen2_vl(model_path: str, device: str):
             torch_dtype=torch.float32,
             trust_remote_code=True,
         )
+    logger.info("Qwen2-VL: model loaded in %.1fs on %s", time.perf_counter() - t0, device)
 
     model.eval()
     return model, processor
@@ -116,7 +119,11 @@ def _load_qwen2_vl(model_path: str, device: str):
 def _load_granite_vision(model_path: str, device: str):
     """Load Granite Vision model and processor."""
     import torch
-    from transformers import AutoModelForVision2Seq, AutoProcessor
+    from transformers import AutoProcessor
+    try:
+        from transformers import AutoModelForImageTextToText as AutoVisionModel
+    except ImportError:
+        from transformers import AutoModelForVision2Seq as AutoVisionModel
 
     processor = AutoProcessor.from_pretrained(
         model_path,
@@ -124,22 +131,22 @@ def _load_granite_vision(model_path: str, device: str):
     )
 
     if device == "cuda":
-        model = AutoModelForVision2Seq.from_pretrained(
+        model = AutoVisionModel.from_pretrained(
             model_path,
             torch_dtype=torch.bfloat16,
             device_map="auto",
             trust_remote_code=True,
         )
     elif device == "mps":
-        # Granite Vision produces empty output with float16 on MPS; bfloat16 works
-        # and uses half the memory of float32
-        model = AutoModelForVision2Seq.from_pretrained(
+        # float16 produces empty output, bfloat16 causes hallucination on MPS;
+        # float32 is the only dtype that produces correct OCR results
+        model = AutoVisionModel.from_pretrained(
             model_path,
-            torch_dtype=torch.bfloat16,
+            torch_dtype=torch.float32,
             trust_remote_code=True,
         ).to(device)
     else:
-        model = AutoModelForVision2Seq.from_pretrained(
+        model = AutoVisionModel.from_pretrained(
             model_path,
             torch_dtype=torch.float32,
             trust_remote_code=True,
@@ -151,6 +158,7 @@ def _load_granite_vision(model_path: str, device: str):
 
 def _load_llama_vision(model_path: str, device: str):
     """Load Llama Vision model and processor."""
+    import time
     import torch
     from transformers import MllamaForConditionalGeneration, AutoProcessor
 
@@ -159,6 +167,7 @@ def _load_llama_vision(model_path: str, device: str):
         trust_remote_code=True,
     )
 
+    t0 = time.perf_counter()
     if device == "cuda":
         model = MllamaForConditionalGeneration.from_pretrained(
             model_path,
@@ -178,6 +187,7 @@ def _load_llama_vision(model_path: str, device: str):
             torch_dtype=torch.float32,
             trust_remote_code=True,
         )
+    logger.info("Llama Vision: model loaded in %.1fs on %s", time.perf_counter() - t0, device)
 
     model.eval()
     return model, processor
@@ -215,7 +225,7 @@ def get_ocr_model():
             elif architecture == "llama-vision":
                 _ocr_model, _ocr_processor = _load_llama_vision(model_path, device)
             else:
-                # Fallback: try AutoModelForVision2Seq
+                # Fallback: try generic vision model loader
                 logger.warning("Unknown architecture '%s', attempting generic load", architecture)
                 _ocr_model, _ocr_processor = _load_granite_vision(model_path, device)
 
@@ -274,6 +284,7 @@ def _format_ocr_messages_qwen2vl(image):
 
 def _run_ocr_qwen2vl(image, model, processor, device, check_cancelled):
     """Run OCR using Qwen2-VL model."""
+    import time
     import torch
     from qwen_vl_utils import process_vision_info
 
@@ -291,6 +302,8 @@ def _run_ocr_qwen2vl(image, model, processor, device, check_cancelled):
         padding=True,
         return_tensors="pt",
     )
+    logger.info("Qwen2-VL: input_ids shape=%s, image_inputs=%d",
+                inputs.input_ids.shape, len(image_inputs) if image_inputs else 0)
 
     if device != "cpu":
         inputs = inputs.to(device)
@@ -298,8 +311,12 @@ def _run_ocr_qwen2vl(image, model, processor, device, check_cancelled):
     if check_cancelled and check_cancelled():
         raise ProcessingCancelledError("Processing cancelled during preparation")
 
+    t0 = time.perf_counter()
     with torch.no_grad():
         generated_ids = model.generate(**inputs, max_new_tokens=2048, do_sample=False)
+
+    n_output_tokens = generated_ids.shape[-1] - inputs.input_ids.shape[-1]
+    logger.info("Qwen2-VL: generate done in %.1fs, %d output tokens", time.perf_counter() - t0, n_output_tokens)
 
     generated_ids_trimmed = [
         out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
@@ -314,6 +331,7 @@ def _run_ocr_qwen2vl(image, model, processor, device, check_cancelled):
 
 def _run_ocr_vlm(image, model, processor, device, check_cancelled, prompt: str, system: str | None = None, max_new_tokens: int = 2048):
     """Run OCR using a vision-language model with the standard HF transformers API."""
+    import time
     import torch
 
     messages = []
@@ -338,6 +356,7 @@ def _run_ocr_vlm(image, model, processor, device, check_cancelled, prompt: str, 
         images=[image],
         return_tensors="pt",
     )
+    logger.info("OCR VLM: input_ids shape=%s, keys=%s", inputs["input_ids"].shape, list(inputs.keys()))
 
     if device != "cpu":
         inputs = inputs.to(device)
@@ -345,14 +364,18 @@ def _run_ocr_vlm(image, model, processor, device, check_cancelled, prompt: str, 
     if check_cancelled and check_cancelled():
         raise ProcessingCancelledError("Processing cancelled during preparation")
 
+    t0 = time.perf_counter()
     with torch.no_grad():
         generated_ids = model.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=False)
+    gen_time = time.perf_counter() - t0
 
     # Trim input tokens from output
     generated_ids_trimmed = generated_ids[:, inputs["input_ids"].shape[-1]:]
     output_text = processor.batch_decode(
         generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False
     )[0]
+    logger.info("OCR VLM: generate done in %.1fs, %d output tokens → %d chars",
+                gen_time, generated_ids_trimmed.shape[-1], len(output_text))
 
     del inputs, generated_ids, generated_ids_trimmed
     return output_text
@@ -374,14 +397,17 @@ _OCR_SYSTEM_LLAMA = (
 
 def _run_ocr_on_image(image, check_cancelled: Callable[[], bool] | None = None) -> str:
     """Run OCR on a single image using the active vision model."""
+    import time
     import torch
 
     if check_cancelled and check_cancelled():
         raise ProcessingCancelledError("Processing cancelled before OCR")
 
+    t0 = time.perf_counter()
     model, processor = get_ocr_model()
     device = _get_device()
     architecture = _get_ocr_architecture()
+    logger.info("OCR: running %s on %s (image %s)", architecture, device, getattr(image, 'size', '?'))
 
     if architecture == "qwen2-vl":
         output_text = _run_ocr_qwen2vl(image, model, processor, device, check_cancelled)
@@ -400,7 +426,9 @@ def _run_ocr_on_image(image, check_cancelled: Callable[[], bool] | None = None) 
     for token in ["<|im_end|>", "<|im_start|>", "<|endoftext|>", "<|eot_id|>"]:
         output_text = output_text.replace(token, "")
 
-    return output_text.strip()
+    result = output_text.strip()
+    logger.info("OCR: completed in %.1fs, extracted %d chars", time.perf_counter() - t0, len(result))
+    return result
 
 
 def _check_pymupdf_available() -> bool:
@@ -512,10 +540,12 @@ class DocumentProcessor:
                 logger.warning("PyMuPDF not available for PDF to image conversion")
                 return pymupdf_result
 
+            import time
             import fitz
             from PIL import Image
             import io
 
+            t0 = time.perf_counter()
             doc = fitz.open(file_path)
             markdown_parts = []
 
@@ -546,16 +576,31 @@ class DocumentProcessor:
                 gc.collect()
 
             doc.close()
+            ocr_duration = round(time.perf_counter() - t0, 1)
 
             active_id = _get_active_ocr_model_id() or "ocr"
             combined_markdown = "\n\n".join(markdown_parts)
             plain_text = combined_markdown.replace("#", "").replace("*", "").replace("|", " ")
 
+            # Get model label for UI display
+            ocr_label = active_id
+            try:
+                from core.ocr_catalog import OCR_MODEL_CATALOG
+                entry = OCR_MODEL_CATALOG.get(active_id)
+                if entry:
+                    ocr_label = entry.get("label", active_id)
+            except ImportError:
+                pass
+
             return {
                 "text": plain_text,
                 "markdown": combined_markdown,
                 "page_count": len(markdown_parts),
-                "metadata": {"ocr_engine": active_id},
+                "metadata": {
+                    "ocr_engine": active_id,
+                    "ocr_model_label": ocr_label,
+                    "ocr_duration_s": ocr_duration,
+                },
             }
         except ProcessingCancelledError:
             raise
@@ -674,14 +719,31 @@ class DocumentProcessor:
                 image.thumbnail((max_dim, max_dim), Image.LANCZOS)
                 logger.info(f"Resized image to {image.size[0]}x{image.size[1]} for OCR")
 
-            # Run OCR
+            # Run OCR with timing
+            import time
+            t0 = time.perf_counter()
             text = _run_ocr_on_image(image, check_cancelled)
+            ocr_duration = round(time.perf_counter() - t0, 1)
+
+            # Get model label for UI display
+            ocr_label = active_id
+            try:
+                from core.ocr_catalog import OCR_MODEL_CATALOG
+                entry = OCR_MODEL_CATALOG.get(active_id)
+                if entry:
+                    ocr_label = entry.get("label", active_id)
+            except ImportError:
+                pass
 
             return {
                 "text": text,
                 "markdown": text,
                 "page_count": 1,
-                "metadata": {"ocr_engine": active_id},
+                "metadata": {
+                    "ocr_engine": active_id,
+                    "ocr_model_label": ocr_label,
+                    "ocr_duration_s": ocr_duration,
+                },
             }
         except ProcessingCancelledError:
             raise

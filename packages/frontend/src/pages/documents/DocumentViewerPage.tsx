@@ -484,12 +484,19 @@ export function DocumentViewerPage({ documentId, onBack }: DocumentViewerPagePro
                 {/* OCR Results - synced with current page */}
                 {ocrContent && (
                   <div className="border-t border-gray-200 dark:border-gray-700 p-4">
-                    <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2">
+                    <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1 flex items-center gap-2">
                       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                       </svg>
                       Extracted Text (Page {currentPdfPage})
                     </h3>
+                    {(document.metadata?.ocr_model_label || document.metadata?.ocr_duration_s) && (
+                      <p className="text-xs text-gray-400 dark:text-gray-500 mb-3 ml-6">
+                        {document.metadata.ocr_model_label && <span>{document.metadata.ocr_model_label as string}</span>}
+                        {document.metadata.ocr_model_label && document.metadata.ocr_duration_s && <span> · </span>}
+                        {document.metadata.ocr_duration_s && <span>{document.metadata.ocr_duration_s as number}s</span>}
+                      </p>
+                    )}
                     <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-4">
                       {currentPageOcrText ? (
                         <pre className="text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap font-mono">
@@ -516,12 +523,19 @@ export function DocumentViewerPage({ documentId, onBack }: DocumentViewerPagePro
                 {/* OCR Results */}
                 {ocrContent && (
                   <div className="w-full mt-6 border-t border-gray-200 dark:border-gray-700 pt-6">
-                    <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2">
+                    <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1 flex items-center gap-2">
                       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                       </svg>
                       Extracted Text (OCR)
                     </h3>
+                    {(document.metadata?.ocr_model_label || document.metadata?.ocr_duration_s) && (
+                      <p className="text-xs text-gray-400 dark:text-gray-500 mb-3 ml-6">
+                        {document.metadata.ocr_model_label && <span>{document.metadata.ocr_model_label as string}</span>}
+                        {document.metadata.ocr_model_label && document.metadata.ocr_duration_s && <span> · </span>}
+                        {document.metadata.ocr_duration_s && <span>{document.metadata.ocr_duration_s as number}s</span>}
+                      </p>
+                    )}
                     <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-4 max-h-[40vh] overflow-auto">
                       <pre className="text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap font-mono">
                         {ocrContent}

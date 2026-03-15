@@ -1004,7 +1004,9 @@ async def handle_document_processing(
             if not file_path.exists():
                 raise FileNotFoundError(f"File not found: {file_path}")
 
-            # Check if OCR is enabled for this document
+            # Re-read metadata to pick up any concurrent changes
+            # (e.g. /ocr route may have set enable_ocr=True after upload enqueued this job)
+            await session.refresh(doc, ["metadata_"])
             enable_ocr = doc.metadata_.get("enable_ocr", False)
 
             # Extract text (pass cancellation check for OCR operations)
@@ -1020,6 +1022,10 @@ async def handle_document_processing(
                 Path(temp_file.name).unlink(missing_ok=True)
 
             await update_progress(50)
+
+            # Refresh metadata from DB before merging, so concurrent changes
+            # (e.g. /ocr route setting enable_ocr=True) aren't overwritten
+            await session.refresh(doc, ["metadata_"])
 
             # Update document
             doc.extracted_text = extraction_result.get("text")
